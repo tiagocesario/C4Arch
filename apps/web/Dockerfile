@@ -25,7 +25,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Servidor estatico (lightweight) para servir o build.
+# A imagem node já possui usuário 'node', não precisa criar
 RUN npm i -g serve@14
 
 COPY --from=builder --chown=node:node /app/dist ./dist

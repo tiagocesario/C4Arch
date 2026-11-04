@@ -24,11 +24,7 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Cria um usuário não-root (executa o processo com menos privilégios)
-RUN groupadd --system --gid 1001 node \
-    && useradd --system --uid 1001 --gid node node
-
-# Copia apenas o que é necessário para rodar
+# A imagem node já possui usuário 'node', não precisa criar
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/package.json ./package.json
 

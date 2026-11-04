@@ -20,14 +20,13 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-RUN groupadd --system --gid 1001 app && useradd --system --uid 1001 --gid app app
-
-COPY --from=builder --chown=app:app /app/dist ./dist
-COPY --from=builder --chown=app:app /app/package.json ./package.json
+# A imagem node já possui usuário 'node', não precisa criar
+COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=node:node /app/package.json ./package.json
 
 RUN npm ci --omit=dev || npm install --omit=dev
 
-USER app
+USER node
 
 # Variaveis de configuracao passadas via compose ou .env
 ENV STORAGE_DRIVER=drive
