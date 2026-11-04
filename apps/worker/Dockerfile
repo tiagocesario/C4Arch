@@ -4,6 +4,16 @@
 # e/ou GitLab (adapter storage), mantehndo versions e snapshots.
 # Executa em segundo plano (batch) dentro do container compose.
 
+FROM node:20-bookworm-slim AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci || npm install
+
+COPY . .
+RUN npm run build
+
 FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
@@ -12,10 +22,10 @@ ENV NODE_ENV=production
 
 RUN groupadd --system --gid 1001 app && useradd --system --uid 1001 --gid app app
 
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev || npm install --omit=dev
+COPY --from=builder --chown=app:app /app/dist ./dist
+COPY --from=builder --chown=app:app /app/package.json ./package.json
 
-COPY --from=builder --chown=app:app /app ./ 2>/dev/null || true
+RUN npm ci --omit=dev || npm install --omit=dev
 
 USER app
 

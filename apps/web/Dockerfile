@@ -13,7 +13,7 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev || npm install --omit=dev
+RUN npm ci || npm install
 
 COPY . .
 RUN npm run build
@@ -26,14 +26,16 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 # Servidor estatico (lightweight) para servir o build.
-# Substitua pelo servidor que preferir (nginx, caddy, etc.).
 RUN npm i -g serve@14
 
-COPY --from=builder --chown=node:node /app/build ./build
+COPY --from=builder --chown=node:node /app/dist ./dist
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+
+RUN npm ci --omit=dev || npm install --omit=dev
 
 USER node
 
 EXPOSE 3000
 
-# Serve a pasta build na porta 3000.
-CMD ["serve", "-s", "build", "-l", "3000"]
+# Serve a pasta dist na porta 3000.
+CMD ["serve", "-s", "dist", "-l", "3000"]
