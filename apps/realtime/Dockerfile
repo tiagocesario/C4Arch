@@ -26,10 +26,10 @@ COPY --from=builder --chown=node:node /app/package.json ./package.json
 
 RUN npm ci --omit=dev || npm install --omit=dev
 
-USER app
+USER node
 
 ENV WS_PORT=4001
 
 EXPOSE 4001
 
-CMD ["node", "dist/server.js"]
+CMD ["node", "dist/index.js"]
