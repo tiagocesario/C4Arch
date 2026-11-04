@@ -1,0 +1,23 @@
+{
+  "name": "@c4arch/realtime",
+  "version": "0.1.0",
+  "private": true,
+  "description": "C4Arch - sincronizacao em tempo real (WebSocket Yjs)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "yjs": "^13.6.24"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.2",
+    "typescript": "^5.5.4"
+  }
+}

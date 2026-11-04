@@ -1,0 +1,32 @@
+# Arquivos não necessários para a criação de imagens Docker.
+# Suporta padrões semelhantes ao .gitignore.
+
+# Dependências e cache
+node_modules/
+npm-cache/
+.pnp/
+.pnp.js
+
+# Variáveis de ambiente sensíveis
+.env
+.env.*
+
+# Build artifacts
+dist/
+build/
+.next/
+.out/
+
+# Logs e temporários
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# IDE e sistema
+.idea/
+.vscode/
+.config/
+```
+

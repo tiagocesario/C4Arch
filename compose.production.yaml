@@ -1,0 +1,47 @@
+# C4Arch — Compose para produção.
+# Sobrescreve o compose.yaml com configurações de produção.
+# Rode com:
+#   docker compose -f docker-compose.yaml -f compose.production.yaml up -d
+#
+# Por que um arquivo extra?
+# - compose.yaml é para desenvolvimento (bind de codigo, ports no localhost).
+# - compose.production.yaml remove bind de codigo, define restart: always,
+#   ambientes de producao e silencia os ports de servicos internos.
+#
+# Rebuild e deploy de uma alteracao:
+#   docker compose -f docker-compose.yaml -f compose.production.yaml build api web
+#   docker compose -f docker-compose.yaml -f compose.production.yaml up --no-deps -d api web
+
+name: c4arch-production
+
+services:
+  db:
+    restart: always
+    # Nao expoe a porta do banco para o host em producao.
+    ports: []
+
+  api:
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports: []
+
+  web:
+    restart: always
+    environment:
+      - NODE_ENV=production
+    # Mapeia a porta de provedor (80/443). Em producao, use um reverso-proxy
+    # (nginx/traefik) que termina TLS e encaminha para o container.
+    ports:
+      - "80:3000"
+
+  realtime:
+    restart: always
+    ports: []
+
+  worker:
+    restart: always
+
+# volumes nao sao definidos aqui; sao herdados do compose.yaml.
+# Se usar volumes nomeados, mantenha o mesmo nome em ambos os arquivos.

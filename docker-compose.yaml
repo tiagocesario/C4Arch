@@ -1,0 +1,95 @@
+# C4Arch — Compose local de desenvolvimento.
+# Levanta: postgres, api, web, realtime, worker.
+#
+# Execute:
+#   docker compose up -d --build
+#   docker compose logs -f          # acompanhar tudo
+#   docker compose down             # parar
+
+name: c4arch
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:***@db:5432/${POSTGRES_DB}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - PORT=${PORT:-4000}
+      - NODE_ENV=${NODE_ENV:-development}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-drive}
+      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
+      - DRIVE_CLIENT_ID=${DRIVE_CLIENT_ID}
+      - DRIVE_CLIENT_SECRET=${DRIVE_CLIENT_SECRET}
+      - GLAB_PROJECT_ID=${GLAB_PROJECT_ID}
+      - GLAB_TOKEN=${GLAB_TOKEN}
+    ports:
+      - "${PORT:-4000}:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - VITE_API_URL=http://localhost:${PORT:-4000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  realtime:
+    build:
+      context: ./apps/realtime
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${WS_PORT:-4001}:4001"
+    environment:
+      - WS_PORT=${WS_PORT:-4001}
+
+  worker:
+    build:
+      context: ./apps/worker
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-drive}
+      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
+      - GLAB_PROJECT_ID=${GLAB_PROJECT_ID}
+      - GLAB_TOKEN=${GLAB_TOKEN}
+
+volumes:
+  pgdata:
+
+networks:
+  default:
+    name: c4arch-network

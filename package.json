@@ -1,0 +1,31 @@
+{
+  "name": "c4arch",
+  "version": "0.1.0",
+  "private": true,
+  "description": "C4Arch - Arquitetura C4 colaborativa e viva",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<owner>/c4arch.git"
+  },
+  "license": "MIT",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "apps/realtime",
+    "apps/worker",
+    "packages/model",
+    "packages/realtime",
+    "packages/storage",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "echo 'Use npm run dev --workspace=<name> (e.g. apps/api)'",
+    "build": "npm run build --workspaces",
+    "lint": "echo 'Implement lint config per workspace'",
+    "test": "npm run test --workspaces"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "packageManager": "npm@10.9.0"
+}
