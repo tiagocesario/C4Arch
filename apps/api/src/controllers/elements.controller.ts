@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getModelAccess } from '../auth/access.js';
+import { getModelAccess, isWriterRole } from '../auth/access.js';
 
 const ELEMENT_TYPES = new Set(['actor', 'system', 'container', 'component']);
 
@@ -61,6 +61,9 @@ export class ElementController {
     try {
       const model = await getModelAccess(req.user!.id, modelId);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      if (!isWriterRole(model.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
+      }
 
       const element = await pool.query(
         `INSERT INTO elements (model_id, title, type, description, metadata, position_x, position_y, "order")
@@ -138,6 +141,9 @@ export class ElementController {
     try {
       const model = await getModelAccess(req.user!.id, modelId);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      if (!isWriterRole(model.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
+      }
 
       const sets: string[] = [];
       const values: unknown[] = [];
@@ -198,6 +204,9 @@ export class ElementController {
     try {
       const model = await getModelAccess(req.user!.id, modelId);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      if (!isWriterRole(model.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
+      }
 
       const result = await pool.query(
         `DELETE FROM elements WHERE id = $1 AND model_id = $2 RETURNING id`,

@@ -405,3 +405,14 @@ export async function openDrawioEditor(modelId: string): Promise<void> {
   const url = await getDrawioEditorUrl(modelId);
   window.open(url, '_blank', 'noopener');
 }
+
+/**
+ * Preview somente leitura do diagrama salvo. O XML vai no hash (#R), então não
+ * é enviado ao servidor do draw.io nem aparece em logs de proxy.
+ */
+export function getDrawioPreviewUrl(xml: string): string {
+  return (
+    'https://viewer.diagrams.net/?chrome=0&nav=1&toolbar=0&noPrint=1&noExport=1&lightbox=1&border=10#R' +
+    encodeURIComponent(xml)
+  );
+}

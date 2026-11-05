@@ -36,6 +36,23 @@ async function runMigrations() {
       snapshot JSONB NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `CREATE TABLE IF NOT EXISTS model_version_counters (
+      model_id UUID PRIMARY KEY,
+      version INTEGER NOT NULL DEFAULT 0
+    )`,
+    `DELETE FROM model_versions a
+       USING model_versions b
+      WHERE a.model_id = b.model_id
+        AND a.version = b.version
+        AND a.ctid < b.ctid`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_model_versions_model_version
+       ON model_versions(model_id, version)`,
+    `INSERT INTO model_version_counters(model_id, version)
+     SELECT model_id, MAX(version)
+       FROM model_versions
+      GROUP BY model_id
+     ON CONFLICT (model_id) DO UPDATE
+       SET version = GREATEST(model_version_counters.version, EXCLUDED.version)`,
     `CREATE TABLE IF NOT EXISTS integrations (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       kind TEXT NOT NULL,
@@ -66,12 +83,40 @@ async function syncSnapshots() {
       continue;
     }
     if (!data.modelId) continue;
+    const client = await pool.connect();
     try {
-      const v = ((await pool.query('SELECT COUNT(*)::int AS n FROM model_versions WHERE model_id=$1', [data.modelId])).rows[0].n) + 1;
-      await pool.query('INSERT INTO model_versions(model_id, version, snapshot) VALUES ($1,$2,$3)', [data.modelId, v, JSON.stringify(data)]);
+      await client.query('BEGIN');
+      // A versão é incrementada em uma linha de contador com lock de escrita,
+      // evitando a corrida de COUNT(*) + 1 entre instâncias do worker.
+      await client.query(
+        `INSERT INTO model_version_counters(model_id, version)
+         VALUES ($1, 0)
+         ON CONFLICT (model_id) DO NOTHING`,
+        [data.modelId]
+      );
+      const versionResult = await client.query(
+        `UPDATE model_version_counters
+            SET version = version + 1
+          WHERE model_id = $1
+          RETURNING version`,
+        [data.modelId]
+      );
+      const v = versionResult.rows[0].version as number;
+      await client.query(
+        'INSERT INTO model_versions(model_id, version, snapshot) VALUES ($1,$2,$3)',
+        [data.modelId, v, JSON.stringify(data)]
+      );
+      await client.query('COMMIT');
       console.log(`[worker] sincronizado modelo ${data.modelId} (v${v})`);
     } catch (err) {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // ignore rollback failure
+      }
       console.error('[worker] erro ao sincronizar', data.modelId, err);
+    } finally {
+      client.release();
     }
   }
 }

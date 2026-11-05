@@ -46,6 +46,7 @@ function setSecurityHeaders(res) {
       "img-src 'self' data:",
       "font-src 'self' data:",
       "connect-src 'self' http: https: ws: wss:",
+      "frame-src https://viewer.diagrams.net https://embed.diagrams.net https://app.diagrams.net",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",

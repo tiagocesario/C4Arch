@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import type { SignOptions } from 'jsonwebtoken';
 import { config } from '../config.js';
 
 export interface TokenUser {
@@ -28,6 +29,10 @@ export function verifySessionToken(token: string): TokenUser | null {
 
     if (typeof decoded.id !== 'string') return null;
 
+    // Tokens escopados do draw.io têm `purpose`/`aud` próprios e não podem ser
+    // reutilizados como token de sessão em outras rotas da API.
+    if (decoded.purpose !== undefined || decoded.aud !== undefined) return null;
+
     return {
       id: decoded.id,
       email: typeof decoded.email === 'string' ? decoded.email : '',
@@ -42,13 +47,18 @@ export function verifySessionToken(token: string): TokenUser | null {
  * Token de curta duração e escopo restrito para abrir o editor draw.io.
  * Evita colocar o JWT de sessão (7 dias) na query string / histórico do browser.
  */
-export function signDrawioToken(userId: string, email: string, modelId: string): string {
+export function signDrawioToken(
+  userId: string,
+  email: string,
+  modelId: string,
+  expiresIn: SignOptions['expiresIn'] = '5m'
+): string {
   return jwt.sign(
     { id: userId, email, purpose: 'drawio', modelId },
     config.jwtSecret,
     {
       algorithm: 'HS256',
-      expiresIn: '5m',
+      expiresIn,
       issuer: config.jwtIssuer,
       audience: 'c4arch-drawio',
     }

@@ -9,7 +9,8 @@ router.post('/:id/drawio/token', verifyToken, DrawioController.token);
 
 // O editor aceita Bearer (API) ou o token escopado na query string.
 router.get('/:id/drawio', verifyDrawioAccess, DrawioController.editor);
-router.get('/:id/drawio/xml', verifyToken, DrawioController.export);
-router.post('/:id/drawio/import', verifyToken, DrawioController.import);
+router.get('/:id/drawio/xml', verifyDrawioAccess, DrawioController.export);
+router.get('/:id/drawio/library', verifyDrawioAccess, DrawioController.library);
+router.post('/:id/drawio/import', verifyDrawioAccess, DrawioController.import);
 
 export default router;

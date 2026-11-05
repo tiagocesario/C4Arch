@@ -7,6 +7,15 @@ import { pool } from './db.js';
 
 const app = express();
 
+// O draw.io oficial roda em outro domínio e pode buscar a biblioteca de shapes
+// diretamente. Essas origens não recebem credenciais; o endpoint da biblioteca
+// é somente leitura e exige token escopado.
+const DRAWIO_ORIGINS = new Set([
+  'https://embed.diagrams.net',
+  'https://app.diagrams.net',
+  'https://viewer.diagrams.net',
+]);
+
 if (config.trustProxy) {
   app.set('trust proxy', 1);
 }
@@ -25,7 +34,7 @@ app.use(
   cors({
     origin(origin, callback) {
       // Requisições sem Origin (curl, healthcheck, server-to-server) passam.
-      if (!origin || config.corsOrigins.includes(origin)) {
+      if (!origin || config.corsOrigins.includes(origin) || DRAWIO_ORIGINS.has(origin)) {
         return callback(null, true);
       }
       return callback(null, false);
@@ -50,7 +59,9 @@ app.get('/healthz', async (_req, res) => {
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 300,
+  // O autosave do draw.io envia alterações com debounce; 300 requisições por
+  // 15 min era apertado para uma sessão longa de edição.
+  limit: 1200,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: { error: 'Muitas requisições. Tente novamente em alguns minutos.' },

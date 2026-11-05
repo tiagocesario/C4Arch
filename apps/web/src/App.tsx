@@ -24,6 +24,7 @@ import {
   importDrawio,
   openDrawioEditor,
   getDrawioEditorUrl,
+  getDrawioPreviewUrl,
 } from './services/api';
 import { Canvas } from './components/Canvas';
 import * as ws from './services/ws';
@@ -94,6 +95,11 @@ export default function App() {
   const [editStatus, setEditStatus] = useState<ModelStatus>('draft');
   const [editFolderId, setEditFolderId] = useState<string | null>(null);
   const [savingModel, setSavingModel] = useState(false);
+
+  const [previewModel, setPreviewModel] = useState<Model | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
   const [folderFilter, setFolderFilter] = useState<string>('all');
@@ -349,23 +355,78 @@ export default function App() {
   }
 
   function openDrawio(id: string) {
-    openDrawioEditor(id).catch((err) => {
-      setError(err instanceof Error ? err.message : String(err));
-    });
+    // Abre a aba antes do await para não ser bloqueada como popup.
+    const popup = window.open('about:blank', '_blank');
+    getDrawioEditorUrl(id)
+      .then((url) => {
+        if (popup && !popup.closed) {
+          popup.location.replace(url);
+          try {
+            popup.opener = null;
+          } catch {
+            // Alguns navegadores bloqueiam a alteração após a navegação.
+          }
+        } else {
+          window.location.assign(url);
+        }
+      })
+      .catch((err) => {
+        if (popup && !popup.closed) popup.close();
+        setError(err instanceof Error ? err.message : String(err));
+      });
   }
 
-  async function onDelete() {
-    if (!selectedId) return;
-    if (!window.confirm('Excluir "' + (model?.title ?? '') + '"?')) return;
+  async function openPreview(target: Model) {
+    setPreviewModel(target);
+    setPreviewUrl(null);
+    setPreviewError(null);
+    setPreviewLoading(true);
     try {
-      await deleteModel(selectedId);
-      setSelectedId(null);
-      setModel(null);
-      setMode('list');
+      const detail = await getModel(target.id);
+      setPreviewModel({ ...target, ...detail });
+      if (!detail.drawioXml || !detail.drawioXml.trim()) {
+        setPreviewError('Este modelo ainda não possui um desenho salvo no draw.io.');
+        return;
+      }
+      setPreviewUrl(getDrawioPreviewUrl(detail.drawioXml));
+    } catch (err) {
+      setPreviewError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function closePreview() {
+    setPreviewModel(null);
+    setPreviewUrl(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+  }
+
+  async function onDeleteModel(target: Model) {
+    if (!window.confirm('Excluir "' + target.title + '"? Esta ação não pode ser desfeita.')) return;
+    try {
+      await deleteModel(target.id);
+      setModels((previous) => previous.filter((item) => item.id !== target.id));
+      if (selectedId === target.id) {
+        setSelectedId(null);
+        setModel(null);
+        setMode('list');
+      }
+      if (previewModel?.id === target.id) {
+        closePreview();
+      }
+      setError(null);
       await refreshModels();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
+  }
+
+  async function onDelete() {
+    if (!selectedId) return;
+    const target = model ?? models.find((item) => item.id === selectedId);
+    if (target) await onDeleteModel(target);
   }
 
   async function onSaveElementTitle(id: string, title: string) {
@@ -521,7 +582,7 @@ export default function App() {
                 {filteredModels.map((item) => (
                   <div
                     key={item.id}
-                    onClick={() => openModel(item.id)}
+                    onClick={() => openPreview(item)}
                     style={{
                       background: '#1a1d27',
                       border: '1px solid #2a2f3a',
@@ -540,9 +601,23 @@ export default function App() {
                           </span>
                         </div>
                         <div style={smallMuted}>{item.description || 'Sem descrição'}</div>
-                        <div style={smallMuted}>{folderName(item.folderId)}</div>
+                        <div style={smallMuted}>{folderName(item.folderId)} · clique para visualizar o draw.io</div>
                       </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openModel(item.id); }}
+                          style={buttonStyle}
+                          title="Abrir o editor C4 (React Flow)"
+                        >
+                          Editor C4
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openDrawio(item.id); }}
+                          style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
+                          title="Abrir o editor draw.io em uma nova aba"
+                        >
+                          draw.io
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); openEditModel(item); }}
                           style={buttonStyle}
@@ -550,10 +625,11 @@ export default function App() {
                           Editar
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); openDrawio(item.id); }}
-                          style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
+                          onClick={(e) => { e.stopPropagation(); onDeleteModel(item); }}
+                          style={dangerButtonStyle}
+                          title="Excluir este modelo"
                         >
-                          draw.io
+                          Excluir
                         </button>
                       </div>
                     </div>
@@ -782,6 +858,82 @@ export default function App() {
             </footer>
           </div>
         </ReactFlowProvider>
+      )}
+
+      {previewModel && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100, padding: 16 }}
+          onClick={closePreview}
+        >
+          <div
+            style={{ background: '#111827', border: '1px solid #2a2f3a', borderRadius: 10, width: 'min(1100px, 96vw)', height: '90vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '10px 14px', borderBottom: '1px solid #2a2f3a', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>{previewModel.title}</h3>
+                <div style={smallMuted}>Preview draw.io (somente leitura)</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
+                <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Abrir editor draw.io</button>
+                <button
+                  onClick={() => {
+                    const id = previewModel.id;
+                    closePreview();
+                    openModel(id);
+                  }}
+                  style={buttonStyle}
+                >
+                  Editor C4
+                </button>
+                {previewUrl && (
+                  <a
+                    href={previewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ ...buttonStyle, textDecoration: 'none' }}
+                  >
+                    Nova aba
+                  </a>
+                )}
+                <button onClick={closePreview} style={buttonStyle}>Fechar</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, background: '#fff', position: 'relative', minHeight: 0 }}>
+              {previewLoading && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1f2937' }}>
+                  Carregando desenho...
+                </div>
+              )}
+              {!previewLoading && previewError && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#1f2937', padding: 24, textAlign: 'center', gap: 12 }}>
+                  <div>{previewError}</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+                    <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Criar/editar no draw.io</button>
+                    <button
+                      onClick={() => {
+                        const id = previewModel.id;
+                        closePreview();
+                        openModel(id);
+                      }}
+                      style={buttonStyle}
+                    >
+                      Abrir editor C4
+                    </button>
+                  </div>
+                </div>
+              )}
+              {!previewLoading && previewUrl && (
+                <iframe
+                  src={previewUrl}
+                  title={'Preview draw.io: ' + previewModel.title}
+                  style={{ width: '100%', height: '100%', border: 0 }}
+                  referrerPolicy="no-referrer"
+                />
+              )}
+            </div>
+          </div>
+        </div>
       )}
 
       {editingModel && (

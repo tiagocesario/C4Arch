@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getOrgResourceAccess, isOrgMember } from '../auth/access.js';
+import { getOrgResourceAccess, getOrgRole, isOrgMember, isWriterRole } from '../auth/access.js';
 
 const MAX_PORT = 65535;
 
@@ -49,8 +49,9 @@ export class ServiceController {
     }
 
     try {
-      if (!(await isOrgMember(req.user!.id, orgId))) {
-        return res.status(403).json({ error: 'Sem acesso a esta organização' });
+      const role = await getOrgRole(req.user!.id, orgId);
+      if (!isWriterRole(role)) {
+        return res.status(403).json({ error: 'Sem permissão de escrita nesta organização' });
       }
       const result = await pool.query(
         `INSERT INTO services (org_id, name, description, protocol, port, metadata)
@@ -83,6 +84,9 @@ export class ServiceController {
     try {
       const service = await getOrgResourceAccess('services', req.user!.id, id);
       if (!service) return res.status(404).json({ error: 'Serviço não encontrado' });
+      if (!isWriterRole(service.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar este serviço' });
+      }
 
       const sets: string[] = [];
       const values: unknown[] = [];
@@ -145,6 +149,9 @@ export class ServiceController {
     try {
       const service = await getOrgResourceAccess('services', req.user!.id, id);
       if (!service) return res.status(404).json({ error: 'Serviço não encontrado' });
+      if (!isWriterRole(service.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para excluir este serviço' });
+      }
 
       await pool.query('DELETE FROM services WHERE id = $1', [id]);
       return res.json({ ok: true });

@@ -41,6 +41,9 @@ Ameaças tratadas nesta revisão:
 
 - Toda rota de modelo, elemento, conexão, pasta, aplicação e serviço verifica se
   o usuário é membro da organização do recurso.
+- O papel vem sempre de `memberships`: `owner` e `editor` podem escrever;
+  `viewer` é somente leitura. A checagem é feita nas rotas de escrita e também
+  no token/importação do draw.io.
 - Recursos de outra organização retornam `404` (não revelam existência).
 - Criação de modelo/pasta/aplicação/serviço valida se o `orgId` pertence ao usuário.
 - Criação/edição de conexões valida se os elementos referenciados pertencem ao modelo.
@@ -53,7 +56,16 @@ Ameaças tratadas nesta revisão:
 - `POST /api/models/:id/drawio/token` emite um token com `purpose: "drawio"`,
   `modelId`, audiência `c4arch-drawio` e validade de 5 minutos.
 - O editor só aceita esse token para o modelo correspondente, ou um Bearer de
-  sessão válido para uso via API.
+  sessão válido para uso via API. Tokens escopados não são aceitos como sessão
+  nas demais rotas.
+- A página do editor abre o embed oficial (`https://embed.diagrams.net`) com
+  `embed=1&proto=json`, carrega o XML salvo e persiste `save`/`autosave` via
+  `POST /api/models/:id/drawio/import`.
+- A página gera um token próprio, também escopado no modelo, para o autosave
+  continuar funcionando após os 5 minutos do token da URL.
+- A biblioteca de shapes é montada a partir das abas Apps e Serviços e entregue
+  como data URL (`clibs`), evitando CORS e conteúdo misto entre o draw.io HTTPS e
+  uma API local em HTTP.
 - A página do editor define CSP restritiva, `Referrer-Policy: no-referrer` e
   `Cache-Control: no-store`.
 - XML de importação é limitado a 100 kB e validado minimamente.
@@ -61,10 +73,14 @@ Ameaças tratadas nesta revisão:
 ### API HTTP
 
 - `helmet` com `x-powered-by` desabilitado.
-- CORS com allowlist explícita em `CORS_ORIGIN` (separada por vírgula), sem wildcard.
+- CORS com allowlist explícita em `CORS_ORIGIN` (separada por vírgula), sem
+  wildcard. Exceção: `GET /api/models/:id/drawio/library` responde
+  `Access-Control-Allow-Origin: *` porque é somente leitura e exige token
+  escopado; as origens oficiais do draw.io também são aceitas.
 - Corpo JSON limitado a 100 kB.
-- Rate limit global em `/api` (300 req/15 min por IP) e mais restrito em
-  `/api/auth/login` e `/api/auth/register` (10 req/15 min por IP).
+- Rate limit global em `/api` (1200 req/15 min por IP, dimensionado para o
+  autosave do draw.io) e mais restrito em `/api/auth/login` e
+  `/api/auth/register` (10 req/15 min por IP).
 - `/healthz` verifica a conexão com o PostgreSQL.
 - Handler final de erros não vaza stack trace; 404 padronizado.
 - `TRUST_PROXY=true` só deve ser usado atrás de proxy confiável.
@@ -123,6 +139,12 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   `.env` versionado e literais de segredo no código.
 - Testes manuais de API: login, `401` sem token, `403`/`404` para recurso de
   outra organização, rate limit, headers de segurança, token escopado do draw.io.
+- Draw.io validado ponta a ponta: emissão do token escopado, página do editor com
+  CSP/`no-store`/`no-referrer`, URL do embed, biblioteca `<mxlibrary>` com apps e
+  serviços, importação/exportação de XML e rejeição do token escopado como token
+  de sessão.
+- RBAC validado com usuário `viewer`: leitura permitida; criação de app, token
+  draw.io e importação do diagrama negados com `403`.
 - Teste manual de WebSocket: conexão sem token rejeitada, conexão com token e
   `join` autorizado, `join` em modelo de outra organização negado.
 
@@ -131,15 +153,10 @@ instaladas no ambiente; quando disponíveis, devem ser adicionadas ao CI.
 
 ## Riscos residuais conhecidos
 
-- **RBAC por papel:** viewer e editor ainda não são diferenciados nas rotas de
-  escrita; qualquer membro da organização pode editar. O papel existe no banco e
-  é retornado, mas a checagem é apenas de pertencimento.
 - **Estado do realtime:** o serviço mantém estado Yjs em memória e snapshots em
   arquivo, em paralelo ao PostgreSQL. Não há reconciliação transacional entre os
-  dois; reinícios usam snapshot + hidratação da API.
-- **Versões do worker:** o cálculo `COUNT(*) + 1` pode gerar corrida/duplicidade
-  em múltiplas instâncias do worker. Use uma única instância ou evolua para
-  sequência/transação no banco.
+  dois; reinícios usam snapshot + hidratação da API. Para produção com múltiplas
+  réplicas, evolua para persistência/replicação do CRDT.
 - **Rate limit em memória:** com múltiplas réplicas da API, cada réplica tem seu
   próprio contador. Para escala horizontal, use store compartilhado (Redis).
 - **CSP da API:** o Helmet está com CSP desabilitada nas respostas JSON; a CSP

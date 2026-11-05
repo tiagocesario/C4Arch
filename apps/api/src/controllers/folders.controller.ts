@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getOrgResourceAccess, isOrgMember } from '../auth/access.js';
+import { getOrgResourceAccess, getOrgRole, isWriterRole } from '../auth/access.js';
 
 export class FolderController {
   static async list(req: AuthenticatedRequest, res: Response) {
@@ -9,7 +9,7 @@ export class FolderController {
     if (!orgId) return res.status(400).json({ error: 'orgId é obrigatório' });
 
     try {
-      if (!(await isOrgMember(req.user!.id, orgId))) {
+      if (!(await getOrgRole(req.user!.id, orgId))) {
         return res.status(403).json({ error: 'Sem acesso a esta organização' });
       }
       const result = await pool.query(
@@ -42,8 +42,9 @@ export class FolderController {
     }
 
     try {
-      if (!(await isOrgMember(req.user!.id, orgId))) {
-        return res.status(403).json({ error: 'Sem acesso a esta organização' });
+      const role = await getOrgRole(req.user!.id, orgId);
+      if (!isWriterRole(role)) {
+        return res.status(403).json({ error: 'Sem permissão de escrita nesta organização' });
       }
       if (parentId) {
         const parent = await pool.query(
@@ -75,6 +76,9 @@ export class FolderController {
     try {
       const folder = await getOrgResourceAccess('folders', req.user!.id, id);
       if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' });
+      if (!isWriterRole(folder.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar esta pasta' });
+      }
 
       const orgId = folder.org_id as string;
       const sets: string[] = [];
@@ -130,6 +134,9 @@ export class FolderController {
     try {
       const folder = await getOrgResourceAccess('folders', req.user!.id, id);
       if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' });
+      if (!isWriterRole(folder.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para excluir esta pasta' });
+      }
 
       await pool.query('DELETE FROM folders WHERE id = $1', [id]);
       return res.json({ ok: true });

@@ -17,15 +17,24 @@ export async function isOrgMember(userId: string, orgId: string): Promise<boolea
 }
 
 /**
+ * `viewer` é somente leitura. `owner` e `editor` podem alterar o conteúdo da
+ * organização. O papel vem sempre de `memberships`, nunca do JWT.
+ */
+export function isWriterRole(role: unknown): boolean {
+  return role === 'owner' || role === 'editor';
+}
+
+/**
  * Retorna o modelo somente quando o usuário pertence à organização dele.
  * O retorno nulo é usado como 404 para não revelar a existência do recurso.
+ * `member_role` acompanha o registro para as checagens de escrita.
  */
 export async function getModelAccess(
   userId: string,
   modelId: string
 ): Promise<Record<string, unknown> | null> {
   const result = await pool.query(
-    `SELECT m.*
+    `SELECT m.*, mem.role AS member_role
        FROM models m
        JOIN memberships mem ON mem.org_id = m.org_id
       WHERE m.id = $1 AND mem.user_id = $2`,
@@ -50,7 +59,7 @@ export async function getOrgResourceAccess(
   // O nome da tabela vem de uma união fechada (não vem do usuário).
   const table = RESOURCE_TABLES[resource];
   const result = await pool.query(
-    `SELECT r.*
+    `SELECT r.*, mem.role AS member_role
        FROM ${table} r
        JOIN memberships mem ON mem.org_id = r.org_id
       WHERE r.id = $1 AND mem.user_id = $2`,

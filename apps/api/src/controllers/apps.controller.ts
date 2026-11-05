@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getOrgResourceAccess, isOrgMember } from '../auth/access.js';
+import { getOrgResourceAccess, getOrgRole, isOrgMember, isWriterRole } from '../auth/access.js';
 
 export class AppController {
   static async list(req: AuthenticatedRequest, res: Response) {
@@ -44,8 +44,9 @@ export class AppController {
     }
 
     try {
-      if (!(await isOrgMember(req.user!.id, orgId))) {
-        return res.status(403).json({ error: 'Sem acesso a esta organização' });
+      const role = await getOrgRole(req.user!.id, orgId);
+      if (!isWriterRole(role)) {
+        return res.status(403).json({ error: 'Sem permissão de escrita nesta organização' });
       }
       const result = await pool.query(
         `INSERT INTO apps (org_id, name, description, kind, metadata)
@@ -71,6 +72,9 @@ export class AppController {
     try {
       const app = await getOrgResourceAccess('apps', req.user!.id, id);
       if (!app) return res.status(404).json({ error: 'Aplicação não encontrada' });
+      if (!isWriterRole(app.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar esta aplicação' });
+      }
 
       const sets: string[] = [];
       const values: unknown[] = [];
@@ -132,6 +136,9 @@ export class AppController {
     try {
       const app = await getOrgResourceAccess('apps', req.user!.id, id);
       if (!app) return res.status(404).json({ error: 'Aplicação não encontrada' });
+      if (!isWriterRole(app.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para excluir esta aplicação' });
+      }
 
       await pool.query('DELETE FROM apps WHERE id = $1', [id]);
       return res.json({ ok: true });

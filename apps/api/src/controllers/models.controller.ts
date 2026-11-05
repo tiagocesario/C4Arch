@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getModelAccess, isOrgMember } from '../auth/access.js';
+import { getModelAccess, getOrgRole, isWriterRole } from '../auth/access.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -57,8 +57,9 @@ export class ModelController {
     }
 
     try {
-      if (!(await isOrgMember(req.user!.id, orgId))) {
-        return res.status(403).json({ error: 'Não pertence a esta organização' });
+      const role = await getOrgRole(req.user!.id, orgId);
+      if (!isWriterRole(role)) {
+        return res.status(403).json({ error: 'Sem permissão de escrita nesta organização' });
       }
 
       if (folderId) {
@@ -148,6 +149,9 @@ export class ModelController {
     try {
       const model = await getModelAccess(req.user!.id, id);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      if (!isWriterRole(model.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
+      }
 
       const orgId = model.org_id as string;
       const sets: string[] = [];
@@ -206,6 +210,9 @@ export class ModelController {
     try {
       const model = await getModelAccess(req.user!.id, id);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      if (!isWriterRole(model.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
+      }
 
       await pool.query('DELETE FROM models WHERE id = $1', [id]);
       return res.json({ ok: true });
