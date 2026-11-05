@@ -1,14 +1,20 @@
 # C4Arch — Compose para produção.
-# Sobrescreve o compose.yaml com configurações de produção.
+# Sobrescreve o docker-compose.yaml com configurações de produção.
 # Rode com:
 #   docker compose -f docker-compose.yaml -f compose.production.yaml up -d
 #
 # Por que um arquivo extra?
-# - compose.yaml é para desenvolvimento (bind de codigo, ports no localhost).
-# - compose.production.yaml remove bind de codigo, define restart: always,
-#   ambientes de producao e silencia os ports de servicos internos.
+# - docker-compose.yaml é para desenvolvimento (portas em localhost).
+# - compose.production.yaml remove bind de código, define restart: always,
+#   ambientes de produção, filesystem somente-leitura e silencia as portas
+#   dos serviços internos.
 #
-# Rebuild e deploy de uma alteracao:
+# IMPORTANTE: em produção o navegador precisa alcançar a API e o WebSocket.
+# Coloque um reverse proxy (nginx/traefik) na mesma rede `c4arch-network`
+# encaminhando /api -> api:4000 e /ws -> realtime:4001, com TLS. O frontend
+# deve ser construído com PUBLIC_API_URL/PUBLIC_WS_URL em https/wss.
+#
+# Rebuild e deploy de uma alteração:
 #   docker compose -f docker-compose.yaml -f compose.production.yaml build api web
 #   docker compose -f docker-compose.yaml -f compose.production.yaml up --no-deps -d api web
 
@@ -17,31 +23,82 @@ name: c4arch-production
 services:
   db:
     restart: always
-    # Nao expoe a porta do banco para o host em producao.
+    security_opt:
+      - no-new-privileges:true
+    # Não expõe a porta do banco para o host em produção.
     ports: []
 
   api:
     restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD é obrigatório}@db:5432/${POSTGRES_DB}
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD é obrigatório}
+      - PORT=${PORT:-4000}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET é obrigatório}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - CORS_ORIGIN=${CORS_ORIGIN:?CORS_ORIGIN é obrigatório}
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-false}
+      - SEED_DEMO=${SEED_DEMO:-false}
+      - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD}
+      - TRUST_PROXY=${TRUST_PROXY:-true}
     ports: []
 
   web:
     restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      # Defina PUBLIC_API_URL/PUBLIC_WS_URL com as URLs públicas (https/wss).
+      args:
+        VITE_API_URL: ${PUBLIC_API_URL:?PUBLIC_API_URL é obrigatório em produção}
+        VITE_WS_URL: ${PUBLIC_WS_URL:?PUBLIC_WS_URL é obrigatório em produção}
     environment:
       - NODE_ENV=production
-    # Mapeia a porta de provedor (80/443). Em producao, use um reverso-proxy
+    # Mapeia a porta de provedor (80/443). Em produção, use um reverse proxy
     # (nginx/traefik) que termina TLS e encaminha para o container.
     ports:
-      - "80:3000"
+      - "${WEB_BIND_ADDR:-0.0.0.0}:${WEB_PORT:-80}:3000"
 
   realtime:
     restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      - NODE_ENV=production
+      - WS_PORT=${WS_PORT:-4001}
+      - API_URL=http://api:4000
+      - API_TOKEN=${API_TOKEN_REALTIME:-}
+      - WS_ALLOW_ANONYMOUS=false
     ports: []
 
   worker:
     restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=db
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_NAME=${POSTGRES_DB}
+      - DB_USER=${POSTGRES_USER}
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - STORAGE_DRIVER=${STORAGE_DRIVER:-drive}
+      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
+      - GLAB_PROJECT_ID=${GLAB_PROJECT_ID}
+      - GLAB_TOKEN=${GLAB_TOKEN}
+      - STORAGE_DIR=/app/storage
 
-# volumes nao sao definidos aqui; sao herdados do compose.yaml.
-# Se usar volumes nomeados, mantenha o mesmo nome em ambos os arquivos.
+# Volumes são herdados do docker-compose.yaml.

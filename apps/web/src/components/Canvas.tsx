@@ -1,7 +1,15 @@
-import { ReactFlow, useReactFlow, type Node, type Edge, type NodeChange } from '@xyflow/react';
+import {
+  ReactFlow,
+  useReactFlow,
+  applyNodeChanges,
+  type Node,
+  type Edge as RFEdge,
+  type NodeChange,
+  type Connection,
+} from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useEffect, useState } from 'react';
-import { sendOp, disconnect, connected } from '../services/ws';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { sendOp, connected, setOnConnectionChange } from '../services/ws';
 import type { Element, Edge as CEdge } from '../services/types';
 
 const typeStyle = {
@@ -23,16 +31,23 @@ interface CanvasProps {
 
 export function Canvas({ modelId, elements, edges, onRenameElement }: CanvasProps) {
   const { fitView } = useReactFlow();
+  const [wsConnected, setWsConnected] = useState(connected);
   const [nodes, setNodes] = useState<Node[]>([]);
-  const [rfEdges, setRfEdges] = useState<Edge[]>([]);
+  const [rfEdges, setRfEdges] = useState<RFEdge[]>([]);
+  const lastFitModelId = useRef<string | null>(null);
+
+  useEffect(() => {
+    setOnConnectionChange(setWsConnected);
+    return () => setOnConnectionChange(() => {});
+  }, []);
 
   const applyModel = useCallback((elems: Element[], es: CEdge[]) => {
     const list = new Map<string, Node>();
     for (const e of elems) {
       list.set(e.id, {
         id: e.id,
-        type: 'input',
-        position: { x: e.position_x ?? 0, y: e.position_y ?? 0 },
+        type: 'default',
+        position: { x: e.positionX ?? 0, y: e.positionY ?? 0 },
         data: { label: e.title, desc: e.description ?? '', kind: kindLabel(e.type) },
         style: typeStyle[e.type] ?? typeStyle.system,
       });
@@ -41,66 +56,79 @@ export function Canvas({ modelId, elements, edges, onRenameElement }: CanvasProp
     setRfEdges(() =>
       es.map((e) => ({
         id: e.id,
-        source: e.fromId ?? e.id,
-        target: e.toId ?? e.id,
-        data: { label: e.label ?? '', type: e.type },
+        source: e.fromId,
+        target: e.toId,
+        label: e.label ?? '',
+        data: { type: e.type },
       }))
     );
   }, []);
 
   useEffect(() => {
     applyModel(elements, edges);
-    if (fitView) fitView({ padding: 0.25 });
-  }, [elements, edges, fitView, applyModel]);
+  }, [elements, edges, applyModel]);
 
-  const onConnect = useCallback((connection: any) => {
-    sendOp({
-      type: 'patch',
-      modelId,
-      patch: {
-        op: 'createEdge',
-        data: { fromId: connection.source, toId: connection.target, type: 'call', label: '' },
-      },
-    });
-  }, [modelId]);
+  // fitView apenas uma vez por modelo; caso contrário o viewport "pula" a cada
+  // atualização recebida em tempo real.
+  useEffect(() => {
+    if (lastFitModelId.current === modelId) return;
+    if (elements.length === 0) return;
+    lastFitModelId.current = modelId;
+    requestAnimationFrame(() => fitView({ padding: 0.25 }));
+  }, [modelId, elements.length, fitView]);
 
-  const onNodeChange = useCallback(
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return;
+      sendOp({
+        type: 'patch',
+        modelId,
+        patch: {
+          op: 'createEdge',
+          data: { fromId: connection.source, toId: connection.target, type: 'call', label: '' },
+        },
+      });
+    },
+    [modelId]
+  );
+
+  const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      for (const ch of changes) {
-        if (ch.type === 'position' && ch.position) {
-          const el = elements.find((e) => e.id === ch.id);
-          if (!el) continue;
+      setNodes((current) => applyNodeChanges(changes, current));
+
+      for (const change of changes) {
+        if (change.type === 'position' && change.position && change.dragging === false) {
           sendOp({
             type: 'patch',
             modelId,
             patch: {
               op: 'updateElement',
-              data: { id: el.id, positionX: ch.position.x, positionY: ch.position.y },
+              data: { id: change.id, positionX: change.position.x, positionY: change.position.y },
             },
           });
         }
-        if (ch.type === 'remove') {
-          const el = elements.find((e) => e.id === ch.id);
-          if (el) {
-            sendOp({ type: 'patch', modelId, patch: { op: 'deleteElement', data: el.id } });
-          }
+        if (change.type === 'remove') {
+          sendOp({
+            type: 'patch',
+            modelId,
+            patch: { op: 'deleteElement', data: change.id },
+          });
         }
       }
     },
-    [elements, modelId]
+    [modelId]
   );
 
-  const onNodeDoubleClick = useCallback((_event: any, node: Node) => {
-    const el = elements.find((e) => e.id === node.id);
-    if (!el) return;
-    const next = prompt('Título do elemento:', el.title);
-    if (next === null) return;
-    onRenameElement(node.id, next.trim() || el.title);
-  }, [elements, onRenameElement]);
-
-  useEffect(() => {
-    return () => disconnect();
-  }, []);
+  const onNodeDoubleClick = useCallback(
+    (_event: unknown, node: Node) => {
+      const element = elements.find((e) => e.id === node.id);
+      if (!element) return;
+      const next = window.prompt('Título do elemento:', element.title);
+      if (next === null) return;
+      onRenameElement(node.id, next.trim() || element.title);
+    },
+    [elements, onRenameElement]
+  );
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0f1115' }}>
@@ -108,21 +136,15 @@ export function Canvas({ modelId, elements, edges, onRenameElement }: CanvasProp
         nodes={nodes}
         edges={rfEdges}
         onConnect={onConnect}
-        onNodesChange={onNodeChange}
+        onNodesChange={onNodesChange}
         onNodeDoubleClick={onNodeDoubleClick}
         fitView
         colorMode="dark"
         proOptions={{ hideAttribution: true }}
       />
       <div style={{ position: 'absolute', top: 12, left: 12, font: '12px monospace', color: '#7b8290' }}>
-        WS: {connected ? 'online' : 'offline'}
+        WS: {wsConnected ? 'online' : 'offline'}
       </div>
-      <button
-        onClick={disconnect}
-        style={{ position: 'absolute', top: 12, right: 12, padding: '6px 10px', background: '#2a2f3a', color: '#e8eaed', border: 'none', borderRadius: 6, cursor: 'pointer' }}
-      >
-        Desconectar
-      </button>
     </div>
   );
 }

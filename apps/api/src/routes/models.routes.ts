@@ -13,15 +13,8 @@ router.post('/', verifyToken, ModelController.create);
 // Obter modelo com elementos e conexões
 router.get('/:id', verifyToken, ModelController.get);
 
-// Editar títulos de elementos
-router.put('/:modelId/elements/:id', verifyToken, ModelController.updateElement);
-router.delete('/:modelId/elements/:id', verifyToken, ModelController.deleteElement);
-router.post('/:modelId/elements', verifyToken, ModelController.createElement);
-
-// Edge
-router.put('/:modelId/edges/:id', verifyToken, ModelController.updateEdge);
-router.delete('/:modelId/edges/:id', verifyToken, ModelController.deleteEdge);
-router.post('/:modelId/edges', verifyToken, ModelController.createEdge);
+// Editar modelo
+router.put('/:id', verifyToken, ModelController.update);
 
 // Excluir modelo
 router.delete('/:id', verifyToken, ModelController.remove);

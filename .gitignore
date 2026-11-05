@@ -3,10 +3,12 @@ npm-debug.log
 *.log
 dist
 build
+*.tsbuildinfo
 .next
 .out
 .env
 .env.*
+!.env.example
 *.pid
 .DS_Store
 coverage/

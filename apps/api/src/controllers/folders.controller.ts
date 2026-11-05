@@ -1,63 +1,141 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
+import { getOrgResourceAccess, isOrgMember } from '../auth/access.js';
 
 export class FolderController {
   static async list(req: AuthenticatedRequest, res: Response) {
+    const { orgId } = req.query as { orgId?: string };
+    if (!orgId) return res.status(400).json({ error: 'orgId é obrigatório' });
+
     try {
-      const { orgId } = req.query as { orgId?: string };
-      if (!orgId) return res.status(400).json({ error: 'orgId é obrigatório' });
+      if (!(await isOrgMember(req.user!.id, orgId))) {
+        return res.status(403).json({ error: 'Sem acesso a esta organização' });
+      }
       const result = await pool.query(
         `SELECT * FROM folders WHERE org_id = $1 ORDER BY name ASC`,
         [orgId]
       );
-      res.json(result.rows);
+      return res.json(result.rows);
     } catch (err) {
       console.error('[folders] list error', err);
-      res.status(500).json({ error: 'Erro ao listar pastas' });
+      return res.status(500).json({ error: 'Erro ao listar pastas' });
     }
   }
 
   static async create(req: AuthenticatedRequest, res: Response) {
+    const { orgId, name, parentId } = req.body as {
+      orgId?: string;
+      name?: string;
+      parentId?: string | null;
+    };
+    const cleanName = typeof name === 'string' ? name.trim() : '';
+
+    if (!orgId || !cleanName) {
+      return res.status(400).json({ error: 'orgId e name são obrigatórios' });
+    }
+    if (cleanName.length > 120) {
+      return res.status(400).json({ error: 'name muito longo' });
+    }
+    if (parentId !== undefined && parentId !== null && typeof parentId !== 'string') {
+      return res.status(400).json({ error: 'parentId inválido' });
+    }
+
     try {
-      const { orgId, name, parentId } = req.body as { orgId: string; name: string; parentId?: string };
-      if (!orgId || !name) return res.status(400).json({ error: 'orgId e name são obrigatórios' });
+      if (!(await isOrgMember(req.user!.id, orgId))) {
+        return res.status(403).json({ error: 'Sem acesso a esta organização' });
+      }
+      if (parentId) {
+        const parent = await pool.query(
+          'SELECT id FROM folders WHERE id = $1 AND org_id = $2',
+          [parentId, orgId]
+        );
+        if (parent.rows.length === 0) {
+          return res.status(404).json({ error: 'Pasta pai não encontrada' });
+        }
+      }
       const result = await pool.query(
         `INSERT INTO folders (org_id, name, parent_id) VALUES ($1, $2, $3) RETURNING *`,
-        [orgId, name, parentId ?? null]
+        [orgId, cleanName, parentId ?? null]
       );
-      res.status(201).json(result.rows[0]);
+      return res.status(201).json(result.rows[0]);
     } catch (err) {
       console.error('[folders] create error', err);
-      res.status(500).json({ error: 'Erro ao criar pasta' });
+      return res.status(500).json({ error: 'Erro ao criar pasta' });
     }
   }
 
   static async update(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+    const { name, parentId } = req.body as {
+      name?: string;
+      parentId?: string | null;
+    };
+
     try {
-      const { id } = req.params;
-      const { name, parentId } = req.body as { name?: string; parentId?: string | null };
+      const folder = await getOrgResourceAccess('folders', req.user!.id, id);
+      if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' });
+
+      const orgId = folder.org_id as string;
+      const sets: string[] = [];
+      const values: unknown[] = [];
+      let index = 1;
+
+      if (name !== undefined) {
+        const cleanName = typeof name === 'string' ? name.trim() : '';
+        if (!cleanName || cleanName.length > 120) {
+          return res.status(400).json({ error: 'name inválido' });
+        }
+        sets.push(`name = $${index++}`);
+        values.push(cleanName);
+      }
+
+      if (parentId !== undefined) {
+        if (parentId !== null) {
+          if (typeof parentId !== 'string' || parentId === id) {
+            return res.status(400).json({ error: 'parentId inválido' });
+          }
+          const parent = await pool.query(
+            'SELECT id FROM folders WHERE id = $1 AND org_id = $2',
+            [parentId, orgId]
+          );
+          if (parent.rows.length === 0) {
+            return res.status(404).json({ error: 'Pasta pai não encontrada' });
+          }
+        }
+        sets.push(`parent_id = $${index++}`);
+        values.push(parentId);
+      }
+
+      if (sets.length === 0) {
+        return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+      }
+
+      values.push(id);
       const result = await pool.query(
-        `UPDATE folders SET name = COALESCE($1, name), parent_id = COALESCE($2, parent_id), updated_at = NOW() WHERE id = $3 RETURNING *`,
-        [name, parentId, id]
+        `UPDATE folders SET ${sets.join(', ')}, updated_at = NOW()
+          WHERE id = $${index} RETURNING *`,
+        values
       );
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Pasta não encontrada' });
-      res.json(result.rows[0]);
+      return res.json(result.rows[0]);
     } catch (err) {
       console.error('[folders] update error', err);
-      res.status(500).json({ error: 'Erro ao atualizar pasta' });
+      return res.status(500).json({ error: 'Erro ao atualizar pasta' });
     }
   }
 
   static async remove(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+
     try {
-      const { id } = req.params;
-      const result = await pool.query('DELETE FROM folders WHERE id = $1 RETURNING id', [id]);
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Pasta não encontrada' });
-      res.json({ ok: true });
+      const folder = await getOrgResourceAccess('folders', req.user!.id, id);
+      if (!folder) return res.status(404).json({ error: 'Pasta não encontrada' });
+
+      await pool.query('DELETE FROM folders WHERE id = $1', [id]);
+      return res.json({ ok: true });
     } catch (err) {
       console.error('[folders] remove error', err);
-      res.status(500).json({ error: 'Erro ao excluir pasta' });
+      return res.status(500).json({ error: 'Erro ao excluir pasta' });
     }
   }
 }

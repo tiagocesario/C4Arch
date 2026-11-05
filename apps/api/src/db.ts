@@ -1,20 +1,28 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
-import crypto from 'crypto';
-import { promises as fs } from 'fs';
-import { join } from 'path';
-import { randomUUID } from 'crypto';
+import crypto, { randomUUID } from 'crypto';
+import { config } from './config.js';
 
 dotenv.config();
 
 const { Pool } = pg;
+
+function readDbPassword(): string {
+  const password = process.env.DB_PASSWORD ?? '';
+  if (password) return password;
+  if (config.isProduction) {
+    throw new Error('DB_PASSWORD é obrigatório em produção.');
+  }
+  console.warn('[db] DB_PASSWORD não configurado; usando valor de desenvolvimento.');
+  return 'change-me-please';
+}
 
 const pool = new Pool({
   host: process.env.DB_HOST ?? 'localhost',
   port: Number(process.env.DB_PORT ?? 5432),
   database: process.env.DB_NAME ?? 'c4arch',
   user: process.env.DB_USER ?? 'c4arch',
-  password: process.env.DB_PASSWORD ?? 'change-me-please',
+  password: readDbPassword(),
   max: 10,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
@@ -40,7 +48,7 @@ export async function seedDemo() {
     if (modelCnt > 0) return;
 
     const salt = crypto.randomBytes(16).toString('hex');
-    const hash = crypto.scryptSync('admin123', salt, 64).toString('hex');
+    const hash = crypto.scryptSync(config.demoAdminPassword, salt, 64).toString('hex');
     const passwordHash = `${salt}${hash}`;
 
     const userRes = await client.query(
@@ -137,19 +145,6 @@ export async function seedDemo() {
         [modelId, service.id]
       );
     }
-
-    const dir = process.env.STORAGE_DIR ?? join(process.cwd(), 'storage');
-    await fs.mkdir(dir, { recursive: true });
-    const elems = (await client.query(
-      `SELECT id, type, title, description, metadata, position_x AS positionX, position_y AS positionY, "order"
-       FROM elements WHERE model_id=$1 ORDER BY "order"`,
-      [modelId]
-    )).rows;
-    const edges = (await client.query(
-      `SELECT id, from_id, to_id, label, type FROM edges WHERE model_id=$1`,
-      [modelId]
-    )).rows;
-    await fs.writeFile(join(dir, modelId + '.json'), JSON.stringify({ modelId, elements: elems, edges }, null, 2), 'utf8');
   } finally {
     client.release();
   }

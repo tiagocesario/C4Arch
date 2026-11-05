@@ -5,12 +5,24 @@ import { join } from 'path';
 
 dotenv.config();
 
+const isProduction = process.env.NODE_ENV === 'production';
+
+function readDbPassword(): string {
+  const password = process.env.DB_PASSWORD ?? '';
+  if (password) return password;
+  if (isProduction) {
+    throw new Error('DB_PASSWORD é obrigatório em produção.');
+  }
+  console.warn('[worker] DB_PASSWORD não configurado; usando valor de desenvolvimento.');
+  return 'change-me-please';
+}
+
 const pool = new pg.Pool({
   host: process.env.DB_HOST ?? 'localhost',
   port: Number(process.env.DB_PORT ?? 5432),
   database: process.env.DB_NAME ?? 'c4arch',
   user: process.env.DB_USER ?? 'c4arch',
-  password: process.env.DB_PASSWORD ?? 'change-me-please',
+  password: readDbPassword(),
   max: 5,
 });
 
@@ -67,6 +79,13 @@ async function syncSnapshots() {
 (async () => {
   await runMigrations();
   await syncSnapshots();
-  setInterval(syncSnapshots, 30000);
+  setInterval(() => {
+    syncSnapshots().catch((err) => {
+      console.error('[worker] erro na sincronização periódica', err);
+    });
+  }, 30000);
   console.log('[worker] pronto, aguardando snapshots');
-})();
+})().catch((err) => {
+  console.error('[worker] falha ao iniciar:', err);
+  process.exit(1);
+});

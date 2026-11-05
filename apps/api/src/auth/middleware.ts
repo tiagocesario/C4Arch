@@ -1,44 +1,53 @@
 import type { NextFunction, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { verifyDrawioToken, verifySessionToken } from './tokens.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: { id: string; email: string; role: string };
 }
 
-export function verifyToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).json({ error: 'Token de acesso não fornecido' });
-  }
-  const token = authHeader.split(' ')[1];
-  if (!token) {
-    return res.status(401).json({ error: 'Token de acesso ausente' });
-  }
-  try {
-    const secret = process.env.JWT_SECRET ?? '';
-    const decoded = jwt.verify(token, secret) as {
-      id: string;
-      email: string;
-      role: string;
-    };
-    req.user = { id: decoded.id, email: decoded.email, role: decoded.role };
-    return next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Token inválido ou expirado' });
-  }
+function unauthorized(res: Response) {
+  return res.status(401).json({ error: 'Token de acesso não fornecido' });
 }
 
-export function requireRole(...allowed: string[]) {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    if (!req.user) {
-      return res.status(401).json({ error: 'Não autenticado' });
-    }
-    if (!allowed.includes(req.user.role as string)) {
-      return res.status(403).json({ error: 'Permissão insuficiente' });
-    }
-    return next();
-  };
+function forbidden(res: Response) {
+  return res.status(403).json({ error: 'Token inválido ou expirado' });
+}
+
+export function verifyToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return unauthorized(res);
+  }
+
+  const token = header.slice('Bearer '.length).trim();
+  if (!token) return unauthorized(res);
+
+  const user = verifySessionToken(token);
+  if (!user) return forbidden(res);
+
+  req.user = user;
+  return next();
+}
+
+/**
+ * Aceita o token de sessão via header (uso interno/API) ou o token escopado
+ * de 5 minutos na query string (abertura do editor no navegador).
+ */
+export function verifyDrawioAccess(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const header = req.headers.authorization;
+  if (header) return verifyToken(req, res, next);
+
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : '';
+  if (!queryToken) return unauthorized(res);
+
+  const modelId = typeof req.params.id === 'string' ? req.params.id : '';
+  const user = verifyDrawioToken(queryToken, modelId);
+  if (!user) return forbidden(res);
+
+  req.user = user;
+  return next();
 }

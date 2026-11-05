@@ -1,4 +1,14 @@
 node_modules
+dist
 build
 *.log
+*.tmp
+.git
+.gitignore
+.env
+.env.*
+.vscode
+.idea
+coverage
 .DS_Store
+README.md

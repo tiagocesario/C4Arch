@@ -1,5 +1,9 @@
 # C4Arch — Product Design Review (PDR)
 
+> **Documento legado.** O PRD canônico e atualizado está em
+> [`docs/PRD.md`](./PRD.md). Este arquivo é mantido como registro histórico
+> da visão original do produto.
+
 Documenta a visão, requisitos, arquitetura, pilha de tecnologias e decisões
 abertas do produto C4Arch.
 
@@ -91,6 +95,16 @@ permita edição simultânea e exporte para sistemas externos (Drive/GitLab).
 - **Meta 2:** exportacao e sincronizacao (Drive/GitLab) + versoes
 - **Meta 3:** permissoes granulares, templates, exportacao de imagem
 
+### Correções de bugs (11/2026)
+- **Edicao/nome do modelo:** `PUT /api/models/:id` atualiza `title` e `status`.
+- **Vinculacao a pasta:** `folderId` no `POST /api/models` é validado e gravado
+  no `folder_id`.
+- **Exclusao:** `DELETE /api/models/:id` retorna carga uida previsivel
+  (`{ok:true}` ou 404).
+- **WebSocket cliente:** singleton com reconnect automatico; "Desconectar"
+  interrompe o reconnect.
+- **Estado do modelo:** preenchido a partir do WebAPI no realtime quando vazio.
+
 ## 8) Decisões marcantes
 
 Veja a pasta `docs/ADR/` para os registros de decisao de arquitetura (ADR),
@@ -100,6 +114,14 @@ como:
 - ADR-0003: Docker + Compose para desenvolvimento e producao
 - ADR-0004: Licenca MIT
 - ADR-0005: Nome do projeto C4Arch
+- ADR-0006: React Flow 12
+- ADR-0007: API autossuficiente (`apps/api`)
+- ADR-0008: WebSocket cliente: singleton, reconnect automático e estado inicial
+- ADR-0009: API do modelo: update de título/status e associação a pasta
+- ADR-0010: Realtime: merge parcial, IDs estáveis e snapshot atômico
+- ADR-0011: Contrato de tipos do frontend e typecheck no build
+- ADR-0012: CRUD de modelo e acesso ao draw.io
+- ADR-0013: Remoção de código morto e dependências não utilizadas
 
 ## 9) Perguntas abertas / riscos
 

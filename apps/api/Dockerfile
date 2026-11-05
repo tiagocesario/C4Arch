@@ -1,39 +1,36 @@
 # syntax=docker/dockerfile:1
 
 # ── Stage 1: build ──────────────────────────────────────────────
-# Compila a aplicação. Inclui dependências de build (tsc, webpack, etc.).
 FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
-# Copia apenas os manifes para aproveitar o cache de build
-COPY package.json package-lock.json* ./
+# O lockfile é obrigatório: npm ci garante builds reproduzíveis.
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
-# Instala TODAS as dependências (inclui devDependencies para build)
-RUN npm ci || npm install
-
-# Copia o restante e constroi
 COPY . .
 RUN npm run build
 
 # ── Stage 2: runtime ────────────────────────────────────────────
-# Imagem mínima para executar a aplicação (sem ferramentas de build).
 FROM node:20-bookworm-slim AS runner
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# A imagem node já possui usuário 'node', não precisa criar
 COPY --from=builder --chown=node:node /app/dist ./dist
 COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/package-lock.json ./package-lock.json
 
-# Instala apenas dependências de produção
-RUN npm ci --omit=dev || npm install --omit=dev
+# Apenas dependências de produção, sem scripts de instalação.
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 
 USER node
 
 EXPOSE 4000
 
-# CMD em exec form. Evita um shell intermediário.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "const p=process.env.PORT||4000;fetch('http://127.0.0.1:'+p+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
 CMD ["node", "dist/index.js"]

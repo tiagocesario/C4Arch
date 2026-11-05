@@ -16,10 +16,10 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^8.7.3",
+    "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.2",
-    "pg": "^8.12.0",
-    "ws": "^8.18.0",
-    "y-websocket": "^3.1.0"
+    "pg": "^8.12.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -27,7 +27,6 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^20.14.0",
     "@types/pg": "^8.23.1",
-    "@types/ws": "^8.5.12",
     "tsx": "^4.19.2",
     "typescript": "^5.5.4"
   }

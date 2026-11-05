@@ -1,19 +1,19 @@
 # apps/web/Dockerfile
 #
 # Multi-stage build para o frontend React (C4Arch).
-#
-# Construir:
-#   docker build -f apps/web/Dockerfile -t c4arch-web:latest .
-#
-# Em producao, use o compose.production.yaml que mapeia a porta 80.
 
 # ── Stage 1: build ──────────────────────────────────────────────
 FROM node:20-bookworm-slim AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci || npm install
+ARG VITE_WS_URL=ws://localhost:4001
+ARG VITE_API_URL=http://localhost:4000
+ENV VITE_WS_URL=${VITE_WS_URL}
+ENV VITE_API_URL=${VITE_API_URL}
+
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 RUN npm run build
@@ -25,17 +25,16 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# A imagem node já possui usuário 'node', não precisa criar
-RUN npm i -g serve@14
-
+# O servidor estático usa apenas módulos nativos do Node. Não instala
+# dependências em runtime: menor superfície de ataque e imagem menor.
 COPY --from=builder --chown=node:node /app/dist ./dist
-COPY --from=builder --chown=node:node /app/package.json ./package.json
-
-RUN npm ci --omit=dev || npm install --omit=dev
+COPY --from=builder --chown=node:node /app/server.mjs ./server.mjs
 
 USER node
 
 EXPOSE 3000
 
-# Serve a pasta dist na porta 3000.
-CMD ["serve", "-s", "dist", "-l", "3000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+
+CMD ["node", "server.mjs"]
