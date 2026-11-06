@@ -1440,6 +1440,21 @@ export default function App() {
                   Regenerar
                 </button>
                 <button
+                  onClick={() => {
+                    const w = window.open('', '_blank');
+                    if (!w) return;
+                    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${dasModel?.title ?? 'DAS'}</title><style>body{font-family:system-ui,sans-serif;margin:24px;color:#111;}h1,h2,h3{color:#1f2937;}table{border-collapse:collapse;width:100%;margin:8px 0;}th,td{border:1px solid #ccc;padding:6px;font-size:12px;}th{background:#f3f4f6;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}hr{border:none;border-top:1px solid #ccc;margin:12px 0;}@media print{body{margin:12px;}}</style></head><body>${markdownToHtml(dasContent)}</body></html>`;
+                    w.document.write(html);
+                    w.document.close();
+                    w.focus();
+                    setTimeout(() => { w.print(); }, 300);
+                  }}
+                  style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
+                  title="Exportar o DAS como PDF (imprimir/salvar PDF)"
+                >
+                  Exportar PDF
+                </button>
+                <button
                   onClick={async () => {
                     if (!dasModel) return;
                     setDasSaving(true);
