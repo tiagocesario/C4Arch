@@ -54,6 +54,9 @@ c4arch/
 - `docs/PRD.md` — Product Requirements Document (visão, requisitos, fluxos,
   contratos e critérios de aceite).
 - `docs/PDR.md` — Product Design Review original, mantido como registro histórico.
+- `docs/DAS.md` — Documento de Arquitetura de Soluções (visão, containers,
+  componentes, modelo de dados, segurança e deploy), com as imagens do desenho
+  draw.io.
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
 
 ## Login de desenvolvimento
