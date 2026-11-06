@@ -749,19 +749,20 @@ export default function App() {
           </div>
         </div>
       ) : (
-        <>
-          <nav style={{ padding: '8px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button onClick={() => setMode('list')} style={{ ...buttonStyle, background: mode === 'list' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Modelos</button>
-            <button onClick={() => setMode('folders')} style={{ ...buttonStyle, background: mode === 'folders' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Pastas</button>
-            <button onClick={() => setMode('apps')} style={{ ...buttonStyle, background: mode === 'apps' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Apps</button>
-            <button onClick={() => setMode('services')} style={{ ...buttonStyle, background: mode === 'services' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Serviços</button>
+        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <nav style={{ width: 180, padding: '12px 8px', borderRight: '1px solid #2a2f3a', display: 'flex', flexDirection: 'column', gap: '6px', background: '#111318' }}>
+            <button onClick={() => setMode('list')} style={{ ...buttonStyle, background: mode === 'list' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Modelos</button>
+            <button onClick={() => setMode('folders')} style={{ ...buttonStyle, background: mode === 'folders' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Pastas</button>
+            <button onClick={() => setMode('apps')} style={{ ...buttonStyle, background: mode === 'apps' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Apps</button>
+            <button onClick={() => setMode('services')} style={{ ...buttonStyle, background: mode === 'services' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Serviços</button>
             {currentRole === 'owner' && (
-              <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Usuários</button>
+              <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Usuários</button>
             )}
             {currentRole === 'owner' && (
-              <button onClick={() => setMode('groups')} style={{ ...buttonStyle, background: mode === 'groups' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Perfis/Grupos</button>
+              <button onClick={() => setMode('groups')} style={{ ...buttonStyle, background: mode === 'groups' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Perfis/Grupos</button>
             )}
           </nav>
+          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
 
           {error && mode !== 'edit' && (
             <div style={{ padding: '8px 16px', color: '#f87171', borderBottom: '1px solid #2a2f3a' }}>
@@ -1213,7 +1214,8 @@ export default function App() {
               </div>
             </div>
           )}
-        </>
+          </div>
+        </div>
       )}
 
       {mode === 'edit' && selectedId && (
