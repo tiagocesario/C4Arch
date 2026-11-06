@@ -81,10 +81,11 @@ function libraryShapeXml(
 }
 
 /**
- * Monta a biblioteca de shapes com as aplicações e serviços da organização.
- * O draw.io consome esse XML no formato <mxlibrary>[...]</mxlibrary>.
+ * Monta a lista de entradas da biblioteca (shapes) a partir dos apps e
+ * serviços da organização. Reutilizada tanto pelo XML <mxlibrary> quanto pela
+ * configuração do editor (More Shapes).
  */
-async function buildLibraryXml(orgId: string): Promise<string> {
+async function buildLibraryEntries(orgId: string): Promise<LibraryEntry[]> {
   const [apps, services] = await Promise.all([
     pool.query<AssetLike>(
       'SELECT id, org_id, name, description, metadata FROM apps WHERE org_id = $1 ORDER BY name ASC',
@@ -116,6 +117,15 @@ async function buildLibraryXml(orgId: string): Promise<string> {
     });
   }
 
+  return entries;
+}
+
+/**
+ * Monta a biblioteca de shapes com as aplicações e serviços da organização.
+ * O draw.io consome esse XML no formato <mxlibrary>[...]</mxlibrary>.
+ */
+async function buildLibraryXml(orgId: string): Promise<string> {
+  const entries = await buildLibraryEntries(orgId);
   // O JSON é conteúdo textual do XML: precisa ser escapado para o documento
   // <mxlibrary> continuar válido. O draw.io decodifica as entidades e faz
   // JSON.parse do texto resultante. O atributo `title` evita que o painel use
@@ -247,7 +257,10 @@ export class DrawioController {
       // no mesmo modelo, para que o autosave continue funcionando durante a
       // edição sem expor o JWT de sessão.
       const pageToken = signDrawioToken(req.user!.id, req.user!.email, id, PAGE_TOKEN_TTL);
-      const libraryXml = await buildLibraryXml(String(model.org_id));
+      const [libraryXml, libraryEntries] = await Promise.all([
+        buildLibraryXml(String(model.org_id)),
+        buildLibraryEntries(String(model.org_id)),
+      ]);
 
       const embedUrl = new URL('https://embed.diagrams.net/');
       embedUrl.searchParams.set('embed', '1');
@@ -323,6 +336,7 @@ export class DrawioController {
 
       var XML = ${scriptJson(xml)};
       var TITLE = ${scriptJson(title)};
+      var LIBRARY_ENTRIES = ${scriptJson(libraryEntries)};
       var IMPORT_URL = ${scriptJson(importUrl)};
       var statusEl = document.getElementById('status');
       var frame = document.getElementById('drawio');
@@ -405,7 +419,32 @@ export class DrawioController {
         }
         if (!message || typeof message !== 'object') return;
 
-        if (message.event === 'init' || message.event === 'ready') {
+        if (message.event === 'configure') {
+          post({
+            action: 'configure',
+            config: {
+              libraries: [
+                {
+                  title: { main: 'c4arch' },
+                  entries: [
+                    {
+                      id: 'c4arch',
+                      title: { main: 'c4arch' },
+                      desc: { main: 'Apps e servicos C4 (biblioteca c4arch)' },
+                      libs: [
+                        {
+                          title: { main: 'c4arch' },
+                          data: LIBRARY_ENTRIES,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+              defaultCustomLibraries: ['c4arch'],
+            },
+          });
+        } else if (message.event === 'init' || message.event === 'ready') {
           loadDiagram();
         } else if (message.event === 'autosave' && typeof message.xml === 'string') {
           scheduleSave(message.xml);
