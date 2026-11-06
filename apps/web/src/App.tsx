@@ -45,8 +45,9 @@ import type {
 import { C4_MODEL_TYPES } from './services/types';
 import type { UserRole } from './types/user';
 import UserManagement from './pages/UserManagement';
+import GroupManagement from './pages/GroupManagement';
 
-type Mode = 'list' | 'edit' | 'users' | 'folders' | 'apps' | 'services';
+type Mode = 'list' | 'edit' | 'users' | 'groups' | 'folders' | 'apps' | 'services';
 
 const ROLE_LABEL: Record<UserRole, string> = {
   owner: 'Owner',
@@ -722,6 +723,9 @@ export default function App() {
             {currentRole === 'owner' && (
               <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Usuários</button>
             )}
+            {currentRole === 'owner' && (
+              <button onClick={() => setMode('groups')} style={{ ...buttonStyle, background: mode === 'groups' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Perfis/Grupos</button>
+            )}
           </nav>
 
           {error && mode !== 'edit' && (
@@ -891,6 +895,16 @@ export default function App() {
                 currentUserId={currentUser.id}
                 currentRole={currentRole}
                 onSelfRoleChange={(nextRole) => setCurrentRole(nextRole)}
+              />
+            </div>
+          )}
+
+          {mode === 'groups' && currentRole && (
+            <div style={{ padding: '16px' }}>
+              <GroupManagement
+                orgId={orgId}
+                orgName={orgName}
+                currentRole={currentRole}
               />
             </div>
           )}

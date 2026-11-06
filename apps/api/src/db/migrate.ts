@@ -159,6 +159,24 @@ export async function runMigrations() {
     `CREATE INDEX IF NOT EXISTS idx_folders_org_id ON folders(org_id)`,
     `CREATE INDEX IF NOT EXISTS idx_apps_org_id ON apps(org_id)`,
     `CREATE INDEX IF NOT EXISTS idx_services_org_id ON services(org_id)`,
+
+    `CREATE TABLE IF NOT EXISTS access_groups (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      description TEXT,
+      base_role   TEXT NOT NULL CHECK (base_role IN ('owner','editor','viewer')),
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (org_id, name)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS access_group_members (
+      group_id  UUID NOT NULL REFERENCES access_groups(id) ON DELETE CASCADE,
+      user_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (group_id, user_id)
+    )`,
   ];
 
   for (const q of queries) {

@@ -89,6 +89,7 @@ import foldersRouter from './routes/folders.routes.js';
 import appsRouter from './routes/apps.routes.js';
 import servicesRouter from './routes/services.routes.js';
 import drawioRouter from './routes/drawio.routes.js';
+import groupsRouter from './routes/groups.routes.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/orgs', orgsRouter);
@@ -99,6 +100,7 @@ app.use('/api/folders', foldersRouter);
 app.use('/api/apps', appsRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/models', drawioRouter);
+app.use('/api/groups', groupsRouter);
 
 app.get('/', (_req, res) => {
   res.json({ name: 'C4Arch API', status: 'ok', version: '0.1.0' });

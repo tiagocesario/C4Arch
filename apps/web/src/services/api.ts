@@ -1,4 +1,6 @@
 import type {
+  AccessGroup,
+  AccessGroupMember,
   AppObject,
   AssetDependency,
   C4ModelType,
@@ -484,6 +486,78 @@ export const listServiceDependencies = async (id: string): Promise<AssetDependen
   const rows = await req<Raw[]>('/api/services/' + id + '/dependencies');
   return rows.map(mapDependency);
 };
+
+// ---------------------------------------------------------------------------
+// Grupos de acesso
+// ---------------------------------------------------------------------------
+
+export const listGroups = async (orgId: string): Promise<AccessGroup[]> => {
+  const rows = await req<Raw[]>('/api/groups?orgId=' + encodeURIComponent(orgId));
+  return rows.map((raw) => ({
+    id: str(raw.id),
+    orgId: str(raw.org_id ?? raw.orgId),
+    name: str(raw.name),
+    description: nullableStr(raw.description),
+    baseRole: ((raw.base_role ?? raw.baseRole) === 'owner' || (raw.base_role ?? raw.baseRole) === 'editor' ? (raw.base_role ?? raw.baseRole) : 'viewer') as UserRole,
+    memberCount: num(raw.member_count ?? raw.memberCount, 0),
+    createdAt: str(raw.created_at ?? raw.createdAt),
+    updatedAt: str(raw.updated_at ?? raw.updatedAt),
+  }));
+};
+
+export const createGroup = async (input: { orgId: string; name: string; description?: string | null; baseRole: string }): Promise<AccessGroup> => {
+  const raw = await req<Raw>('/api/groups', {
+    method: 'POST',
+    body: JSON.stringify({ orgId: input.orgId, name: input.name, description: input.description ?? null, baseRole: input.baseRole }),
+  });
+  return {
+    id: str(raw.id),
+    orgId: str(raw.org_id ?? raw.orgId),
+    name: str(raw.name),
+    description: nullableStr(raw.description),
+    baseRole: ((raw.base_role ?? raw.baseRole) === 'owner' || (raw.base_role ?? raw.baseRole) === 'editor' ? (raw.base_role ?? raw.baseRole) : 'viewer') as UserRole,
+    createdAt: str(raw.created_at ?? raw.createdAt),
+    updatedAt: str(raw.updated_at ?? raw.updatedAt),
+  };
+};
+
+export const updateGroup = async (id: string, input: { name?: string; description?: string | null; baseRole?: string }): Promise<AccessGroup> => {
+  const raw = await req<Raw>('/api/groups/' + id, {
+    method: 'PUT',
+    body: JSON.stringify({ name: input.name, description: input.description, baseRole: input.baseRole }),
+  });
+  return {
+    id: str(raw.id),
+    orgId: str(raw.org_id ?? raw.orgId),
+    name: str(raw.name),
+    description: nullableStr(raw.description),
+    baseRole: ((raw.base_role ?? raw.baseRole) === 'owner' || (raw.base_role ?? raw.baseRole) === 'editor' ? (raw.base_role ?? raw.baseRole) : 'viewer') as UserRole,
+    createdAt: str(raw.created_at ?? raw.createdAt),
+    updatedAt: str(raw.updated_at ?? raw.updatedAt),
+  };
+};
+
+export const deleteGroup = (id: string) =>
+  req<{ ok: boolean }>('/api/groups/' + id, { method: 'DELETE' });
+
+export const listGroupMembers = async (id: string): Promise<AccessGroupMember[]> => {
+  const rows = await req<Raw[]>('/api/groups/' + id + '/members');
+  return rows.map((raw) => ({
+    userId: str(raw.user_id ?? raw.userId),
+    name: str(raw.name),
+    email: str(raw.email),
+    createdAt: str(raw.created_at ?? raw.createdAt),
+  }));
+};
+
+export const addGroupMember = (id: string, userId: string) =>
+  req<{ ok: boolean }>('/api/groups/' + id + '/members', {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  });
+
+export const removeGroupMember = (id: string, userId: string) =>
+  req<{ ok: boolean }>('/api/groups/' + id + '/members/' + userId, { method: 'DELETE' });
 
 // ---------------------------------------------------------------------------
 // draw.io

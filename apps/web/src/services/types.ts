@@ -86,6 +86,24 @@ export interface Folder {
   updatedAt: string;
 }
 
+export interface AccessGroup {
+  id: string;
+  orgId: string;
+  name: string;
+  description?: string | null;
+  baseRole: UserRole;
+  memberCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccessGroupMember {
+  userId: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
 export interface AppObject {
   id: string;
   orgId: string;
