@@ -154,6 +154,28 @@ export class AppController {
     }
   }
 
+  /** Download do XML da biblioteca c4arch (apps + servicos) para importar no draw.io. */
+  static async library(req: AuthenticatedRequest, res: Response) {
+    const { orgId } = req.query as { orgId?: string };
+    if (!orgId) return res.status(400).json({ error: 'orgId é obrigatório' });
+
+    try {
+      if (!(await isOrgMember(req.user!.id, orgId))) {
+        return res.status(403).json({ error: 'Sem acesso a esta organização' });
+      }
+
+      const { buildLibraryXml } = await import('../controllers/drawio.controller.js');
+      const xml = await buildLibraryXml(orgId);
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="c4arch-library.xml"');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.send(xml || '<mxlibrary>[]</mxlibrary>');
+    } catch (err) {
+      console.error('[apps] library error', err);
+      return res.status(500).json({ error: 'Erro ao gerar biblioteca' });
+    }
+  }
+
   static async remove(req: AuthenticatedRequest, res: Response) {
     const { id } = req.params;
 

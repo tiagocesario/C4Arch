@@ -4,6 +4,7 @@ import { AppController } from '../controllers/apps.controller.js';
 
 const router = Router();
 
+router.get('/library', verifyToken, AppController.library);
 router.get('/', verifyToken, AppController.list);
 router.post('/', verifyToken, AppController.create);
 router.get('/:id/dependencies', verifyToken, AppController.dependencies);

@@ -18,6 +18,7 @@ import {
   updateApp,
   deleteApp,
   listAppDependencies,
+  downloadAppLibrary,
   listServices,
   createService,
   updateService,
@@ -1014,6 +1015,19 @@ export default function App() {
                     + Nova aplicação
                   </button>
                 )}
+                <button
+                  onClick={async () => {
+                    try {
+                      await downloadAppLibrary(orgId);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : String(err));
+                    }
+                  }}
+                  style={buttonStyle}
+                  title="Baixa o XML da biblioteca c4arch para importar no draw.io"
+                >
+                  Baixar biblioteca c4arch
+                </button>
               </div>
               <p style={smallMuted}>
                 Apps são containers C4 reutilizáveis: ao inserir na biblioteca do draw.io, o objeto

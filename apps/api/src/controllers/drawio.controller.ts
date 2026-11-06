@@ -124,7 +124,7 @@ async function buildLibraryEntries(orgId: string): Promise<LibraryEntry[]> {
  * Monta a biblioteca de shapes com as aplicações e serviços da organização.
  * O draw.io consome esse XML no formato <mxlibrary>[...]</mxlibrary>.
  */
-async function buildLibraryXml(orgId: string): Promise<string> {
+export async function buildLibraryXml(orgId: string): Promise<string> {
   const entries = await buildLibraryEntries(orgId);
   // O JSON é conteúdo textual do XML: precisa ser escapado para o documento
   // <mxlibrary> continuar válido. O draw.io decodifica as entidades e faz

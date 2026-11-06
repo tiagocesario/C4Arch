@@ -428,6 +428,21 @@ export const listAppDependencies = async (id: string): Promise<AssetDependency[]
   return rows.map(mapDependency);
 };
 
+export const downloadAppLibrary = async (orgId: string): Promise<void> => {
+  const url = API + '/api/apps/library?orgId=' + encodeURIComponent(orgId);
+  const token = getToken();
+  const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+  if (!res.ok) throw new Error('Falha ao baixar biblioteca');
+  const blob = await res.blob();
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'c4arch-library.xml';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(link.href);
+};
+
 export const listServices = async (orgId: string): Promise<ServiceObject[]> => {
   const rows = await req<Raw[]>('/api/services?orgId=' + encodeURIComponent(orgId));
   return rows.map(mapService);
