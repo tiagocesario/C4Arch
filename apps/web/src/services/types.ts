@@ -1,6 +1,8 @@
 // Tipos de domínio do frontend.
 // Fonte única: a API é normalizada para camelCase em `services/api.ts`.
 
+import type { UserRole } from '../types/user';
+
 export type ElementType = 'actor' | 'system' | 'container' | 'component';
 export type EdgeType = 'call' | 'http' | 'message' | 'depends';
 export type ModelStatus = 'draft' | 'final';
@@ -162,5 +164,11 @@ export interface SessionUser {
 
 export interface MeResponse {
   user: SessionUser;
-  org?: { id: string; name?: string; slug?: string } | null;
+  org?: {
+    id: string;
+    name?: string;
+    slug?: string;
+    /** Papel do usuário na organização, lido de `memberships` pela API. */
+    role?: UserRole;
+  } | null;
 }

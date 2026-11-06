@@ -27,9 +27,17 @@ interface CanvasProps {
   elements: Element[];
   edges: CEdge[];
   onRenameElement: (id: string, title: string) => void;
+  /** `viewer` só visualiza: nenhuma alteração é enviada ao Yjs/REST. */
+  readOnly?: boolean;
 }
 
-export function Canvas({ modelId, elements, edges, onRenameElement }: CanvasProps) {
+export function Canvas({
+  modelId,
+  elements,
+  edges,
+  onRenameElement,
+  readOnly = false,
+}: CanvasProps) {
   const { fitView } = useReactFlow();
   const [wsConnected, setWsConnected] = useState(connected);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -79,6 +87,7 @@ export function Canvas({ modelId, elements, edges, onRenameElement }: CanvasProp
 
   const onConnect = useCallback(
     (connection: Connection) => {
+      if (readOnly) return;
       if (!connection.source || !connection.target) return;
       sendOp({
         type: 'patch',
@@ -89,12 +98,13 @@ export function Canvas({ modelId, elements, edges, onRenameElement }: CanvasProp
         },
       });
     },
-    [modelId]
+    [modelId, readOnly]
   );
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       setNodes((current) => applyNodeChanges(changes, current));
+      if (readOnly) return;
 
       for (const change of changes) {
         if (change.type === 'position' && change.position && change.dragging === false) {
@@ -116,18 +126,19 @@ export function Canvas({ modelId, elements, edges, onRenameElement }: CanvasProp
         }
       }
     },
-    [modelId]
+    [modelId, readOnly]
   );
 
   const onNodeDoubleClick = useCallback(
     (_event: unknown, node: Node) => {
+      if (readOnly) return;
       const element = elements.find((e) => e.id === node.id);
       if (!element) return;
       const next = window.prompt('Título do elemento:', element.title);
       if (next === null) return;
       onRenameElement(node.id, next.trim() || element.title);
     },
-    [elements, onRenameElement]
+    [elements, onRenameElement, readOnly]
   );
 
   return (
@@ -135,15 +146,19 @@ export function Canvas({ modelId, elements, edges, onRenameElement }: CanvasProp
       <ReactFlow
         nodes={nodes}
         edges={rfEdges}
-        onConnect={onConnect}
+        onConnect={readOnly ? undefined : onConnect}
         onNodesChange={onNodesChange}
-        onNodeDoubleClick={onNodeDoubleClick}
+        onNodeDoubleClick={readOnly ? undefined : onNodeDoubleClick}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        edgesFocusable={!readOnly}
         fitView
         colorMode="dark"
         proOptions={{ hideAttribution: true }}
       />
       <div style={{ position: 'absolute', top: 12, left: 12, font: '12px monospace', color: '#7b8290' }}>
         WS: {wsConnected ? 'online' : 'offline'}
+        {readOnly ? ' · somente leitura' : ''}
       </div>
     </div>
   );

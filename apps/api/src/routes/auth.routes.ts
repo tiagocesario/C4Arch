@@ -73,7 +73,7 @@ router.get('/me', verifyToken, async (req: AuthenticatedRequest, res) => {
     }
     const user = userResult.rows[0];
     const orgResult = await pool.query(
-      `SELECT o.id AS org_id, o.name AS org_name
+      `SELECT o.id AS org_id, o.name AS org_name, mem.role
          FROM organizations o
          JOIN memberships mem ON mem.org_id = o.id
         WHERE mem.user_id = $1
@@ -83,7 +83,9 @@ router.get('/me', verifyToken, async (req: AuthenticatedRequest, res) => {
     const org = orgResult.rows[0] ?? null;
     return res.json({
       user: { id: user.id, email: user.email, name: user.name },
-      org: org ? { id: org.org_id, name: org.org_name } : null,
+      // O papel vem de `memberships`, nunca do JWT. É usado apenas para a UI;
+      // cada rota do servidor revalida a permissão no banco.
+      org: org ? { id: org.org_id, name: org.org_name, role: org.role } : null,
     });
   } catch (err) {
     console.error('[auth] me error', err);

@@ -28,10 +28,17 @@ import {
 } from './services/api';
 import { Canvas } from './components/Canvas';
 import * as ws from './services/ws';
-import type { Model, ModelDetail, Folder, AppObject, ServiceObject, ModelStatus } from './services/types';
+import type { Model, ModelDetail, Folder, AppObject, ServiceObject, ModelStatus, SessionUser } from './services/types';
+import type { UserRole } from './types/user';
 import UserManagement from './pages/UserManagement';
 
 type Mode = 'list' | 'edit' | 'users' | 'folders' | 'apps' | 'services';
+
+const ROLE_LABEL: Record<UserRole, string> = {
+  owner: 'Owner',
+  editor: 'Editor',
+  viewer: 'Viewer',
+};
 
 const inputStyle: CSSProperties = {
   padding: '8px',
@@ -78,6 +85,11 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [booting, setBooting] = useState(true);
   const [orgId, setOrgId] = useState('');
+  const [orgName, setOrgName] = useState('');
+  const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
+  // Papel vindo de `memberships` via /api/auth/me. Usado só para a UI; o
+  // servidor revalida a permissão em cada rota.
+  const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
 
   const [folders, setFolders] = useState<Folder[]>([]);
   const [apps, setApps] = useState<AppObject[]>([]);
@@ -129,6 +141,9 @@ export default function App() {
         if (cancelled) return;
         setLoggedIn(true);
         setEmail(session.user.email);
+        setCurrentUser(session.user);
+        setCurrentRole(session.org?.role ?? null);
+        setOrgName(session.org?.name ?? '');
         setOrgId(session.org?.id ?? '');
         ws.setToken(token);
         const list = await listModels();
@@ -183,12 +198,23 @@ export default function App() {
     ws.join(selectedId);
   }, [selectedId]);
 
+  // Se o próprio owner for rebaixado em outra sessão (ou por ele mesmo), a
+  // tela de gestão deixa de ser acessível imediatamente na UI.
+  useEffect(() => {
+    if (loggedIn && mode === 'users' && currentRole !== 'owner') {
+      setMode('list');
+    }
+  }, [loggedIn, mode, currentRole]);
+
   function clearSession() {
     localStorage.removeItem('c4arch_token');
     localStorage.removeItem('c4arch_session');
     ws.setToken(null);
     setLoggedIn(false);
     setOrgId('');
+    setOrgName('');
+    setCurrentUser(null);
+    setCurrentRole(null);
     setModels([]);
     setSelectedId(null);
     setModel(null);
@@ -209,6 +235,9 @@ export default function App() {
       setEmail(user.email);
       const session = await me();
       const nextOrgId = session.org?.id ?? '';
+      setCurrentUser(session.user);
+      setCurrentRole(session.org?.role ?? null);
+      setOrgName(session.org?.name ?? '');
       setOrgId(nextOrgId);
       await refreshModels();
     } catch (err) {
@@ -455,6 +484,7 @@ export default function App() {
   });
 
   const folderName = (id?: string | null) => folders.find((folder) => folder.id === id)?.name ?? 'Sem pasta';
+  const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
   if (booting) {
     return (
@@ -469,6 +499,20 @@ export default function App() {
       <header style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', gap: '12px', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontWeight: 600 }}>C4Arch</h1>
         <span style={{ ...smallMuted, marginLeft: 'auto' }}>React Flow + Yjs · Docker</span>
+        {loggedIn && currentRole && (
+          <span
+            title="Perfil na organização (definido em memberships)"
+            style={{
+              ...smallMuted,
+              color: '#c7d2fe',
+              border: '1px solid #2a2f3a',
+              borderRadius: 999,
+              padding: '3px 9px',
+            }}
+          >
+            {currentUser?.email} · {ROLE_LABEL[currentRole]}
+          </span>
+        )}
         {loggedIn && (
           <button onClick={clearSession} style={buttonStyle}>Sair</button>
         )}
@@ -503,7 +547,9 @@ export default function App() {
             <button onClick={() => setMode('folders')} style={{ ...buttonStyle, background: mode === 'folders' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Pastas</button>
             <button onClick={() => setMode('apps')} style={{ ...buttonStyle, background: mode === 'apps' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Apps</button>
             <button onClick={() => setMode('services')} style={{ ...buttonStyle, background: mode === 'services' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Serviços</button>
-            <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Usuários</button>
+            {currentRole === 'owner' && (
+              <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a' }}>Usuários</button>
+            )}
           </nav>
 
           {error && mode !== 'edit' && (
@@ -532,7 +578,9 @@ export default function App() {
                     <option key={folder.id} value={folder.id}>{folder.name}</option>
                   ))}
                 </select>
-                <button onClick={openCreateModel} style={primaryButtonStyle}>+ Novo modelo</button>
+                {isWriter && (
+                  <button onClick={openCreateModel} style={primaryButtonStyle}>+ Novo modelo</button>
+                )}
               </div>
 
               {showCreateModel && (
@@ -607,30 +655,36 @@ export default function App() {
                         <button
                           onClick={(e) => { e.stopPropagation(); openModel(item.id); }}
                           style={buttonStyle}
-                          title="Abrir o editor C4 (React Flow)"
+                          title={isWriter ? 'Abrir o editor C4 (React Flow)' : 'Visualizar o modelo C4 (somente leitura)'}
                         >
-                          Editor C4
+                          {isWriter ? 'Editor C4' : 'Visualizar C4'}
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openDrawio(item.id); }}
-                          style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
-                          title="Abrir o editor draw.io em uma nova aba"
-                        >
-                          draw.io
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openEditModel(item); }}
-                          style={buttonStyle}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDeleteModel(item); }}
-                          style={dangerButtonStyle}
-                          title="Excluir este modelo"
-                        >
-                          Excluir
-                        </button>
+                        {isWriter && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openDrawio(item.id); }}
+                            style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
+                            title="Abrir o editor draw.io em uma nova aba"
+                          >
+                            draw.io
+                          </button>
+                        )}
+                        {isWriter && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openEditModel(item); }}
+                            style={buttonStyle}
+                          >
+                            Editar
+                          </button>
+                        )}
+                        {isWriter && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onDeleteModel(item); }}
+                            style={dangerButtonStyle}
+                            title="Excluir este modelo"
+                          >
+                            Excluir
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -640,29 +694,37 @@ export default function App() {
             </>
           )}
 
-          {mode === 'users' && (
+          {mode === 'users' && currentUser && currentRole && (
             <div style={{ padding: '16px' }}>
-              <UserManagement />
+              <UserManagement
+                orgId={orgId}
+                orgName={orgName}
+                currentUserId={currentUser.id}
+                currentRole={currentRole}
+                onSelfRoleChange={(nextRole) => setCurrentRole(nextRole)}
+              />
             </div>
           )}
 
           {mode === 'folders' && (
             <div style={{ padding: '16px' }}>
               <h2 style={{ marginTop: 0 }}>Pastas</h2>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
-                <input id="folder-name" placeholder="Nome da pasta" style={inputStyle} />
-                <button
-                  onClick={async () => {
-                    const name = (document.getElementById('folder-name') as HTMLInputElement)?.value;
-                    if (!name) return;
-                    await createFolder({ orgId, name });
-                    setFolders(await listFolders(orgId));
-                  }}
-                  style={primaryButtonStyle}
-                >
-                  Criar
-                </button>
-              </div>
+              {isWriter && (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
+                  <input id="folder-name" placeholder="Nome da pasta" style={inputStyle} />
+                  <button
+                    onClick={async () => {
+                      const name = (document.getElementById('folder-name') as HTMLInputElement)?.value;
+                      if (!name) return;
+                      await createFolder({ orgId, name });
+                      setFolders(await listFolders(orgId));
+                    }}
+                    style={primaryButtonStyle}
+                  >
+                    Criar
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'grid', gap: 8 }}>
                 {folders.map((folder) => (
                   <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -670,29 +732,31 @@ export default function App() {
                       <div style={{ fontWeight: 600 }}>{folder.name}</div>
                       <div style={smallMuted}>{folder.id}</div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={async () => {
-                          const name = window.prompt('Novo nome:', folder.name);
-                          if (!name) return;
-                          await updateFolder(folder.id, { name });
-                          setFolders(await listFolders(orgId));
-                        }}
-                        style={buttonStyle}
-                      >
-                        Renomear
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm('Excluir a pasta "' + folder.name + '"?')) return;
-                          await deleteFolder(folder.id);
-                          setFolders(await listFolders(orgId));
-                        }}
-                        style={dangerButtonStyle}
-                      >
-                        Excluir
-                      </button>
-                    </div>
+                    {isWriter && (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={async () => {
+                            const name = window.prompt('Novo nome:', folder.name);
+                            if (!name) return;
+                            await updateFolder(folder.id, { name });
+                            setFolders(await listFolders(orgId));
+                          }}
+                          style={buttonStyle}
+                        >
+                          Renomear
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Excluir a pasta "' + folder.name + '"?')) return;
+                            await deleteFolder(folder.id);
+                            setFolders(await listFolders(orgId));
+                          }}
+                          style={dangerButtonStyle}
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {folders.length === 0 && <div style={{ color: '#7b8290' }}>Nenhuma pasta.</div>}
@@ -703,22 +767,24 @@ export default function App() {
           {mode === 'apps' && (
             <div style={{ padding: '16px' }}>
               <h2 style={{ marginTop: 0 }}>Aplicações</h2>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
-                <input id="app-name" placeholder="Nome da aplicação" style={inputStyle} />
-                <input id="app-desc" placeholder="Descrição" style={inputStyle} />
-                <button
-                  onClick={async () => {
-                    const name = (document.getElementById('app-name') as HTMLInputElement)?.value;
-                    const description = (document.getElementById('app-desc') as HTMLInputElement)?.value;
-                    if (!name) return;
-                    await createApp({ orgId, name, description });
-                    setApps(await listApps(orgId));
-                  }}
-                  style={primaryButtonStyle}
-                >
-                  Criar
-                </button>
-              </div>
+              {isWriter && (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
+                  <input id="app-name" placeholder="Nome da aplicação" style={inputStyle} />
+                  <input id="app-desc" placeholder="Descrição" style={inputStyle} />
+                  <button
+                    onClick={async () => {
+                      const name = (document.getElementById('app-name') as HTMLInputElement)?.value;
+                      const description = (document.getElementById('app-desc') as HTMLInputElement)?.value;
+                      if (!name) return;
+                      await createApp({ orgId, name, description });
+                      setApps(await listApps(orgId));
+                    }}
+                    style={primaryButtonStyle}
+                  >
+                    Criar
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'grid', gap: 8 }}>
                 {apps.map((item) => (
                   <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -726,29 +792,31 @@ export default function App() {
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
                       <div style={smallMuted}>{item.description}</div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={async () => {
-                          const name = window.prompt('Novo nome:', item.name);
-                          if (!name) return;
-                          await updateApp(item.id, { name });
-                          setApps(await listApps(orgId));
-                        }}
-                        style={buttonStyle}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm('Excluir a aplicação "' + item.name + '"?')) return;
-                          await deleteApp(item.id);
-                          setApps(await listApps(orgId));
-                        }}
-                        style={dangerButtonStyle}
-                      >
-                        Excluir
-                      </button>
-                    </div>
+                    {isWriter && (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={async () => {
+                            const name = window.prompt('Novo nome:', item.name);
+                            if (!name) return;
+                            await updateApp(item.id, { name });
+                            setApps(await listApps(orgId));
+                          }}
+                          style={buttonStyle}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Excluir a aplicação "' + item.name + '"?')) return;
+                            await deleteApp(item.id);
+                            setApps(await listApps(orgId));
+                          }}
+                          style={dangerButtonStyle}
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {apps.length === 0 && <div style={{ color: '#7b8290' }}>Nenhuma aplicação.</div>}
@@ -759,22 +827,24 @@ export default function App() {
           {mode === 'services' && (
             <div style={{ padding: '16px' }}>
               <h2 style={{ marginTop: 0 }}>Serviços</h2>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
-                <input id="svc-name" placeholder="Nome do serviço" style={inputStyle} />
-                <input id="svc-port" placeholder="Porta" style={inputStyle} />
-                <button
-                  onClick={async () => {
-                    const name = (document.getElementById('svc-name') as HTMLInputElement)?.value;
-                    const port = Number((document.getElementById('svc-port') as HTMLInputElement)?.value);
-                    if (!name) return;
-                    await createService({ orgId, name, port: Number.isFinite(port) ? port : undefined });
-                    setServices(await listServices(orgId));
-                  }}
-                  style={primaryButtonStyle}
-                >
-                  Criar
-                </button>
-              </div>
+              {isWriter && (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
+                  <input id="svc-name" placeholder="Nome do serviço" style={inputStyle} />
+                  <input id="svc-port" placeholder="Porta" style={inputStyle} />
+                  <button
+                    onClick={async () => {
+                      const name = (document.getElementById('svc-name') as HTMLInputElement)?.value;
+                      const port = Number((document.getElementById('svc-port') as HTMLInputElement)?.value);
+                      if (!name) return;
+                      await createService({ orgId, name, port: Number.isFinite(port) ? port : undefined });
+                      setServices(await listServices(orgId));
+                    }}
+                    style={primaryButtonStyle}
+                  >
+                    Criar
+                  </button>
+                </div>
+              )}
               <div style={{ display: 'grid', gap: 8 }}>
                 {services.map((item) => (
                   <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -782,29 +852,31 @@ export default function App() {
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
                       <div style={smallMuted}>{item.protocol}:{item.port} — {item.description}</div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button
-                        onClick={async () => {
-                          const name = window.prompt('Novo nome:', item.name);
-                          if (!name) return;
-                          await updateService(item.id, { name });
-                          setServices(await listServices(orgId));
-                        }}
-                        style={buttonStyle}
-                      >
-                        Editar
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm('Excluir o serviço "' + item.name + '"?')) return;
-                          await deleteService(item.id);
-                          setServices(await listServices(orgId));
-                        }}
-                        style={dangerButtonStyle}
-                      >
-                        Excluir
-                      </button>
-                    </div>
+                    {isWriter && (
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={async () => {
+                            const name = window.prompt('Novo nome:', item.name);
+                            if (!name) return;
+                            await updateService(item.id, { name });
+                            setServices(await listServices(orgId));
+                          }}
+                          style={buttonStyle}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={async () => {
+                            if (!window.confirm('Excluir o serviço "' + item.name + '"?')) return;
+                            await deleteService(item.id);
+                            setServices(await listServices(orgId));
+                          }}
+                          style={dangerButtonStyle}
+                        >
+                          Excluir
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {services.length === 0 && <div style={{ color: '#7b8290' }}>Nenhum serviço.</div>}
@@ -828,33 +900,39 @@ export default function App() {
               elements={model?.elements ?? []}
               edges={model?.edges ?? []}
               onRenameElement={onSaveElementTitle}
+              readOnly={!isWriter}
             />
             <footer style={{ padding: '8px 12px', borderTop: '1px solid #2a2f3a', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#0f1115' }}>
               <button onClick={() => { setMode('list'); setSelectedId(null); setModel(null); }} style={buttonStyle}>Voltar</button>
-              <button
-                onClick={() => { if (model) openEditModel(model); }}
-                style={buttonStyle}
-                disabled={!model}
-              >
-                Editar modelo
-              </button>
-              <button
-                onClick={() => {
-                  if (!selectedId) return;
-                  const xml = window.prompt('XML draw.io:');
-                  if (xml) importDrawio(selectedId, xml).catch((err) => setError(err.message));
-                }}
-                style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
-              >
-                Importar draw.io
-              </button>
-              <button
-                onClick={() => { if (selectedId) openDrawio(selectedId); }}
-                style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
-              >
-                Abrir draw.io
-              </button>
-              <button onClick={onDelete} style={dangerButtonStyle}>Excluir</button>
+              {!isWriter && <span style={{ ...smallMuted, alignSelf: 'center' }}>Somente leitura</span>}
+              {isWriter && (
+                <>
+                  <button
+                    onClick={() => { if (model) openEditModel(model); }}
+                    style={buttonStyle}
+                    disabled={!model}
+                  >
+                    Editar modelo
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!selectedId) return;
+                      const xml = window.prompt('XML draw.io:');
+                      if (xml) importDrawio(selectedId, xml).catch((err) => setError(err.message));
+                    }}
+                    style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
+                  >
+                    Importar draw.io
+                  </button>
+                  <button
+                    onClick={() => { if (selectedId) openDrawio(selectedId); }}
+                    style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
+                  >
+                    Abrir draw.io
+                  </button>
+                  <button onClick={onDelete} style={dangerButtonStyle}>Excluir</button>
+                </>
+              )}
             </footer>
           </div>
         </ReactFlowProvider>
@@ -875,7 +953,9 @@ export default function App() {
                 <div style={smallMuted}>Preview draw.io (somente leitura)</div>
               </div>
               <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
-                <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Abrir editor draw.io</button>
+                {isWriter && (
+                  <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Abrir editor draw.io</button>
+                )}
                 <button
                   onClick={() => {
                     const id = previewModel.id;
@@ -884,7 +964,7 @@ export default function App() {
                   }}
                   style={buttonStyle}
                 >
-                  Editor C4
+                  {isWriter ? 'Editor C4' : 'Visualizar C4'}
                 </button>
                 {previewUrl && (
                   <a
@@ -909,7 +989,9 @@ export default function App() {
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#1f2937', padding: 24, textAlign: 'center', gap: 12 }}>
                   <div>{previewError}</div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-                    <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Criar/editar no draw.io</button>
+                    {isWriter && (
+                      <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Criar/editar no draw.io</button>
+                    )}
                     <button
                       onClick={() => {
                         const id = previewModel.id;
@@ -918,7 +1000,7 @@ export default function App() {
                       }}
                       style={buttonStyle}
                     >
-                      Abrir editor C4
+                      {isWriter ? 'Abrir editor C4' : 'Visualizar C4'}
                     </button>
                   </div>
                 </div>

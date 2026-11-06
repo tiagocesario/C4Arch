@@ -126,10 +126,46 @@ export function attachWebsocket(httpServer: Server) {
     let modelId: string | null = null;
     let doc: Y.Doc | null = null;
     let sessionToken: string | null = null;
-    const authorizedModels = new Set<string>();
+    // Papel por modelo, com TTL curto: uma rebaixamento de owner/editor para
+    // viewer passa a bloquear escritas no WS sem exigir reconexão.
+    const modelRoles = new Map<string, { role: string; checkedAt: number }>();
+    const ROLE_TTL_MS = 30_000;
 
     let messageCount = 0;
     let windowStart = Date.now();
+
+    async function fetchModelRole(requestedModelId: string): Promise<string | null> {
+      if (!sessionToken) return allowAnonymous ? 'owner' : null;
+      const access = await apiFetchWithToken(
+        '/api/models/' + encodeURIComponent(requestedModelId),
+        sessionToken
+      );
+      if (!access?.ok) return null;
+      try {
+        const body = (await access.json()) as { member_role?: unknown };
+        return typeof body.member_role === 'string' ? body.member_role : 'viewer';
+      } catch {
+        return null;
+      }
+    }
+
+    async function ensureModelRole(requestedModelId: string): Promise<string | null> {
+      const cached = modelRoles.get(requestedModelId);
+      if (cached && Date.now() - cached.checkedAt < ROLE_TTL_MS) {
+        return cached.role;
+      }
+      const role = await fetchModelRole(requestedModelId);
+      if (role) {
+        modelRoles.set(requestedModelId, { role, checkedAt: Date.now() });
+      } else {
+        modelRoles.delete(requestedModelId);
+      }
+      return role;
+    }
+
+    function canWrite(role: string | null): boolean {
+      return role === 'owner' || role === 'editor';
+    }
 
     // Valida o token de sessão contra a API. Mensagens que chegam durante a
     // validação ficam aguardando a mesma promise, sem serem perdidas.
@@ -194,17 +230,11 @@ export function attachWebsocket(httpServer: Server) {
           }
 
           // Verifica se o usuário autenticado pertence à organização do
-          // modelo. A checagem é feita uma vez por modelo/conexão.
-          if (sessionToken && !authorizedModels.has(requestedModelId)) {
-            const access = await apiFetchWithToken(
-              '/api/models/' + encodeURIComponent(requestedModelId),
-              sessionToken
-            );
-            if (!access?.ok) {
-              ws.send(JSON.stringify({ type: 'error', error: 'sem acesso ao modelo' }));
-              return;
-            }
-            authorizedModels.add(requestedModelId);
+          // modelo e guarda o papel para autorizar escritas no CRDT.
+          const joinRole = await ensureModelRole(requestedModelId);
+          if (!joinRole) {
+            ws.send(JSON.stringify({ type: 'error', error: 'sem acesso ao modelo' }));
+            return;
           }
 
           // Ao trocar de modelo, remove o cliente do modelo anterior para
@@ -259,6 +289,13 @@ export function attachWebsocket(httpServer: Server) {
           const entry = models.get(modelId);
           if (!entry) {
             ws.send(JSON.stringify({ type: 'error', error: 'modelo não encontrado' }));
+            return;
+          }
+          // `viewer` é somente leitura também no CRDT. Sem esta checagem, a
+          // UI read-only poderia ser contornada enviando patches diretamente.
+          const writeRole = await ensureModelRole(modelId);
+          if (!canWrite(writeRole)) {
+            ws.send(JSON.stringify({ type: 'error', error: 'sem permissão de escrita' }));
             return;
           }
           const changed = applyOperation(entry.doc, patch);

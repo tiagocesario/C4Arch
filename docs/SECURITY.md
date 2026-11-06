@@ -48,7 +48,16 @@ Ameaças tratadas nesta revisão:
 - Criação de modelo/pasta/aplicação/serviço valida se o `orgId` pertence ao usuário.
 - Criação/edição de conexões valida se os elementos referenciados pertencem ao modelo.
 - Criação de organização associa o criador como `owner` em transação.
-- Adicionar membro exige papel `owner` na organização.
+- Gestão de membros exige papel `owner` na organização: listar é permitido a
+  qualquer membro, mas adicionar, alterar perfil e remover são exclusivos do
+  `owner`.
+- A organização nunca fica sem owner: rebaixar ou remover o último `owner`
+  retorna `409`. O owner também não pode remover a si mesmo.
+- `GET /api/auth/me` devolve o papel lido de `memberships` apenas para a UI. O
+  JWT não é usado para autorização; cada rota revalida o papel no banco.
+- Convite por e-mail: se a conta não existir, é criada com senha temporária
+  aleatória devolvida uma única vez ao owner; se já existir, apenas a membership
+  é adicionada com o perfil escolhido.
 
 ### draw.io
 
@@ -90,7 +99,10 @@ Ameaças tratadas nesta revisão:
 - A conexão exige `?token=<JWT de sessão>`; o token é validado em
   `GET /api/auth/me`.
 - Cada `join` é autorizado em `GET /api/models/:id`, garantindo que o usuário
-  pertence à organização do modelo.
+  pertence à organização do modelo. A resposta também informa `member_role`.
+- `patch` no CRDT só é aplicado para `owner`/`editor`. O papel é revalidado a
+  cada 30 s, então um rebaixamento para `viewer` bloqueia escritas sem exigir
+  reconexão. `viewer` recebe `error: "sem permissão de escrita"`.
 - Token inválido fecha a conexão com código `1008`; o cliente não entra em loop
   de reconexão.
 - Payload máximo de 1 MB e limite de 300 mensagens por 10 s por conexão.
@@ -145,8 +157,12 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   de sessão.
 - RBAC validado com usuário `viewer`: leitura permitida; criação de app, token
   draw.io e importação do diagrama negados com `403`.
+- Gestão de membros validada ponta a ponta: `owner` lista/adiciona/altera/remove;
+  `editor` e `viewer` recebem `403` em mutações; rebaixamento de `editor` para
+  `viewer` passa a valer mesmo com o JWT antigo; último owner recebe `409`.
 - Teste manual de WebSocket: conexão sem token rejeitada, conexão com token e
-  `join` autorizado, `join` em modelo de outra organização negado.
+  `join` autorizado, `join` em modelo de outra organização negado e `patch` de
+  `viewer` bloqueado com `error: "sem permissão de escrita"`.
 
 Ferramentas SAST/DAST (Trivy, Semgrep, Gitleaks, Docker Scout) não estão
 instaladas no ambiente; quando disponíveis, devem ser adicionadas ao CI.
@@ -163,5 +179,9 @@ instaladas no ambiente; quando disponíveis, devem ser adicionadas ao CI.
   específica é aplicada na página HTML do draw.io.
 - **Segredos em variáveis de ambiente:** continuam visíveis para quem tem acesso
   ao runtime do container. Para produção madura, use Docker secrets/Vault.
+- **Senha temporária de convite:** contas criadas pela gestão de usuários
+  recebem uma senha aleatória exibida uma única vez ao owner. Ainda não existe
+  fluxo de troca obrigatória no primeiro acesso; compartilhe por canal seguro e
+  evolua para convite por e-mail com token de uso único.
 - **Dependências:** `npm audit` cobre vulnerabilidades conhecidas publicamente;
   não substitui SAST/DAST nem revisão manual contínua.

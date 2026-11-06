@@ -18,6 +18,7 @@ import type {
   UpdateElementInput,
   UpdateModelInput,
 } from './types';
+import type { AddMemberInput, AddMemberResult, OrgMember, UserRole } from '../types/user';
 
 const API = (import.meta.env.VITE_API_URL ?? 'http://localhost:4000');
 
@@ -157,6 +158,19 @@ function mapService(raw: Raw): ServiceObject {
   };
 }
 
+function mapMember(raw: Raw): OrgMember {
+  const role: UserRole =
+    raw.role === 'owner' || raw.role === 'editor' ? raw.role : 'viewer';
+  return {
+    id: str(raw.id),
+    userId: str(raw.user_id ?? raw.userId),
+    name: str(raw.name),
+    email: str(raw.email),
+    role,
+    createdAt: str(raw.created_at ?? raw.createdAt),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Autenticação
 // ---------------------------------------------------------------------------
@@ -169,6 +183,52 @@ export const login = async (email: string, password: string) => {
 };
 
 export const me = () => req<MeResponse>('/api/auth/me');
+
+// ---------------------------------------------------------------------------
+// Membros da organização (RBAC)
+// ---------------------------------------------------------------------------
+
+const orgMembersPath = (orgId: string) =>
+  '/api/orgs/' + encodeURIComponent(orgId) + '/members';
+
+export const listOrgMembers = async (orgId: string): Promise<OrgMember[]> => {
+  const rows = await req<Raw[]>(orgMembersPath(orgId));
+  return rows.map(mapMember);
+};
+
+export const addOrgMember = async (
+  orgId: string,
+  input: AddMemberInput
+): Promise<AddMemberResult> => {
+  const raw = await req<{ member: Raw; temporaryPassword?: string }>(orgMembersPath(orgId), {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return {
+    member: mapMember(raw.member),
+    temporaryPassword: raw.temporaryPassword,
+  };
+};
+
+export const updateOrgMemberRole = async (
+  orgId: string,
+  userId: string,
+  role: UserRole
+): Promise<OrgMember> => {
+  const raw = await req<Raw>(
+    orgMembersPath(orgId) + '/' + encodeURIComponent(userId),
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    }
+  );
+  return mapMember(raw);
+};
+
+export const removeOrgMember = (orgId: string, userId: string) =>
+  req<{ ok: boolean }>(orgMembersPath(orgId) + '/' + encodeURIComponent(userId), {
+    method: 'DELETE',
+  });
 
 // ---------------------------------------------------------------------------
 // Modelos
