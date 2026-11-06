@@ -186,6 +186,12 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [folderFilter, setFolderFilter] = useState<string>('all');
   const [viewingFolderId, setViewingFolderId] = useState<string | null>(null);
+  const sortedFolders = [...folders].sort((a, b) => {
+    const pa = a.parentId ?? '';
+    const pb = b.parentId ?? '';
+    if (pa !== pb) return pa.localeCompare(pb);
+    return a.name.localeCompare(b.name);
+  });
 
   // -------------------------------------------------------------------------
   // Bootstrap / sessão
@@ -942,14 +948,23 @@ export default function App() {
             <div style={{ padding: '16px' }}>
               <h2 style={{ marginTop: 0 }}>Pastas</h2>
               {isWriter && (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                   <input id="folder-name" placeholder="Nome da pasta" style={inputStyle} />
+                  <select id="folder-parent" style={inputStyle}>
+                    <option value="">Pasta raiz</option>
+                    {folders.map((f) => (
+                      <option key={f.id} value={f.id}>{f.name}</option>
+                    ))}
+                  </select>
                   <button
                     onClick={async () => {
                       const name = (document.getElementById('folder-name') as HTMLInputElement)?.value;
+                      const parentId = (document.getElementById('folder-parent') as HTMLSelectElement)?.value || null;
                       if (!name) return;
-                      await createFolder({ orgId, name });
+                      await createFolder({ orgId, name, parentId });
                       setFolders(await listFolders(orgId));
+                      const input = document.getElementById('folder-name') as HTMLInputElement;
+                      if (input) input.value = '';
                     }}
                     style={primaryButtonStyle}
                   >
@@ -958,11 +973,11 @@ export default function App() {
                 </div>
               )}
               <div style={{ display: 'grid', gap: 8 }}>
-                {folders.map((folder) => {
+                {sortedFolders.map((folder) => {
                   const linkedModels = models.filter((item) => item.folderId === folder.id);
                   const expanded = viewingFolderId === folder.id;
                   return (
-                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12 }}>
+                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: (folder.parentId ? 24 : 0) }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <div
                           onClick={() => setViewingFolderId(expanded ? null : folder.id)}
@@ -976,6 +991,11 @@ export default function App() {
                             </span>
                           </div>
                           <div style={smallMuted}>{folder.id}</div>
+                          {folder.parentId && (
+                            <div style={{ ...smallMuted, fontSize: 11 }}>
+                              Subpasta de: {folders.find((f) => f.id === folder.parentId)?.name ?? folder.parentId}
+                            </div>
+                          )}
                         </div>
                     {isWriter && (
                       <div style={{ display: 'flex', gap: 8 }}>
