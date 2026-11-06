@@ -445,6 +445,30 @@ export class DrawioController {
             },
           });
         } else if (message.event === 'init' || message.event === 'ready') {
+          post({
+            action: 'configure',
+            config: {
+              libraries: [
+                {
+                  title: { main: 'c4arch' },
+                  entries: [
+                    {
+                      id: 'c4arch',
+                      title: { main: 'c4arch' },
+                      desc: { main: 'Apps e servicos C4 (biblioteca c4arch)' },
+                      libs: [
+                        {
+                          title: { main: 'c4arch' },
+                          data: LIBRARY_ENTRIES,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+              defaultCustomLibraries: ['c4arch'],
+            },
+          });
           loadDiagram();
         } else if (message.event === 'autosave' && typeof message.xml === 'string') {
           scheduleSave(message.xml);
