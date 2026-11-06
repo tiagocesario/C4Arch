@@ -16,9 +16,9 @@ const MAX_XML_LENGTH = 100_000;
 const PAGE_TOKEN_TTL = '8h';
 
 const APP_STYLE =
-  'rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1f2937;align=center;verticalAlign=middle;spacing=6;';
+  'rounded=0;whiteSpace=wrap;html=1;fillColor=#438DD5;strokeColor=#3C7FC0;fontColor=#ffffff;align=center;verticalAlign=middle;spacing=6;';
 const SERVICE_STYLE =
-  'rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1f2937;align=center;verticalAlign=middle;spacing=6;';
+  'rounded=0;whiteSpace=wrap;html=1;fillColor=#85BBF0;strokeColor=#3C7FC0;fontColor=#1f2937;align=center;verticalAlign=middle;spacing=6;';
 
 interface LibraryEntry {
   xml: string;
