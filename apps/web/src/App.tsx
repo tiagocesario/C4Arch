@@ -998,7 +998,7 @@ export default function App() {
                           )}
                         </div>
                     {isWriter && (
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                         <button
                           onClick={async () => {
                             const name = window.prompt('Novo nome:', folder.name);
@@ -1010,6 +1010,28 @@ export default function App() {
                         >
                           Renomear
                         </button>
+                        <select
+                          defaultValue={folder.parentId ?? ''}
+                          onChange={async (e) => {
+                            const newParent = e.target.value || null;
+                            if (newParent === folder.parentId) return;
+                            try {
+                              await updateFolder(folder.id, { parentId: newParent });
+                              setFolders(await listFolders(orgId));
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : String(err));
+                            }
+                          }}
+                          style={inputStyle}
+                          title="Mover para pasta pai"
+                        >
+                          <option value="">Pasta raiz</option>
+                          {folders
+                            .filter((f) => f.id !== folder.id)
+                            .map((f) => (
+                              <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                        </select>
                         <button
                           onClick={async () => {
                             if (!window.confirm('Excluir a pasta "' + folder.name + '"?')) return;
