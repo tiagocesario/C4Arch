@@ -120,7 +120,7 @@ async function buildLibraryXml(orgId: string): Promise<string> {
   // <mxlibrary> continuar válido. O draw.io decodifica as entidades e faz
   // JSON.parse do texto resultante. O atributo `title` evita que o painel use
   // a data URL inteira como nome da biblioteca.
-  return `<mxlibrary title="${escapeXmlAttribute('Aplicações e Serviços')}">${escapeHtml(JSON.stringify(entries))}</mxlibrary>`;
+  return `<mxlibrary title="${escapeXmlAttribute('c4arch')}">${escapeHtml(JSON.stringify(entries))}</mxlibrary>`;
 }
 
 /**
