@@ -51,6 +51,42 @@ import GroupManagement from './pages/GroupManagement';
 
 type Mode = 'list' | 'edit' | 'users' | 'groups' | 'folders' | 'apps' | 'services';
 
+function markdownToHtml(md: string): string {
+  let html = md
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  // headings
+  html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.*)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.*)$/gm, '<h1>$1</h1>');
+  // bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // horizontal rule
+  html = html.replace(/^---$/gm, '<hr/>');
+  // tables: convert simple markdown tables
+  html = html.replace(/((?:^\|.+\|$\n?)+)/gm, (block) => {
+    const rows = block.trim().split('\n').filter((r) => r.trim());
+    if (rows.length === 0) return block;
+    const isSep = (r: string) => /^\|[\s\-:|]+\|$/.test(r.trim());
+    const header = rows[0];
+    const bodyRows = rows.slice(isSep(rows[1]) ? 2 : 1);
+    const parseRow = (r: string) =>
+      r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+    const ths = parseRow(header).map((c) => `<th>${c}</th>`).join('');
+    const trs = bodyRows.map((r) => `<tr>${parseRow(r).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
+    return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+  });
+  // paragraphs: wrap remaining lines
+  html = html.replace(/\n{2,}/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  // clean up empty p
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  return html;
+}
+
 const ROLE_LABEL: Record<UserRole, string> = {
   owner: 'Owner',
   editor: 'Editor',
@@ -142,6 +178,7 @@ export default function App() {
   const [dasContent, setDasContent] = useState<string>('');
   const [dasLoading, setDasLoading] = useState(false);
   const [dasSaving, setDasSaving] = useState(false);
+  const [dasViewMode, setDasViewMode] = useState<'edit' | 'preview'>('preview');
 
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('');
@@ -908,6 +945,7 @@ export default function App() {
                             e.stopPropagation();
                             setDasModel(item);
                             setDasContent('');
+                            setDasViewMode('preview');
                             setDasLoading(true);
                             try {
                               const content = await getModelDAS(item.id);
@@ -1105,6 +1143,18 @@ export default function App() {
                                     draw.io
                                   </button>
                                 )}
+                                <button
+                                  onClick={() => {
+                                    setDasModel(item);
+                                    setDasContent('');
+                                    setDasViewMode('preview');
+                                    setDasLoading(true);
+                                    getModelDAS(item.id).then(setDasContent).catch((err) => setError(err instanceof Error ? err.message : String(err))).finally(() => setDasLoading(false));
+                                  }}
+                                  style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
+                                >
+                                  DAS
+                                </button>
                               </div>
                             </div>
                           ))}
@@ -1410,14 +1460,24 @@ export default function App() {
                 <button onClick={() => setDasModel(null)} style={buttonStyle}>Fechar</button>
               </div>
             </div>
-            <div style={{ flex: 1, minHeight: 0, padding: 12 }}>
+            <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: '1px solid #2a2f3a' }}>
+              <button onClick={() => setDasViewMode('preview')} style={{ ...buttonStyle, background: dasViewMode === 'preview' ? '#2a2f3a' : 'transparent' }}>Visualizar</button>
+              <button onClick={() => setDasViewMode('edit')} style={{ ...buttonStyle, background: dasViewMode === 'edit' ? '#2a2f3a' : 'transparent' }}>Editar</button>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, padding: 12, overflow: 'auto' }}>
               {dasLoading ? (
                 <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
-              ) : (
+              ) : dasViewMode === 'edit' ? (
                 <textarea
                   value={dasContent}
                   onChange={(e) => setDasContent(e.target.value)}
                   style={{ width: '100%', height: '100%', background: '#0f1115', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'none' }}
+                />
+              ) : (
+                <div
+                  className="das-preview"
+                  style={{ background: '#0f1115', color: '#e8eaed', padding: 16, borderRadius: 6, lineHeight: 1.6, fontSize: 13 }}
+                  dangerouslySetInnerHTML={{ __html: markdownToHtml(dasContent) }}
                 />
               )}
             </div>
