@@ -856,8 +856,20 @@ export default function App() {
               </div>
 
               {showCreateModel && (
-                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                  <div style={{ background: '#1a1d27', padding: 20, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12, width: 440 }}>
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+                  <div
+                    style={{
+                      background: '#1a1d27',
+                      padding: 20,
+                      borderRadius: 8,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 12,
+                      width: 'min(440px, 94vw)',
+                      maxHeight: '90vh',
+                      overflowY: 'auto',
+                    }}
+                  >
                     <h3 style={{ margin: 0 }}>Novo modelo</h3>
                     <input
                       type="text"
@@ -1737,8 +1749,21 @@ export default function App() {
       )}
 
       {editingModel && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <form onSubmit={onSaveModelEdit} style={{ background: '#1a1d27', padding: 20, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12, width: 440 }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
+          <form
+            onSubmit={onSaveModelEdit}
+            style={{
+              background: '#1a1d27',
+              padding: 20,
+              borderRadius: 8,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+              width: 'min(440px, 94vw)',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+            }}
+          >
             <h3 style={{ margin: 0 }}>Editar modelo</h3>
             <input
               type="text"
