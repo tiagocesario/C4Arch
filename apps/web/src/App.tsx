@@ -183,6 +183,7 @@ export default function App() {
 
   const [search, setSearch] = useState('');
   const [folderFilter, setFolderFilter] = useState<string>('all');
+  const [viewingFolderId, setViewingFolderId] = useState<string | null>(null);
 
   // -------------------------------------------------------------------------
   // Bootstrap / sessão
@@ -913,12 +914,25 @@ export default function App() {
                 </div>
               )}
               <div style={{ display: 'grid', gap: 8 }}>
-                {folders.map((folder) => (
-                  <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{folder.name}</div>
-                      <div style={smallMuted}>{folder.id}</div>
-                    </div>
+                {folders.map((folder) => {
+                  const linkedModels = models.filter((item) => item.folderId === folder.id);
+                  const expanded = viewingFolderId === folder.id;
+                  return (
+                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <div
+                          onClick={() => setViewingFolderId(expanded ? null : folder.id)}
+                          style={{ cursor: 'pointer', flex: 1, minWidth: 180 }}
+                          title="Clique para listar os modelos vinculados"
+                        >
+                          <div style={{ fontWeight: 600 }}>
+                            {folder.name}{' '}
+                            <span style={{ fontSize: 11, color: '#93c5fd', border: '1px solid #1d4ed8', borderRadius: 999, padding: '1px 6px' }}>
+                              {linkedModels.length} {linkedModels.length === 1 ? 'modelo' : 'modelos'}
+                            </span>
+                          </div>
+                          <div style={smallMuted}>{folder.id}</div>
+                        </div>
                     {isWriter && (
                       <div style={{ display: 'flex', gap: 8 }}>
                         <button
@@ -944,8 +958,48 @@ export default function App() {
                         </button>
                       </div>
                     )}
-                  </div>
-                ))}
+                    </div>
+                      {expanded && (
+                        <div style={{ marginTop: 12, borderTop: '1px solid #2a2f3a', paddingTop: 12, display: 'grid', gap: 8 }}>
+                          {linkedModels.length === 0 && (
+                            <div style={smallMuted}>Nenhum modelo vinculado a esta pasta.</div>
+                          )}
+                          {linkedModels.map((item) => (
+                            <div
+                              key={item.id}
+                              style={{ background: '#0f1115', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
+                            >
+                              <div>
+                                <div style={{ fontWeight: 600 }}>{item.title}</div>
+                                <div style={smallMuted}>
+                                  {C4_TYPE_LABEL[item.c4Type] ?? item.c4Type}
+                                  {item.c4Scope ? ` · ${item.c4Scope}` : ''}
+                                  {' · '}{statusLabel[item.status]}
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 6 }}>
+                                <button
+                                  onClick={() => openPreview(item)}
+                                  style={buttonStyle}
+                                >
+                                  Visualizar
+                                </button>
+                                {isWriter && (
+                                  <button
+                                    onClick={() => openDrawio(item.id)}
+                                    style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
+                                  >
+                                    draw.io
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
                 {folders.length === 0 && <div style={{ color: '#7b8290' }}>Nenhuma pasta.</div>}
               </div>
             </div>
