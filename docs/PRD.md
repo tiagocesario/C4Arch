@@ -55,6 +55,9 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 - Biblioteca draw.io nomeada `c4arch` com download do XML.
 - Listagem de modelos vinculados a uma pasta ao clicar nela.
 - Módulo de perfis e grupos de acesso (owner/editor/viewer + grupos customizados).
+- Vínculo de um novo tipo de diagrama a um modelo existente (`parent_id`),
+  com filtro por título no cadastro e bloqueio de duplicidade de tipo por
+  modelo/grupo.
 
 ### 4.2 Funcionalidades em estabilização / fora do MVP
 
@@ -63,7 +66,8 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 - Exportação JSON/YAML (model-as-code).
 - Sincronização com Google Drive e GitLab (ADR-0002 permanece rejeitada).
 - Permissões granulares aplicadas em todas as rotas e na UI.
-- Múltiplas visões por modelo e hierarquia C4 (`parent_id`).
+- Hierarquia C4 genérica em múltiplos níveis (o `parent_id` cobre apenas o
+  vínculo de um novo tipo de diagrama a um modelo existente).
 - Escala horizontal do serviço realtime.
 
 ## 5. Fluxos principais
@@ -125,6 +129,7 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 | RF-16 | Apps e serviços reutilizáveis com propagação e dependências | Entregue |
 | RF-17 | Biblioteca draw.io `c4arch` com download | Entregue |
 | RF-18 | Perfis e grupos de acesso customizados | Entregue |
+| RF-19 | Vincular novo tipo de diagrama a modelo existente (`parent_id`), sem duplicar tipo | Entregue |
 
 ## 7. Requisitos não funcionais
 
@@ -171,8 +176,10 @@ Worker (versões/sincronização futura)
 
 - Respostas do Postgres (`snake_case`) são normalizadas para `camelCase` no
   frontend por `apps/web/src/services/api.ts`.
-- `POST /api/models` aceita `orgId`, `title`, `description`, `status` e
-  `folderId`.
+- `POST /api/models` aceita `orgId`, `title`, `description`, `status`,
+  `folderId`, `c4Type`, `c4Scope` e `parentId`. Quando `parentId` é informado,
+  o novo modelo é um novo tipo de diagrama do modelo pai; a API rejeita com
+  `409` se o tipo já existir no grupo (`parent_id`/`id`).
 - `PUT /api/models/:id` aceita atualização parcial de `title`, `description`,
   `status` e `folderId`.
 - `GET /api/models/:id` devolve o modelo com `elements` e `edges`.

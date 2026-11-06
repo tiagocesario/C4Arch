@@ -43,7 +43,8 @@ consultável e versionada.
   biblioteca de shapes `c4arch`, importação/exportação de XML draw.io,
   persistência de snapshots JSON, gestão de pastas, apps e serviços reutilizáveis
   com propagação de edições e dependências, perfis/grupos de acesso
-  (owner/editor/viewer), geração automática de DAS.
+  (owner/editor/viewer), vínculo de novos tipos de diagrama a um modelo
+  existente (`parent_id`, sem duplicar tipo), geração automática de DAS.
 - **Excluído (fora do MVP):** comentários, histórico de versões/restauração,
   exportação JSON/YAML (model-as-code), sincronização com Google Drive/GitLab
   (ADR-0002 rejeitada no MVP), permissões granulares aplicadas em todas as
@@ -273,7 +274,7 @@ como `docs/images/c4arch-components.png`.
 | users | Usuários | id (UUID) |
 | organizations | Organizações/workspaces | id (UUID) |
 | memberships | Vínculo usuário-org com papel | (org_id, user_id) |
-| models | Modelos C4 | id (UUID) |
+| models | Modelos C4 (com `parent_id` para novos tipos de diagrama do mesmo modelo) | id (UUID) |
 | elements | Elementos C4 (actor/system/container/component) | id (UUID) |
 | edges | Conexões entre elementos | id (UUID) |
 | folders | Pastas (hierárquicas) | id (UUID) |
@@ -286,6 +287,9 @@ como `docs/images/c4arch-components.png`.
 - `organizations 1..n memberships n..1 users`
 - `organizations 1..n models`, `models n..1 folders`
 - `models 1..n elements`, `models 1..n edges`
+- `models 1..n models` (self-reference via `parent_id`: novos tipos de
+  diagrama do mesmo modelo; o índice único `(COALESCE(parent_id, id), c4_type)`
+  impede repetir o tipo no grupo)
 - `elements n..1 apps/services` (opcional)
 - `folders 1..n folders` (self-reference via `parent_id`)
 
@@ -331,6 +335,7 @@ Referência: `docs/ADR/`. Principais:
 | 0014 | Hardening de segurança | Adotada |
 | 0015 | Perfis e grupos de acesso | Adotada |
 | 0016 | Biblioteca draw.io `c4arch` | Adotada |
+| 0017 | Vínculo de novos tipos de diagrama a um modelo existente | Adotada |
 
 ---
 
