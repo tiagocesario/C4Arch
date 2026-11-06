@@ -69,6 +69,7 @@ export async function runMigrations() {
       status       TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','final')),
       c4_type      TEXT NOT NULL DEFAULT 'container',
       c4_scope     TEXT,
+      parent_id    UUID REFERENCES models(id) ON DELETE CASCADE,
       drawio_xml   TEXT,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -188,7 +189,10 @@ export async function runMigrations() {
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS drawio_xml TEXT`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS c4_type TEXT NOT NULL DEFAULT 'container'`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS c4_scope TEXT`,
+    `ALTER TABLE models ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES models(id) ON DELETE CASCADE`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS das_content TEXT`,
+    `CREATE INDEX IF NOT EXISTS idx_models_parent_id ON models(parent_id)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_models_group_c4type ON models (COALESCE(parent_id, id), c4_type)`,
     `CREATE INDEX IF NOT EXISTS idx_models_c4_type ON models(c4_type)`,
     `ALTER TABLE elements ADD COLUMN IF NOT EXISTS app_id UUID REFERENCES apps(id) ON DELETE SET NULL`,
     `ALTER TABLE elements ADD COLUMN IF NOT EXISTS service_id UUID REFERENCES services(id) ON DELETE SET NULL`,

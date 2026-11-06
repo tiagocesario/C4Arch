@@ -86,6 +86,7 @@ function mapModel(raw: Raw): Model {
     id: str(raw.id),
     orgId: str(raw.org_id ?? raw.orgId),
     folderId: nullableStr(raw.folder_id ?? raw.folderId),
+    parentId: nullableStr(raw.parent_id ?? raw.parentId),
     title: str(raw.title),
     description: nullableStr(raw.description),
     status: (raw.status === 'final' ? 'final' : 'draft') as ModelStatus,
@@ -264,6 +265,7 @@ export const createModel = async (input: CreateModelInput): Promise<Model> => {
     body: JSON.stringify({
       orgId: input.orgId,
       folderId: input.folderId ?? null,
+      parentId: input.parentId ?? null,
       title: input.title,
       description: input.description ?? null,
       status: input.status ?? 'draft',

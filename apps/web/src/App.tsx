@@ -203,6 +203,9 @@ export default function App() {
   const [newModelFolderId, setNewModelFolderId] = useState<string | null>(null);
   const [newModelC4Type, setNewModelC4Type] = useState<C4ModelType>('container');
   const [newModelC4Scope, setNewModelC4Scope] = useState('');
+  const [newModelParentId, setNewModelParentId] = useState<string | null>(null);
+  const [newModelParentFilter, setNewModelParentFilter] = useState('');
+  const [linkToExisting, setLinkToExisting] = useState(false);
   const [openDrawioAfterCreate, setOpenDrawioAfterCreate] = useState(true);
 
   const [editingModel, setEditingModel] = useState<Model | null>(null);
@@ -421,6 +424,9 @@ export default function App() {
     setNewModelFolderId(null);
     setNewModelC4Type('container');
     setNewModelC4Scope('');
+    setNewModelParentId(null);
+    setNewModelParentFilter('');
+    setLinkToExisting(false);
     setOpenDrawioAfterCreate(true);
     setShowCreateModel(true);
   }
@@ -445,6 +451,7 @@ export default function App() {
       const created = await createModel({
         orgId: currentOrgId,
         folderId: newModelFolderId,
+        parentId: linkToExisting ? newModelParentId : null,
         title,
         description: newModelDescription.trim() || null,
         status: 'draft',
@@ -878,6 +885,50 @@ export default function App() {
                       onChange={(e) => setNewModelC4Scope(e.target.value)}
                       style={{ ...inputStyle, width: '100%' }}
                     />
+                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={linkToExisting}
+                        onChange={(e) => {
+                          setLinkToExisting(e.target.checked);
+                          if (!e.target.checked) setNewModelParentId(null);
+                        }}
+                      />
+                      Vincular a um modelo existente (novo tipo de diagrama)
+                    </label>
+                    {linkToExisting && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <input
+                          type="text"
+                          placeholder="Filtrar modelo existente..."
+                          value={newModelParentFilter}
+                          onChange={(e) => setNewModelParentFilter(e.target.value)}
+                          style={{ ...inputStyle, width: '100%' }}
+                        />
+                        <select
+                          value={newModelParentId ?? ''}
+                          onChange={(e) => setNewModelParentId(e.target.value ? e.target.value : null)}
+                          style={{ ...inputStyle, width: '100%' }}
+                        >
+                          <option value="">Selecione o modelo pai</option>
+                          {models
+                            .filter((m) =>
+                              !newModelParentFilter.trim() ||
+                              m.title.toLowerCase().includes(newModelParentFilter.trim().toLowerCase())
+                            )
+                            .map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.title} — {C4_TYPE_LABEL[m.c4Type] ?? m.c4Type}
+                              </option>
+                            ))}
+                        </select>
+                        {newModelParentId && (
+                          <span style={smallMuted}>
+                            Novo diagrama vinculado ao modelo selecionado. Não é permitido repetir o mesmo tipo de diagrama.
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <select
                       value={newModelFolderId ?? ''}
                       onChange={(e) => setNewModelFolderId(e.target.value ? e.target.value : null)}
@@ -928,6 +979,7 @@ export default function App() {
                         <div style={smallMuted}>
                           {C4_TYPE_LABEL[item.c4Type] ?? item.c4Type}
                           {item.c4Scope ? ` · ${item.c4Scope}` : ''}
+                          {item.parentId ? ` · vinculado a ${models.find((m) => m.id === item.parentId)?.title ?? 'modelo'}` : ''}
                           {' · '}{folderName(item.folderId)} · clique para visualizar o draw.io
                         </div>
                       </div>

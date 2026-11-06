@@ -23,6 +23,7 @@ export interface Model {
   id: string;
   orgId: string;
   folderId?: string | null;
+  parentId?: string | null;
   title: string;
   description?: string | null;
   status: ModelStatus;
@@ -130,6 +131,7 @@ export interface ServiceObject {
 export interface CreateModelInput {
   orgId: string;
   folderId?: string | null;
+  parentId?: string | null;
   title: string;
   description?: string | null;
   status?: ModelStatus;
@@ -143,6 +145,7 @@ export interface UpdateModelInput {
   description?: string | null;
   status?: ModelStatus;
   folderId?: string | null;
+  parentId?: string | null;
   c4Type?: C4ModelType;
   c4Scope?: string | null;
   drawioXml?: string | null;

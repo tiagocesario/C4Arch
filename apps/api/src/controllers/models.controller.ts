@@ -40,7 +40,7 @@ export class ModelController {
   }
 
   static async create(req: AuthenticatedRequest, res: Response) {
-    const { orgId, title, description, status, folderId, c4Type, c4Scope } = req.body as {
+    const { orgId, title, description, status, folderId, c4Type, c4Scope, parentId } = req.body as {
       orgId?: string;
       title?: string;
       description?: string | null;
@@ -48,6 +48,7 @@ export class ModelController {
       folderId?: string | null;
       c4Type?: C4ModelType;
       c4Scope?: string | null;
+      parentId?: string | null;
     };
 
     const cleanTitle = typeof title === 'string' ? title.trim() : '';
@@ -69,7 +70,10 @@ export class ModelController {
     if (c4Scope !== undefined && c4Scope !== null && typeof c4Scope !== 'string') {
       return res.status(400).json({ error: 'c4Scope inválido' });
     }
-
+    if (parentId !== undefined && parentId !== null && !isUuid(parentId)) {
+      return res.status(400).json({ error: 'parentId inválido' });
+    }
+ 
     try {
       const role = await getOrgRole(req.user!.id, orgId);
       if (!isWriterRole(role)) {
@@ -86,9 +90,30 @@ export class ModelController {
         }
       }
 
+      // Validação de vínculo a modelo existente (parent) e unicidade do tipo de diagrama
+      const effectiveC4Type = c4Type ?? DEFAULT_C4_MODEL_TYPE;
+      if (parentId) {
+        const parent = await pool.query(
+          'SELECT id, org_id, c4_type FROM models WHERE id = $1',
+          [parentId]
+        );
+        if (parent.rows.length === 0 || parent.rows[0].org_id !== orgId) {
+          return res.status(404).json({ error: 'Modelo pai não encontrado ou não pertence à organização' });
+        }
+        // Impede mais de um modelo com o mesmo tipo de diagrama no mesmo grupo
+        const dup = await pool.query(
+          `SELECT id FROM models WHERE org_id = $1 AND c4_type = $2
+             AND (id = $3 OR parent_id = $3)`,
+          [orgId, effectiveC4Type, parentId]
+        );
+        if (dup.rows.length > 0 || parent.rows[0].c4_type === effectiveC4Type) {
+          return res.status(409).json({ error: 'Já existe um diagrama deste tipo vinculado a este modelo' });
+        }
+      }
+ 
       const model = await pool.query(
-        `INSERT INTO models (org_id, title, description, status, folder_id, c4_type, c4_scope)
-         VALUES ($1, $2, $3, COALESCE($4, 'draft'), $5, $6, $7) RETURNING *`,
+        `INSERT INTO models (org_id, title, description, status, folder_id, c4_type, c4_scope, parent_id)
+         VALUES ($1, $2, $3, COALESCE($4, 'draft'), $5, $6, $7, $8) RETURNING *`,
         [
           orgId,
           cleanTitle,
@@ -97,6 +122,7 @@ export class ModelController {
           folderId ?? null,
           c4Type ?? DEFAULT_C4_MODEL_TYPE,
           cleanOptionalText(c4Scope, 200),
+          parentId ?? null,
         ]
       );
       const created = model.rows[0];
@@ -162,13 +188,14 @@ export class ModelController {
 
   static async update(req: AuthenticatedRequest, res: Response) {
     const { id } = req.params;
-    const { title, description, status, folderId, c4Type, c4Scope } = req.body as {
+    const { title, description, status, folderId, c4Type, c4Scope, parentId } = req.body as {
       title?: string;
       description?: string | null;
       status?: 'draft' | 'final';
       folderId?: string | null;
       c4Type?: C4ModelType;
       c4Scope?: string | null;
+      parentId?: string | null;
     };
 
     if (!isUuid(id)) {
@@ -194,7 +221,10 @@ export class ModelController {
     if (c4Scope !== undefined && c4Scope !== null && typeof c4Scope !== 'string') {
       return res.status(400).json({ error: 'c4Scope inválido' });
     }
-
+    if (parentId !== undefined && parentId !== null && !isUuid(parentId)) {
+      return res.status(400).json({ error: 'parentId inválido' });
+    }
+ 
     try {
       const model = await getModelAccess(req.user!.id, id);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
@@ -203,6 +233,31 @@ export class ModelController {
       }
 
       const orgId = model.org_id as string;
+      // Validação de vínculo/uniqueness se parentId ou c4Type forem alterados
+      const newParentId = parentId !== undefined ? parentId : (model.parent_id as string | null);
+      const newC4Type = c4Type !== undefined ? c4Type : (model.c4_type as C4ModelType);
+      if (parentId !== undefined && parentId !== null) {
+        const parent = await pool.query('SELECT id, org_id, c4_type FROM models WHERE id = $1', [parentId]);
+        if (parent.rows.length === 0 || parent.rows[0].org_id !== orgId) {
+          return res.status(404).json({ error: 'Modelo pai não encontrado ou não pertence à organização' });
+        }
+      }
+      // unicidade do tipo de diagrama no grupo
+      const groupRoot = newParentId ?? id;
+      const dup = await pool.query(
+        `SELECT id FROM models WHERE org_id = $1 AND c4_type = $2
+           AND (id = $3 OR parent_id = $3) AND id <> $4`,
+        [orgId, newC4Type, groupRoot, id]
+      );
+      if (dup.rows.length > 0) {
+        return res.status(409).json({ error: 'Já existe um diagrama deste tipo vinculado a este modelo' });
+      }
+      if (groupRoot !== id) {
+        const parentRow = await pool.query('SELECT c4_type FROM models WHERE id = $1', [groupRoot]);
+        if (parentRow.rows[0]?.c4_type === newC4Type) {
+          return res.status(409).json({ error: 'Já existe um diagrama deste tipo vinculado a este modelo' });
+        }
+      }
       const sets: string[] = [];
       const values: unknown[] = [];
       let index = 1;
@@ -231,6 +286,10 @@ export class ModelController {
         }
         sets.push(`folder_id = $${index++}`);
         values.push(folderId);
+      }
+      if (parentId !== undefined) {
+        sets.push(`parent_id = $${index++}`);
+        values.push(parentId);
       }
       if (c4Type !== undefined) {
         sets.push(`c4_type = $${index++}`);
