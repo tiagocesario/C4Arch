@@ -19,4 +19,10 @@ router.put('/:id', verifyToken, ModelController.update);
 // Excluir modelo
 router.delete('/:id', verifyToken, ModelController.remove);
 
+// Obter DAS do modelo
+router.get('/:id/das', verifyToken, ModelController.das);
+
+// Atualizar DAS do modelo
+router.put('/:id/das', verifyToken, ModelController.updateDas);
+
 export default router;

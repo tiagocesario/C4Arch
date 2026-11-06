@@ -188,6 +188,7 @@ export async function runMigrations() {
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS drawio_xml TEXT`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS c4_type TEXT NOT NULL DEFAULT 'container'`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS c4_scope TEXT`,
+    `ALTER TABLE models ADD COLUMN IF NOT EXISTS das_content TEXT`,
     `CREATE INDEX IF NOT EXISTS idx_models_c4_type ON models(c4_type)`,
     `ALTER TABLE elements ADD COLUMN IF NOT EXISTS app_id UUID REFERENCES apps(id) ON DELETE SET NULL`,
     `ALTER TABLE elements ADD COLUMN IF NOT EXISTS service_id UUID REFERENCES services(id) ON DELETE SET NULL`,

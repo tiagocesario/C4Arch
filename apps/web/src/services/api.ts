@@ -295,6 +295,17 @@ export const updateModel = async (id: string, input: UpdateModelInput): Promise<
   return mapModel(raw);
 };
 
+export const getModelDAS = async (id: string): Promise<string> => {
+  const raw = await req<Raw>('/api/models/' + id + '/das');
+  return str(raw.content);
+};
+
+export const updateModelDAS = (id: string, content: string) =>
+  req<{ ok: boolean }>('/api/models/' + id + '/das', {
+    method: 'PUT',
+    body: JSON.stringify({ content }),
+  });
+
 // ---------------------------------------------------------------------------
 // Elementos e conexões
 // ---------------------------------------------------------------------------

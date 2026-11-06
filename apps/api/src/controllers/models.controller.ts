@@ -7,6 +7,7 @@ import {
   isC4ModelType,
   type C4ModelType,
 } from '../c4/model-types.js';
+import { generateDAS } from '../c4/das.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -98,7 +99,31 @@ export class ModelController {
           cleanOptionalText(c4Scope, 200),
         ]
       );
-      return res.status(201).json(model.rows[0]);
+      const created = model.rows[0];
+      // Gera o DAS automaticamente
+      let folderName: string | null = null;
+      if (folderId) {
+        const f = await pool.query('SELECT name FROM folders WHERE id = $1', [folderId]);
+        folderName = f.rows[0]?.name ?? null;
+      }
+      const das = generateDAS(
+        {
+          id: created.id,
+          title: created.title,
+          description: created.description,
+          status: created.status,
+          c4_type: created.c4_type,
+          c4_scope: created.c4_scope,
+          folder_id: created.folder_id,
+          org_id: created.org_id,
+        },
+        [],
+        [],
+        folderName
+      );
+      await pool.query('UPDATE models SET das_content = $1 WHERE id = $2', [das, created.id]);
+      created.das_content = das;
+      return res.status(201).json(created);
     } catch (err) {
       console.error('[models] create error', err);
       return res.status(500).json({ error: 'Erro ao criar modelo' });
@@ -225,10 +250,72 @@ export class ModelController {
           WHERE id = $${index} RETURNING *`,
         values
       );
-      return res.json(result.rows[0]);
+      const updated = result.rows[0];
+      // Regenera o DAS automaticamente a partir do modelo atual
+      const elems = await pool.query('SELECT * FROM elements WHERE model_id = $1 ORDER BY "order"', [id]);
+      const edgs = await pool.query(
+        `SELECT e.* FROM edges e WHERE e.model_id = $1`,
+        [id]
+      );
+      let folderName: string | null = null;
+      if (updated.folder_id) {
+        const f = await pool.query('SELECT name FROM folders WHERE id = $1', [updated.folder_id]);
+        folderName = f.rows[0]?.name ?? null;
+      }
+      const das = generateDAS(
+        {
+          id: updated.id,
+          title: updated.title,
+          description: updated.description,
+          status: updated.status,
+          c4_type: updated.c4_type,
+          c4_scope: updated.c4_scope,
+          folder_id: updated.folder_id,
+          org_id: updated.org_id,
+        },
+        elems.rows,
+        edgs.rows,
+        folderName
+      );
+      await pool.query('UPDATE models SET das_content = $1 WHERE id = $2', [das, id]);
+      updated.das_content = das;
+      return res.json(updated);
     } catch (err) {
       console.error('[models] update error', err);
       return res.status(500).json({ error: 'Erro ao atualizar modelo' });
+    }
+  }
+
+  static async das(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+    if (!isUuid(id)) return res.status(404).json({ error: 'Modelo não encontrado' });
+    try {
+      const model = await getModelAccess(req.user!.id, id);
+      if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      const result = await pool.query('SELECT das_content FROM models WHERE id = $1', [id]);
+      return res.json({ id, content: result.rows[0]?.das_content ?? '' });
+    } catch (err) {
+      console.error('[models] das error', err);
+      return res.status(500).json({ error: 'Erro ao carregar DAS' });
+    }
+  }
+
+  static async updateDas(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+    const { content } = req.body as { content?: string };
+    if (!isUuid(id)) return res.status(404).json({ error: 'Modelo não encontrado' });
+    if (typeof content !== 'string') return res.status(400).json({ error: 'content inválido' });
+    try {
+      const model = await getModelAccess(req.user!.id, id);
+      if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      if (!isWriterRole(model.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
+      }
+      await pool.query('UPDATE models SET das_content = $1, updated_at = NOW() WHERE id = $2', [content, id]);
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error('[models] updateDas error', err);
+      return res.status(500).json({ error: 'Erro ao salvar DAS' });
     }
   }
 

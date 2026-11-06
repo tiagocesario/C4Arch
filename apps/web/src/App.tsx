@@ -6,6 +6,8 @@ import {
   deleteModel,
   getModel,
   updateModel,
+  getModelDAS,
+  updateModelDAS,
   updateElement,
   login,
   me,
@@ -136,6 +138,10 @@ export default function App() {
   const [models, setModels] = useState<Model[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [model, setModel] = useState<ModelDetail | null>(null);
+  const [dasModel, setDasModel] = useState<Model | null>(null);
+  const [dasContent, setDasContent] = useState<string>('');
+  const [dasLoading, setDasLoading] = useState(false);
+  const [dasSaving, setDasSaving] = useState(false);
 
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('');
@@ -897,6 +903,26 @@ export default function App() {
                             draw.io
                           </button>
                         )}
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            setDasModel(item);
+                            setDasContent('');
+                            setDasLoading(true);
+                            try {
+                              const content = await getModelDAS(item.id);
+                              setDasContent(content);
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : String(err));
+                            } finally {
+                              setDasLoading(false);
+                            }
+                          }}
+                          style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
+                          title="Visualizar/editar o DAS do modelo"
+                        >
+                          DAS
+                        </button>
                         {isWriter && (
                           <button
                             onClick={(e) => { e.stopPropagation(); openEditModel(item); }}
@@ -1327,6 +1353,71 @@ export default function App() {
                   title={'Preview draw.io: ' + previewModel.title}
                   style={{ width: '100%', height: '100%', border: 0 }}
                   referrerPolicy="no-referrer"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {dasModel && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 16 }}
+          onClick={() => setDasModel(null)}
+        >
+          <div
+            style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 10, width: 'min(900px, 96vw)', height: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <h3 style={{ margin: 0 }}>DAS — {dasModel.title}</h3>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                <button
+                  onClick={async () => {
+                    if (!dasModel) return;
+                    setDasLoading(true);
+                    try {
+                      const content = await getModelDAS(dasModel.id);
+                      setDasContent(content);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : String(err));
+                    } finally {
+                      setDasLoading(false);
+                    }
+                  }}
+                  style={buttonStyle}
+                >
+                  Regenerar
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!dasModel) return;
+                    setDasSaving(true);
+                    try {
+                      await updateModelDAS(dasModel.id, dasContent);
+                      setError(null);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : String(err));
+                    } finally {
+                      setDasSaving(false);
+                    }
+                  }}
+                  style={primaryButtonStyle}
+                  disabled={dasSaving}
+                >
+                  {dasSaving ? 'Salvando...' : 'Salvar'}
+                </button>
+                <button onClick={() => setDasModel(null)} style={buttonStyle}>Fechar</button>
+              </div>
+            </div>
+            <div style={{ flex: 1, minHeight: 0, padding: 12 }}>
+              {dasLoading ? (
+                <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
+              ) : (
+                <textarea
+                  value={dasContent}
+                  onChange={(e) => setDasContent(e.target.value)}
+                  style={{ width: '100%', height: '100%', background: '#0f1115', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'none' }}
                 />
               )}
             </div>
