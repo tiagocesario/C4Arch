@@ -415,6 +415,8 @@ export default function App() {
         setError('Organização não encontrada. Faça login novamente.');
         return;
       }
+      // Garante que o seletor de modelo pai mostre também os modelos recém-criados.
+      await refreshModels();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return;
@@ -713,6 +715,13 @@ export default function App() {
     return matchesSearch && matchesFolder;
   });
 
+  // Candidatos para vincular como modelo pai: busca por título, sem depender
+  // de abrir o <select> nativo.
+  const parentCandidates = models.filter((m) => {
+    const term = newModelParentFilter.trim().toLowerCase();
+    return !term || m.title.toLowerCase().includes(term);
+  });
+
   const folderName = (id?: string | null) => folders.find((folder) => folder.id === id)?.name ?? 'Sem pasta';
   const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
@@ -905,27 +914,58 @@ export default function App() {
                           onChange={(e) => setNewModelParentFilter(e.target.value)}
                           style={{ ...inputStyle, width: '100%' }}
                         />
-                        <select
-                          value={newModelParentId ?? ''}
-                          onChange={(e) => setNewModelParentId(e.target.value ? e.target.value : null)}
-                          style={{ ...inputStyle, width: '100%' }}
+                        <div
+                          style={{
+                            maxHeight: 170,
+                            overflowY: 'auto',
+                            border: '1px solid #2a2f3a',
+                            borderRadius: 6,
+                            background: '#0f1115',
+                          }}
                         >
-                          <option value="">Selecione o modelo pai</option>
-                          {models
-                            .filter((m) =>
-                              !newModelParentFilter.trim() ||
-                              m.title.toLowerCase().includes(newModelParentFilter.trim().toLowerCase())
-                            )
-                            .map((m) => (
-                              <option key={m.id} value={m.id}>
-                                {m.title} — {C4_TYPE_LABEL[m.c4Type] ?? m.c4Type}
-                              </option>
-                            ))}
-                        </select>
-                        {newModelParentId && (
+                          {parentCandidates.length === 0 ? (
+                            <div style={{ padding: 8, fontSize: 12, color: '#7b8290' }}>
+                              {models.length === 0
+                                ? 'Nenhum modelo carregado. Feche e abra novamente o cadastro.'
+                                : 'Nenhum modelo encontrado para a busca.'}
+                            </div>
+                          ) : (
+                            parentCandidates.map((m) => (
+                              <button
+                                type="button"
+                                key={m.id}
+                                onClick={() => {
+                                  setNewModelParentId(m.id);
+                                  setNewModelParentFilter(m.title);
+                                }}
+                                style={{
+                                  display: 'block',
+                                  width: '100%',
+                                  textAlign: 'left',
+                                  padding: '6px 8px',
+                                  background: newModelParentId === m.id ? '#2a2f3a' : 'transparent',
+                                  color: '#e8eaed',
+                                  border: 'none',
+                                  borderBottom: '1px solid #1f242e',
+                                  cursor: 'pointer',
+                                  fontSize: 13,
+                                }}
+                              >
+                                {m.title}{' '}
+                                <span style={{ color: '#93c5fd', fontSize: 11 }}>
+                                  {C4_TYPE_LABEL[m.c4Type] ?? m.c4Type}
+                                </span>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                        {newModelParentId ? (
                           <span style={smallMuted}>
-                            Novo diagrama vinculado ao modelo selecionado. Não é permitido repetir o mesmo tipo de diagrama.
+                            Selecionado: {models.find((m) => m.id === newModelParentId)?.title ?? 'modelo'}.
+                            Não é permitido repetir o mesmo tipo de diagrama.
                           </span>
+                        ) : (
+                          <span style={smallMuted}>Digite o nome para filtrar e clique em um modelo da lista.</span>
                         )}
                       </div>
                     )}
