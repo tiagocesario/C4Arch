@@ -51,7 +51,13 @@ export function parseDrawio(xml: string | null | undefined): { shapes: string[];
       if (lm) label = lm[1];
       // também procura em <object> envolvente? simplificado
       if (label) {
-        const clean = label.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        const decoded = label
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'");
+        const clean = decoded.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
         if (clean && !shapes.includes(clean)) shapes.push(clean);
       }
     }
@@ -69,7 +75,13 @@ export function parseDrawio(xml: string | null | undefined): { shapes: string[];
     const tag = om[0];
     const lm = tag.match(/label\s*=\s*"([^"]*)"/);
     if (lm) {
-      const clean = lm[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      const decoded = lm[1]
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'");
+      const clean = decoded.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
       if (clean && !shapes.includes(clean)) shapes.push(clean);
     }
   }
