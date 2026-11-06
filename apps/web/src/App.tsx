@@ -179,6 +179,7 @@ export default function App() {
   const [dasLoading, setDasLoading] = useState(false);
   const [dasSaving, setDasSaving] = useState(false);
   const [dasViewMode, setDasViewMode] = useState<'edit' | 'preview'>('preview');
+  const [dasPreviewUrl, setDasPreviewUrl] = useState<string | null>(null);
 
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('');
@@ -945,11 +946,16 @@ export default function App() {
                             e.stopPropagation();
                             setDasModel(item);
                             setDasContent('');
+                            setDasPreviewUrl(null);
                             setDasViewMode('preview');
                             setDasLoading(true);
                             try {
-                              const content = await getModelDAS(item.id);
+                              const [content, detail] = await Promise.all([
+                                getModelDAS(item.id),
+                                getModel(item.id),
+                              ]);
                               setDasContent(content);
+                              if (detail.drawioXml) setDasPreviewUrl(getDrawioPreviewUrl(detail.drawioXml));
                             } catch (err) {
                               setError(err instanceof Error ? err.message : String(err));
                             } finally {
@@ -1147,9 +1153,16 @@ export default function App() {
                                   onClick={() => {
                                     setDasModel(item);
                                     setDasContent('');
+                                    setDasPreviewUrl(null);
                                     setDasViewMode('preview');
                                     setDasLoading(true);
-                                    getModelDAS(item.id).then(setDasContent).catch((err) => setError(err instanceof Error ? err.message : String(err))).finally(() => setDasLoading(false));
+                                    Promise.all([getModelDAS(item.id), getModel(item.id)])
+                                      .then(([content, detail]) => {
+                                        setDasContent(content);
+                                        if (detail.drawioXml) setDasPreviewUrl(getDrawioPreviewUrl(detail.drawioXml));
+                                      })
+                                      .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                      .finally(() => setDasLoading(false));
                                   }}
                                   style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
                                 >
@@ -1427,8 +1440,12 @@ export default function App() {
                     if (!dasModel) return;
                     setDasLoading(true);
                     try {
-                      const content = await getModelDAS(dasModel.id);
+                      const [content, detail] = await Promise.all([
+                        getModelDAS(dasModel.id),
+                        getModel(dasModel.id),
+                      ]);
                       setDasContent(content);
+                      if (detail.drawioXml) setDasPreviewUrl(getDrawioPreviewUrl(detail.drawioXml));
                     } catch (err) {
                       setError(err instanceof Error ? err.message : String(err));
                     } finally {
@@ -1443,7 +1460,8 @@ export default function App() {
                   onClick={() => {
                     const w = window.open('', '_blank');
                     if (!w) return;
-                    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${dasModel?.title ?? 'DAS'}</title><style>body{font-family:system-ui,sans-serif;margin:24px;color:#111;}h1,h2,h3{color:#1f2937;}table{border-collapse:collapse;width:100%;margin:8px 0;}th,td{border:1px solid #ccc;padding:6px;font-size:12px;}th{background:#f3f4f6;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}hr{border:none;border-top:1px solid #ccc;margin:12px 0;}@media print{body{margin:12px;}}</style></head><body>${markdownToHtml(dasContent)}</body></html>`;
+                    const imgTag = dasPreviewUrl ? `<div style="text-align:center;margin-bottom:16px;"><img src="${dasPreviewUrl}" alt="Diagrama" style="max-width:100%;border:1px solid #ccc;"/></div>` : '';
+                    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${dasModel?.title ?? 'DAS'}</title><style>body{font-family:system-ui,sans-serif;margin:24px;color:#111;}h1,h2,h3{color:#1f2937;}table{border-collapse:collapse;width:100%;margin:8px 0;}th,td{border:1px solid #ccc;padding:6px;font-size:12px;}th{background:#f3f4f6;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}hr{border:none;border-top:1px solid #ccc;margin:12px 0;}@media print{body{margin:12px;}}</style></head><body>${imgTag}${markdownToHtml(dasContent)}</body></html>`;
                     w.document.write(html);
                     w.document.close();
                     w.focus();
@@ -1493,8 +1511,14 @@ export default function App() {
                   <div
                     className="das-preview"
                     style={{ background: '#ffffff', color: '#1f2937', width: '210mm', maxWidth: '100%', minHeight: '297mm', padding: '20mm', boxShadow: '0 2px 12px rgba(0,0,0,0.4)', borderRadius: 4, lineHeight: 1.6, fontSize: 12, fontFamily: 'system-ui, sans-serif' }}
-                    dangerouslySetInnerHTML={{ __html: markdownToHtml(dasContent) }}
-                  />
+                  >
+                    {dasPreviewUrl && (
+                      <div style={{ marginBottom: 16, textAlign: 'center' }}>
+                        <img src={dasPreviewUrl} alt="Diagrama draw.io" style={{ maxWidth: '100%', border: '1px solid #ccc' }} />
+                      </div>
+                    )}
+                    <div dangerouslySetInnerHTML={{ __html: markdownToHtml(dasContent) }} />
+                  </div>
                 </div>
               )}
             </div>
