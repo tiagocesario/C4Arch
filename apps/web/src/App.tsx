@@ -1489,11 +1489,13 @@ export default function App() {
                   style={{ width: '100%', height: '100%', background: '#0f1115', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'none' }}
                 />
               ) : (
-                <div
-                  className="das-preview"
-                  style={{ background: '#0f1115', color: '#e8eaed', padding: 16, borderRadius: 6, lineHeight: 1.6, fontSize: 13 }}
-                  dangerouslySetInnerHTML={{ __html: markdownToHtml(dasContent) }}
-                />
+                <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}>
+                  <div
+                    className="das-preview"
+                    style={{ background: '#ffffff', color: '#1f2937', width: '210mm', maxWidth: '100%', minHeight: '297mm', padding: '20mm', boxShadow: '0 2px 12px rgba(0,0,0,0.4)', borderRadius: 4, lineHeight: 1.6, fontSize: 12, fontFamily: 'system-ui, sans-serif' }}
+                    dangerouslySetInnerHTML={{ __html: markdownToHtml(dasContent) }}
+                  />
+                </div>
               )}
             </div>
           </div>
