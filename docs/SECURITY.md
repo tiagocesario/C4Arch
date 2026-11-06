@@ -51,6 +51,10 @@ Ameaças tratadas nesta revisão:
 - Gestão de membros exige papel `owner` na organização: listar é permitido a
   qualquer membro, mas adicionar, alterar perfil e remover são exclusivos do
   `owner`.
+- Gestão de grupos de acesso (`/api/groups`) exige membership na organização para
+  leitura e papel `owner` para criação, edição, exclusão e gestão de membros.
+  A adição de um membro a um grupo aplica o perfil base do grupo à membership
+  quando mais permissivo.
 - A organização nunca fica sem owner: rebaixar ou remover o último `owner`
   retorna `409`. O owner também não pode remover a si mesmo.
 - `GET /api/auth/me` devolve o papel lido de `memberships` apenas para a UI. O

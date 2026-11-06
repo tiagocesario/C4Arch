@@ -1,6 +1,6 @@
 # C4Arch — Product Requirements Document (PRD)
 
-- **Versão:** 0.2.0 (revisada em 04/11/2026)
+- **Versão:** 0.3.0 (revisada em 05/11/2026)
 - **Status:** MVP em estabilização
 - **Licença:** MIT
 - **Substitui:** `docs/PDR.md` (mantido como registro histórico)
@@ -49,6 +49,12 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 - Gestão de pastas, aplicações e serviços auxiliares.
 - Abertura do editor draw.io a partir do modelo, inclusive logo após a criação.
 - Importação/exportação do XML draw.io associado ao modelo.
+- Modelos tipados pelos diagramas do C4 model (`c4_type`, `c4_scope`).
+- Apps e serviços reutilizáveis como objetos C4 no draw.io, com propagação de edições.
+- Lista de modelos dependentes de um app ou serviço.
+- Biblioteca draw.io nomeada `c4arch` com download do XML.
+- Listagem de modelos vinculados a uma pasta ao clicar nela.
+- Módulo de perfis e grupos de acesso (owner/editor/viewer + grupos customizados).
 
 ### 4.2 Funcionalidades em estabilização / fora do MVP
 
@@ -115,6 +121,10 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 | RF-12 | Exportação JSON/YAML | Planejado |
 | RF-13 | Drive/GitLab | Fora do MVP |
 | RF-14 | Permissões owner/editor/viewer aplicadas ponta a ponta | Parcial |
+| RF-15 | Modelos tipados por diagrama C4 (c4_type/c4_scope) | Entregue |
+| RF-16 | Apps e serviços reutilizáveis com propagação e dependências | Entregue |
+| RF-17 | Biblioteca draw.io `c4arch` com download | Entregue |
+| RF-18 | Perfis e grupos de acesso customizados | Entregue |
 
 ## 7. Requisitos não funcionais
 
