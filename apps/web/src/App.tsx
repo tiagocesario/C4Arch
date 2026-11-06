@@ -450,9 +450,13 @@ export default function App() {
         setError('Organização não encontrada. Faça login novamente.');
         return;
       }
+      const parentModel = linkToExisting && newModelParentId
+        ? models.find((m) => m.id === newModelParentId)
+        : null;
       const created = await createModel({
         orgId: currentOrgId,
-        folderId: newModelFolderId,
+        // O novo tipo de diagrama herda a pasta do modelo original.
+        folderId: linkToExisting ? (parentModel?.folderId ?? null) : newModelFolderId,
         parentId: linkToExisting ? newModelParentId : null,
         title,
         description: newModelDescription.trim() || null,
@@ -949,6 +953,8 @@ export default function App() {
                                 onClick={() => {
                                   setNewModelParentId(m.id);
                                   setNewModelParentFilter(m.title);
+                                  // Herda a pasta do modelo original.
+                                  setNewModelFolderId(m.folderId ?? null);
                                 }}
                                 style={{
                                   display: 'block',
@@ -973,7 +979,9 @@ export default function App() {
                         </div>
                         {newModelParentId ? (
                           <span style={smallMuted}>
-                            Selecionado: {models.find((m) => m.id === newModelParentId)?.title ?? 'modelo'}.
+                            Selecionado: {models.find((m) => m.id === newModelParentId)?.title ?? 'modelo'}
+                            {' · pasta: '}
+                            {folderName(models.find((m) => m.id === newModelParentId)?.folderId)}.
                             Não é permitido repetir o mesmo tipo de diagrama.
                           </span>
                         ) : (
@@ -981,10 +989,16 @@ export default function App() {
                         )}
                       </div>
                     )}
+                    <span style={smallMuted}>
+                      {linkToExisting && newModelParentId
+                        ? 'Pasta herdada do modelo original (não editável).'
+                        : 'Pasta'}
+                    </span>
                     <select
                       value={newModelFolderId ?? ''}
                       onChange={(e) => setNewModelFolderId(e.target.value ? e.target.value : null)}
-                      style={{ ...inputStyle, width: '100%' }}
+                      disabled={linkToExisting && !!newModelParentId}
+                      style={{ ...inputStyle, width: '100%', opacity: linkToExisting && newModelParentId ? 0.7 : 1 }}
                     >
                       <option value="">Sem pasta</option>
                       {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
