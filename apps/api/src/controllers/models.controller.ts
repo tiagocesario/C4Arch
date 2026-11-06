@@ -119,7 +119,8 @@ export class ModelController {
         },
         [],
         [],
-        folderName
+        folderName,
+        created.drawio_xml ?? null
       );
       await pool.query('UPDATE models SET das_content = $1 WHERE id = $2', [das, created.id]);
       created.das_content = das;
@@ -275,7 +276,8 @@ export class ModelController {
         },
         elems.rows,
         edgs.rows,
-        folderName
+        folderName,
+        updated.drawio_xml ?? null
       );
       await pool.query('UPDATE models SET das_content = $1 WHERE id = $2', [das, id]);
       updated.das_content = das;

@@ -32,17 +32,71 @@ export interface DasEdge {
  * Gera o conteúdo Markdown do DAS a partir dos dados do modelo.
  * Usa o template `docs/DAS-template.md` como base.
  */
+export function parseDrawio(xml: string | null | undefined): { shapes: string[]; edges: { source: string; target: string }[] } {
+  const shapes: string[] = [];
+  const edges: { source: string; target: string }[] = [];
+  if (!xml) return { shapes, edges };
+
+  // Extrai rótulos de shapes (object label ou mxCell value)
+  const labelRegex = /(?:label|value)\s*=\s*"([^"]*)"/g;
+  const cellRegex = /<mxCell\b[^>]*>/g;
+  let m: RegExpExecArray | null;
+  const cells: string[] = [];
+  while ((m = cellRegex.exec(xml)) !== null) cells.push(m[0]);
+
+  for (const cell of cells) {
+    if (/vertex\s*=\s*"1"/.test(cell) || /vertex="1"/.test(cell)) {
+      let label = '';
+      const lm = cell.match(/(?:label|value)\s*=\s*"([^"]*)"/);
+      if (lm) label = lm[1];
+      // também procura em <object> envolvente? simplificado
+      if (label) {
+        const clean = label.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        if (clean && !shapes.includes(clean)) shapes.push(clean);
+      }
+    }
+    if (/edge\s*=\s*"1"/.test(cell)) {
+      const sm = cell.match(/source\s*=\s*"([^"]*)"/);
+      const tm = cell.match(/target\s*=\s*"([^"]*)"/);
+      if (sm && tm) edges.push({ source: sm[1], target: tm[1] });
+    }
+  }
+
+  // object wrappers
+  const objRegex = /<object\b[^>]*>/g;
+  let om: RegExpExecArray | null;
+  while ((om = objRegex.exec(xml)) !== null) {
+    const tag = om[0];
+    const lm = tag.match(/label\s*=\s*"([^"]*)"/);
+    if (lm) {
+      const clean = lm[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      if (clean && !shapes.includes(clean)) shapes.push(clean);
+    }
+  }
+
+  return { shapes, edges };
+}
+
 export function generateDAS(
   model: DasModel,
   elements: DasElement[] = [],
   edges: DasEdge[] = [],
-  folderName?: string | null
+  folderName?: string | null,
+  drawioXml?: string | null
 ): string {
   const now = new Date().toLocaleDateString('pt-BR');
   const typeLabel = model.c4_type ?? 'container';
   const scope = model.c4_scope ?? '—';
 
-  const elementRows = elements.length
+  const parsed = parseDrawio(drawioXml);
+  // Se não houver elementos no Postgres, usa os shapes do draw.io
+  const effectiveElements = elements.length ? elements : parsed.shapes.map((s, i) => ({
+    id: `drawio-${i}`,
+    type: 'container',
+    title: s,
+  }));
+
+  const elementRows = effectiveElements.length
     ? elements
         .map(
           (e) =>
@@ -54,11 +108,13 @@ export function generateDAS(
   const edgeRows = edges.length
     ? edges
         .map((e) => {
-          const from = elements.find((x) => x.id === e.from_id)?.title ?? e.from_id ?? '—';
-          const to = elements.find((x) => x.id === e.to_id)?.title ?? e.to_id ?? '—';
+          const from = effectiveElements.find((x) => x.id === e.from_id)?.title ?? e.from_id ?? '—';
+          const to = effectiveElements.find((x) => x.id === e.to_id)?.title ?? e.to_id ?? '—';
           return `| ${from} | ${to} | ${e.label ?? '—'} | ${e.type ?? 'call'} |`;
         })
         .join('\n')
+    : parsed.edges.length
+    ? parsed.edges.map((e) => `| ${e.source} | ${e.target} | — | draw.io |`).join('\n')
     : '| _nenhuma conexão_ | — | — | — |';
 
   return `# Documento de Arquitetura de Soluções (DAS)
@@ -154,31 +210,43 @@ ${edgeRows}
 
 ---
 
-## 7. Visão de componentes (C4 — Nível 3)
+## 7. Desenho (draw.io)
+
+### 7.1 Shapes encontrados no diagrama
+
+${parsed.shapes.length ? parsed.shapes.map((s) => `- ${s}`).join('\n') : '_Nenhum shape encontrado._'}
+
+### 7.2 Conexões do diagrama
+
+${parsed.edges.length ? parsed.edges.map((e) => `- ${e.source} → ${e.target}`).join('\n') : '_Nenhuma conexão encontrada._'}
+
+---
+
+## 8. Visão de componentes (C4 — Nível 3)
 
 _A detalhar._
 
 ---
 
-## 8. Modelo de dados
+## 9. Modelo de dados
 
 _A definir._
 
 ---
 
-## 9. Segurança
+## 10. Segurança
 
 RBAC por organização (owner/editor/viewer). Ver \`docs/SECURITY.md\`.
 
 ---
 
-## 10. Decisões de arquitetura
+## 11. Decisões de arquitetura
 
 Referência: \`docs/ADR/\`.
 
 ---
 
-## 11. Histórico
+## 12. Histórico
 
 | Versão | Data | Autor | Descrição |
 |---|---|---|---|
