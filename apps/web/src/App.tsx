@@ -17,10 +17,12 @@ import {
   createApp,
   updateApp,
   deleteApp,
+  listAppDependencies,
   listServices,
   createService,
   updateService,
   deleteService,
+  listServiceDependencies,
   importDrawio,
   openDrawioEditor,
   getDrawioEditorUrl,
@@ -28,7 +30,18 @@ import {
 } from './services/api';
 import { Canvas } from './components/Canvas';
 import * as ws from './services/ws';
-import type { Model, ModelDetail, Folder, AppObject, ServiceObject, ModelStatus, SessionUser } from './services/types';
+import type {
+  Model,
+  ModelDetail,
+  Folder,
+  AppObject,
+  ServiceObject,
+  ModelStatus,
+  SessionUser,
+  AssetDependency,
+  C4ModelType,
+} from './services/types';
+import { C4_MODEL_TYPES } from './services/types';
 import type { UserRole } from './types/user';
 import UserManagement from './pages/UserManagement';
 
@@ -73,6 +86,49 @@ const smallMuted: CSSProperties = { fontSize: 12, color: '#7b8290' };
 
 const statusLabel: Record<ModelStatus, string> = { draft: 'Rascunho', final: 'Final' };
 
+const C4_TYPE_LABEL: Record<C4ModelType, string> = {
+  'system-context': 'Contexto do sistema',
+  container: 'Container',
+  component: 'Componente',
+  code: 'Código',
+  'system-landscape': 'System landscape',
+  dynamic: 'Dinâmico',
+  deployment: 'Implantação',
+};
+
+const C4_TYPE_HELP: Record<C4ModelType, string> = {
+  'system-context': 'Um software system em foco, com pessoas e sistemas externos.',
+  container: 'Apps, serviços e data stores que compõem um software system.',
+  component: 'Componentes dentro de um container específico.',
+  code: 'Classes, interfaces e tabelas de um componente (use sob demanda).',
+  'system-landscape': 'People e software systems de uma organização/empresa.',
+  dynamic: 'Interações em runtime para uma feature ou caso de uso.',
+  deployment: 'Instâncias de systems/containers em um ambiente de deployment.',
+};
+
+interface AssetDraft {
+  kind: 'app' | 'service';
+  id?: string;
+  name: string;
+  description: string;
+  protocol: string;
+  port: string;
+}
+
+const EMPTY_ASSET_DRAFT: AssetDraft = {
+  kind: 'app',
+  name: '',
+  description: '',
+  protocol: 'http',
+  port: '',
+};
+
+interface DependencyTarget {
+  kind: 'app' | 'service';
+  id: string;
+  name: string;
+}
+
 export default function App() {
   const [mode, setMode] = useState<Mode>('list');
   const [models, setModels] = useState<Model[]>([]);
@@ -99,6 +155,8 @@ export default function App() {
   const [newModelTitle, setNewModelTitle] = useState('');
   const [newModelDescription, setNewModelDescription] = useState('');
   const [newModelFolderId, setNewModelFolderId] = useState<string | null>(null);
+  const [newModelC4Type, setNewModelC4Type] = useState<C4ModelType>('container');
+  const [newModelC4Scope, setNewModelC4Scope] = useState('');
   const [openDrawioAfterCreate, setOpenDrawioAfterCreate] = useState(true);
 
   const [editingModel, setEditingModel] = useState<Model | null>(null);
@@ -106,7 +164,17 @@ export default function App() {
   const [editDescription, setEditDescription] = useState('');
   const [editStatus, setEditStatus] = useState<ModelStatus>('draft');
   const [editFolderId, setEditFolderId] = useState<string | null>(null);
+  const [editC4Type, setEditC4Type] = useState<C4ModelType>('container');
+  const [editC4Scope, setEditC4Scope] = useState('');
   const [savingModel, setSavingModel] = useState(false);
+
+  const [assetDraft, setAssetDraft] = useState<AssetDraft | null>(null);
+  const [savingAsset, setSavingAsset] = useState(false);
+
+  const [dependencyTarget, setDependencyTarget] = useState<DependencyTarget | null>(null);
+  const [dependencies, setDependencies] = useState<AssetDependency[]>([]);
+  const [dependenciesLoading, setDependenciesLoading] = useState(false);
+  const [dependenciesError, setDependenciesError] = useState<string | null>(null);
 
   const [previewModel, setPreviewModel] = useState<Model | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -298,6 +366,8 @@ export default function App() {
     setNewModelTitle('');
     setNewModelDescription('');
     setNewModelFolderId(null);
+    setNewModelC4Type('container');
+    setNewModelC4Scope('');
     setOpenDrawioAfterCreate(true);
     setShowCreateModel(true);
   }
@@ -325,11 +395,16 @@ export default function App() {
         title,
         description: newModelDescription.trim() || null,
         status: 'draft',
+        c4Type: newModelC4Type,
+        c4Scope: newModelC4Scope.trim() || null,
       });
       setModels((previous) => [created, ...previous]);
       setShowCreateModel(false);
       setError(null);
-      await openModel(created.id);
+      // O botão "Editor C4" foi ocultado; o fluxo abre apenas o draw.io.
+      setMode('list');
+      setSelectedId(null);
+      setModel(null);
 
       if (openDrawioAfterCreate) {
         const url = await getDrawioEditorUrl(created.id);
@@ -353,6 +428,8 @@ export default function App() {
     setEditDescription(target.description ?? '');
     setEditStatus(target.status);
     setEditFolderId(target.folderId ?? null);
+    setEditC4Type(target.c4Type ?? 'container');
+    setEditC4Scope(target.c4Scope ?? '');
     setError(null);
   }
 
@@ -371,6 +448,8 @@ export default function App() {
         description: editDescription.trim() || null,
         status: editStatus,
         folderId: editFolderId,
+        c4Type: editC4Type,
+        c4Scope: editC4Scope.trim() || null,
       });
       setModels((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
       setModel((previous) => (previous && previous.id === updated.id ? { ...previous, ...updated } : previous));
@@ -474,6 +553,97 @@ export default function App() {
         : previous);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Apps, serviços e dependências
+  // -------------------------------------------------------------------------
+
+  function openCreateAsset(kind: 'app' | 'service') {
+    setAssetDraft({ ...EMPTY_ASSET_DRAFT, kind });
+    setError(null);
+  }
+
+  function openEditAsset(kind: 'app' | 'service', asset: AppObject | ServiceObject) {
+    setAssetDraft({
+      kind,
+      id: asset.id,
+      name: asset.name,
+      description: asset.description ?? '',
+      protocol: kind === 'service' ? ((asset as ServiceObject).protocol ?? 'http') : 'http',
+      port:
+        kind === 'service' && (asset as ServiceObject).port != null
+          ? String((asset as ServiceObject).port)
+          : '',
+    });
+    setError(null);
+  }
+
+  async function saveAsset(e: FormEvent) {
+    e.preventDefault();
+    if (!assetDraft) return;
+    const name = assetDraft.name.trim();
+    if (!name) {
+      setError('Informe o nome.');
+      return;
+    }
+    if (!orgId) {
+      setError('Organização não encontrada.');
+      return;
+    }
+
+    const portValue = assetDraft.port.trim() ? Number(assetDraft.port) : null;
+    if (portValue !== null && (!Number.isInteger(portValue) || portValue < 1 || portValue > 65535)) {
+      setError('Porta inválida (1–65535).');
+      return;
+    }
+
+    setSavingAsset(true);
+    try {
+      if (assetDraft.kind === 'app') {
+        const payload = {
+          name,
+          description: assetDraft.description.trim() || null,
+        };
+        if (assetDraft.id) await updateApp(assetDraft.id, payload);
+        else await createApp({ orgId, ...payload });
+        setApps(await listApps(orgId));
+      } else {
+        const payload = {
+          name,
+          description: assetDraft.description.trim() || null,
+          protocol: assetDraft.protocol.trim() || 'http',
+          port: portValue,
+        };
+        if (assetDraft.id) await updateService(assetDraft.id, payload);
+        else await createService({ orgId, ...payload });
+        setServices(await listServices(orgId));
+      }
+      setAssetDraft(null);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingAsset(false);
+    }
+  }
+
+  async function openDependencies(kind: 'app' | 'service', asset: AppObject | ServiceObject) {
+    setDependencyTarget({ kind, id: asset.id, name: asset.name });
+    setDependencies([]);
+    setDependenciesError(null);
+    setDependenciesLoading(true);
+    try {
+      const rows =
+        kind === 'app'
+          ? await listAppDependencies(asset.id)
+          : await listServiceDependencies(asset.id);
+      setDependencies(rows);
+    } catch (err) {
+      setDependenciesError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDependenciesLoading(false);
     }
   }
 
@@ -602,6 +772,26 @@ export default function App() {
                       rows={3}
                       style={{ ...inputStyle, width: '100%', resize: 'vertical' }}
                     />
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+                      <span>Tipo de diagrama C4</span>
+                      <select
+                        value={newModelC4Type}
+                        onChange={(e) => setNewModelC4Type(e.target.value as C4ModelType)}
+                        style={{ ...inputStyle, width: '100%' }}
+                      >
+                        {C4_MODEL_TYPES.map((type) => (
+                          <option key={type} value={type}>{C4_TYPE_LABEL[type]}</option>
+                        ))}
+                      </select>
+                      <span style={smallMuted}>{C4_TYPE_HELP[newModelC4Type]}</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Escopo (ex.: sistema de vendas)"
+                      value={newModelC4Scope}
+                      onChange={(e) => setNewModelC4Scope(e.target.value)}
+                      style={{ ...inputStyle, width: '100%' }}
+                    />
                     <select
                       value={newModelFolderId ?? ''}
                       onChange={(e) => setNewModelFolderId(e.target.value ? e.target.value : null)}
@@ -649,16 +839,13 @@ export default function App() {
                           </span>
                         </div>
                         <div style={smallMuted}>{item.description || 'Sem descrição'}</div>
-                        <div style={smallMuted}>{folderName(item.folderId)} · clique para visualizar o draw.io</div>
+                        <div style={smallMuted}>
+                          {C4_TYPE_LABEL[item.c4Type] ?? item.c4Type}
+                          {item.c4Scope ? ` · ${item.c4Scope}` : ''}
+                          {' · '}{folderName(item.folderId)} · clique para visualizar o draw.io
+                        </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); openModel(item.id); }}
-                          style={buttonStyle}
-                          title={isWriter ? 'Abrir o editor C4 (React Flow)' : 'Visualizar o modelo C4 (somente leitura)'}
-                        >
-                          {isWriter ? 'Editor C4' : 'Visualizar C4'}
-                        </button>
                         {isWriter && (
                           <button
                             onClick={(e) => { e.stopPropagation(); openDrawio(item.id); }}
@@ -766,57 +953,51 @@ export default function App() {
 
           {mode === 'apps' && (
             <div style={{ padding: '16px' }}>
-              <h2 style={{ marginTop: 0 }}>Aplicações</h2>
-              {isWriter && (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
-                  <input id="app-name" placeholder="Nome da aplicação" style={inputStyle} />
-                  <input id="app-desc" placeholder="Descrição" style={inputStyle} />
-                  <button
-                    onClick={async () => {
-                      const name = (document.getElementById('app-name') as HTMLInputElement)?.value;
-                      const description = (document.getElementById('app-desc') as HTMLInputElement)?.value;
-                      if (!name) return;
-                      await createApp({ orgId, name, description });
-                      setApps(await listApps(orgId));
-                    }}
-                    style={primaryButtonStyle}
-                  >
-                    Criar
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <h2 style={{ margin: 0 }}>Aplicações</h2>
+                {isWriter && (
+                  <button onClick={() => openCreateAsset('app')} style={primaryButtonStyle}>
+                    + Nova aplicação
                   </button>
-                </div>
-              )}
+                )}
+              </div>
+              <p style={smallMuted}>
+                Apps são containers C4 reutilizáveis: ao inserir na biblioteca do draw.io, o objeto
+                fica vinculado ao catálogo e acompanha as edições.
+              </p>
               <div style={{ display: 'grid', gap: 8 }}>
                 {apps.map((item) => (
-                  <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
-                      <div style={smallMuted}>{item.description}</div>
+                      <div style={smallMuted}>{item.description || 'Sem descrição'}</div>
                     </div>
-                    {isWriter && (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button
-                          onClick={async () => {
-                            const name = window.prompt('Novo nome:', item.name);
-                            if (!name) return;
-                            await updateApp(item.id, { name });
-                            setApps(await listApps(orgId));
-                          }}
-                          style={buttonStyle}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (!window.confirm('Excluir a aplicação "' + item.name + '"?')) return;
-                            await deleteApp(item.id);
-                            setApps(await listApps(orgId));
-                          }}
-                          style={dangerButtonStyle}
-                        >
-                          Excluir
-                        </button>
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button onClick={() => openDependencies('app', item)} style={buttonStyle}>
+                        Modelos dependentes
+                      </button>
+                      {isWriter && (
+                        <>
+                          <button onClick={() => openEditAsset('app', item)} style={buttonStyle}>
+                            Editar
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('Excluir a aplicação "' + item.name + '"?')) return;
+                              try {
+                                await deleteApp(item.id);
+                                setApps(await listApps(orgId));
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : String(err));
+                              }
+                            }}
+                            style={dangerButtonStyle}
+                          >
+                            Excluir
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {apps.length === 0 && <div style={{ color: '#7b8290' }}>Nenhuma aplicação.</div>}
@@ -826,57 +1007,53 @@ export default function App() {
 
           {mode === 'services' && (
             <div style={{ padding: '16px' }}>
-              <h2 style={{ marginTop: 0 }}>Serviços</h2>
-              {isWriter && (
-                <div style={{ display: 'flex', gap: '8px', marginBottom: 12 }}>
-                  <input id="svc-name" placeholder="Nome do serviço" style={inputStyle} />
-                  <input id="svc-port" placeholder="Porta" style={inputStyle} />
-                  <button
-                    onClick={async () => {
-                      const name = (document.getElementById('svc-name') as HTMLInputElement)?.value;
-                      const port = Number((document.getElementById('svc-port') as HTMLInputElement)?.value);
-                      if (!name) return;
-                      await createService({ orgId, name, port: Number.isFinite(port) ? port : undefined });
-                      setServices(await listServices(orgId));
-                    }}
-                    style={primaryButtonStyle}
-                  >
-                    Criar
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+                <h2 style={{ margin: 0 }}>Serviços</h2>
+                {isWriter && (
+                  <button onClick={() => openCreateAsset('service')} style={primaryButtonStyle}>
+                    + Novo serviço
                   </button>
-                </div>
-              )}
+                )}
+              </div>
+              <p style={smallMuted}>
+                Serviços são containers C4 reutilizáveis no draw.io. Protocolo, porta e descrição
+                são propagados para todos os modelos que usam o serviço.
+              </p>
               <div style={{ display: 'grid', gap: 8 }}>
                 {services.map((item) => (
-                  <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
-                      <div style={smallMuted}>{item.protocol}:{item.port} — {item.description}</div>
-                    </div>
-                    {isWriter && (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <button
-                          onClick={async () => {
-                            const name = window.prompt('Novo nome:', item.name);
-                            if (!name) return;
-                            await updateService(item.id, { name });
-                            setServices(await listServices(orgId));
-                          }}
-                          style={buttonStyle}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={async () => {
-                            if (!window.confirm('Excluir o serviço "' + item.name + '"?')) return;
-                            await deleteService(item.id);
-                            setServices(await listServices(orgId));
-                          }}
-                          style={dangerButtonStyle}
-                        >
-                          Excluir
-                        </button>
+                      <div style={smallMuted}>
+                        {item.protocol}{item.port ? `:${item.port}` : ''} — {item.description || 'Sem descrição'}
                       </div>
-                    )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      <button onClick={() => openDependencies('service', item)} style={buttonStyle}>
+                        Modelos dependentes
+                      </button>
+                      {isWriter && (
+                        <>
+                          <button onClick={() => openEditAsset('service', item)} style={buttonStyle}>
+                            Editar
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!window.confirm('Excluir o serviço "' + item.name + '"?')) return;
+                              try {
+                                await deleteService(item.id);
+                                setServices(await listServices(orgId));
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : String(err));
+                              }
+                            }}
+                            style={dangerButtonStyle}
+                          >
+                            Excluir
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
                 {services.length === 0 && <div style={{ color: '#7b8290' }}>Nenhum serviço.</div>}
@@ -950,22 +1127,16 @@ export default function App() {
             <div style={{ padding: '10px 14px', borderBottom: '1px solid #2a2f3a', display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
                 <h3 style={{ margin: 0 }}>{previewModel.title}</h3>
-                <div style={smallMuted}>Preview draw.io (somente leitura)</div>
+                <div style={smallMuted}>
+                  {C4_TYPE_LABEL[previewModel.c4Type] ?? previewModel.c4Type}
+                  {previewModel.c4Scope ? ` · ${previewModel.c4Scope}` : ''}
+                  {' · '}Preview draw.io (somente leitura)
+                </div>
               </div>
               <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
                 {isWriter && (
                   <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Abrir editor draw.io</button>
                 )}
-                <button
-                  onClick={() => {
-                    const id = previewModel.id;
-                    closePreview();
-                    openModel(id);
-                  }}
-                  style={buttonStyle}
-                >
-                  {isWriter ? 'Editor C4' : 'Visualizar C4'}
-                </button>
                 {previewUrl && (
                   <a
                     href={previewUrl}
@@ -992,16 +1163,6 @@ export default function App() {
                     {isWriter && (
                       <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Criar/editar no draw.io</button>
                     )}
-                    <button
-                      onClick={() => {
-                        const id = previewModel.id;
-                        closePreview();
-                        openModel(id);
-                      }}
-                      style={buttonStyle}
-                    >
-                      {isWriter ? 'Abrir editor C4' : 'Visualizar C4'}
-                    </button>
                   </div>
                 </div>
               )}
@@ -1013,6 +1174,124 @@ export default function App() {
                   referrerPolicy="no-referrer"
                 />
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {assetDraft && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050 }}>
+          <form onSubmit={saveAsset} style={{ background: '#1a1d27', padding: 20, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12, width: 440 }}>
+            <h3 style={{ margin: 0 }}>
+              {assetDraft.id ? 'Editar' : assetDraft.kind === 'app' ? 'Nova aplicação' : 'Novo serviço'}
+            </h3>
+            <input
+              type="text"
+              placeholder={assetDraft.kind === 'app' ? 'Nome da aplicação' : 'Nome do serviço'}
+              value={assetDraft.name}
+              onChange={(e) => setAssetDraft({ ...assetDraft, name: e.target.value })}
+              style={{ ...inputStyle, width: '100%' }}
+              autoFocus
+            />
+            <textarea
+              placeholder="Descrição curta (aparece no objeto C4)"
+              value={assetDraft.description}
+              onChange={(e) => setAssetDraft({ ...assetDraft, description: e.target.value })}
+              rows={3}
+              style={{ ...inputStyle, width: '100%', resize: 'vertical' }}
+            />
+            {assetDraft.kind === 'service' && (
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Protocolo (http, https, grpc...)"
+                  value={assetDraft.protocol}
+                  onChange={(e) => setAssetDraft({ ...assetDraft, protocol: e.target.value })}
+                  style={{ ...inputStyle, flex: 1 }}
+                />
+                <input
+                  type="number"
+                  min={1}
+                  max={65535}
+                  placeholder="Porta"
+                  value={assetDraft.port}
+                  onChange={(e) => setAssetDraft({ ...assetDraft, port: e.target.value })}
+                  style={{ ...inputStyle, width: 110 }}
+                />
+              </div>
+            )}
+            <p style={smallMuted}>
+              As alterações são propagadas para todos os modelos que usam este
+              {assetDraft.kind === 'app' ? ' app' : ' serviço'}.
+            </p>
+            {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" onClick={() => setAssetDraft(null)} style={buttonStyle}>Cancelar</button>
+              <button type="submit" style={primaryButtonStyle} disabled={savingAsset}>
+                {savingAsset ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {dependencyTarget && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050, padding: 16 }}
+          onClick={() => setDependencyTarget(null)}
+        >
+          <div
+            style={{ background: '#111827', border: '1px solid #2a2f3a', borderRadius: 10, width: 'min(760px, 96vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div>
+                <h3 style={{ margin: 0 }}>Modelos dependentes</h3>
+                <div style={smallMuted}>
+                  {dependencyTarget.kind === 'app' ? 'Aplicação' : 'Serviço'}: {dependencyTarget.name}
+                </div>
+              </div>
+              <button onClick={() => setDependencyTarget(null)} style={{ ...buttonStyle, marginLeft: 'auto' }}>
+                Fechar
+              </button>
+            </div>
+            <div style={{ padding: 16, overflowY: 'auto', display: 'grid', gap: 8 }}>
+              {dependenciesLoading && <div style={smallMuted}>Consultando modelos...</div>}
+              {!dependenciesLoading && dependenciesError && (
+                <div style={{ color: '#f87171' }}>{dependenciesError}</div>
+              )}
+              {!dependenciesLoading && !dependenciesError && dependencies.length === 0 && (
+                <div style={smallMuted}>
+                  Nenhum modelo usa este {dependencyTarget.kind === 'app' ? 'app' : 'serviço'} ainda.
+                  Insira o objeto pela biblioteca “Aplicações e Serviços” no draw.io.
+                </div>
+              )}
+              {!dependenciesLoading && !dependenciesError && dependencies.map((dep) => (
+                <div key={dep.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{dep.title}</div>
+                    <div style={smallMuted}>
+                      {C4_TYPE_LABEL[dep.c4Type] ?? dep.c4Type}
+                      {dep.c4Scope ? ` · ${dep.c4Scope}` : ''}
+                      {' · '}{dep.folderName || 'Sem pasta'}
+                    </div>
+                    <div style={{ ...smallMuted, marginTop: 4 }}>
+                      {dep.occurrences} ocorrência(s)
+                      {dep.viaElements ? ' · vínculo REST' : ''}
+                      {dep.viaDrawio ? ' · objeto draw.io' : ''}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setDependencyTarget(null);
+                      openPreview(dep);
+                    }}
+                    style={buttonStyle}
+                  >
+                    Abrir preview
+                  </button>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -1045,6 +1324,23 @@ export default function App() {
               <option value="draft">Rascunho</option>
               <option value="final">Final</option>
             </select>
+            <select
+              value={editC4Type}
+              onChange={(e) => setEditC4Type(e.target.value as C4ModelType)}
+              style={{ ...inputStyle, width: '100%' }}
+            >
+              {C4_MODEL_TYPES.map((type) => (
+                <option key={type} value={type}>{C4_TYPE_LABEL[type]}</option>
+              ))}
+            </select>
+            <div style={smallMuted}>{C4_TYPE_HELP[editC4Type]}</div>
+            <input
+              type="text"
+              placeholder="Escopo C4 (ex.: sistema de vendas)"
+              value={editC4Scope}
+              onChange={(e) => setEditC4Scope(e.target.value)}
+              style={{ ...inputStyle, width: '100%' }}
+            />
             <select
               value={editFolderId ?? ''}
               onChange={(e) => setEditFolderId(e.target.value ? e.target.value : null)}

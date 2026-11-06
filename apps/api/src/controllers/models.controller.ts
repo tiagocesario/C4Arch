@@ -2,6 +2,11 @@ import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, getOrgRole, isWriterRole } from '../auth/access.js';
+import {
+  DEFAULT_C4_MODEL_TYPE,
+  isC4ModelType,
+  type C4ModelType,
+} from '../c4/model-types.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -34,12 +39,14 @@ export class ModelController {
   }
 
   static async create(req: AuthenticatedRequest, res: Response) {
-    const { orgId, title, description, status, folderId } = req.body as {
+    const { orgId, title, description, status, folderId, c4Type, c4Scope } = req.body as {
       orgId?: string;
       title?: string;
       description?: string | null;
       status?: 'draft' | 'final';
       folderId?: string | null;
+      c4Type?: C4ModelType;
+      c4Scope?: string | null;
     };
 
     const cleanTitle = typeof title === 'string' ? title.trim() : '';
@@ -54,6 +61,12 @@ export class ModelController {
     }
     if (folderId !== undefined && folderId !== null && !isUuid(folderId)) {
       return res.status(400).json({ error: 'folderId inválido' });
+    }
+    if (c4Type !== undefined && !isC4ModelType(c4Type)) {
+      return res.status(400).json({ error: 'c4Type inválido' });
+    }
+    if (c4Scope !== undefined && c4Scope !== null && typeof c4Scope !== 'string') {
+      return res.status(400).json({ error: 'c4Scope inválido' });
     }
 
     try {
@@ -73,14 +86,16 @@ export class ModelController {
       }
 
       const model = await pool.query(
-        `INSERT INTO models (org_id, title, description, status, folder_id)
-         VALUES ($1, $2, $3, COALESCE($4, 'draft'), $5) RETURNING *`,
+        `INSERT INTO models (org_id, title, description, status, folder_id, c4_type, c4_scope)
+         VALUES ($1, $2, $3, COALESCE($4, 'draft'), $5, $6, $7) RETURNING *`,
         [
           orgId,
           cleanTitle,
           cleanOptionalText(description, 5000),
           status ?? null,
           folderId ?? null,
+          c4Type ?? DEFAULT_C4_MODEL_TYPE,
+          cleanOptionalText(c4Scope, 200),
         ]
       );
       return res.status(201).json(model.rows[0]);
@@ -121,11 +136,13 @@ export class ModelController {
 
   static async update(req: AuthenticatedRequest, res: Response) {
     const { id } = req.params;
-    const { title, description, status, folderId } = req.body as {
+    const { title, description, status, folderId, c4Type, c4Scope } = req.body as {
       title?: string;
       description?: string | null;
       status?: 'draft' | 'final';
       folderId?: string | null;
+      c4Type?: C4ModelType;
+      c4Scope?: string | null;
     };
 
     if (!isUuid(id)) {
@@ -144,6 +161,12 @@ export class ModelController {
     }
     if (folderId !== undefined && folderId !== null && !isUuid(folderId)) {
       return res.status(400).json({ error: 'folderId inválido' });
+    }
+    if (c4Type !== undefined && !isC4ModelType(c4Type)) {
+      return res.status(400).json({ error: 'c4Type inválido' });
+    }
+    if (c4Scope !== undefined && c4Scope !== null && typeof c4Scope !== 'string') {
+      return res.status(400).json({ error: 'c4Scope inválido' });
     }
 
     try {
@@ -182,6 +205,14 @@ export class ModelController {
         }
         sets.push(`folder_id = $${index++}`);
         values.push(folderId);
+      }
+      if (c4Type !== undefined) {
+        sets.push(`c4_type = $${index++}`);
+        values.push(c4Type);
+      }
+      if (c4Scope !== undefined) {
+        sets.push(`c4_scope = $${index++}`);
+        values.push(cleanOptionalText(c4Scope, 200));
       }
 
       if (sets.length === 0) {

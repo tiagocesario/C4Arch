@@ -93,10 +93,10 @@ export async function seedDemo() {
     const folder = folderRes.rows[0];
 
     const modelRes = await client.query(
-      `INSERT INTO models (org_id, folder_id, title, status)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO models (org_id, folder_id, title, status, c4_type, c4_scope)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id`,
-      [org.id, folder?.id, 'Modelo C4 - Demo', 'draft']
+      [org.id, folder?.id, 'Modelo C4 - Demo', 'draft', 'container', 'Sistema Demo']
     );
     const model = modelRes.rows[0];
     if (!model) return;

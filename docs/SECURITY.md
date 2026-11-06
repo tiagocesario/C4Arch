@@ -75,6 +75,13 @@ Ameaças tratadas nesta revisão:
 - A biblioteca de shapes é montada a partir das abas Apps e Serviços e entregue
   como data URL (`clibs`), evitando CORS e conteúdo misto entre o draw.io HTTPS e
   uma API local em HTTP.
+- Cada objeto da biblioteca carrega marcadores (`c4archAssetId`,
+  `c4archAssetKind`) que vinculam a shape ao catálogo. A edição de um app/serviço
+  propaga nome, descrição e metadados para `elements` e para o `drawio_xml` de
+  todos os modelos da organização que reutilizam o objeto.
+- `GET /api/apps/:id/dependencies` e `GET /api/services/:id/dependencies` são
+  somente leitura e exigem membership na organização (o vínculo pode vir de
+  `elements` ou dos marcadores no XML).
 - A página do editor define CSP restritiva, `Referrer-Policy: no-referrer` e
   `Cache-Control: no-store`.
 - XML de importação é limitado a 100 kB e validado minimamente.

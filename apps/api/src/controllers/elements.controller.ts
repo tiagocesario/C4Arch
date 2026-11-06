@@ -4,9 +4,45 @@ import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, isWriterRole } from '../auth/access.js';
 
 const ELEMENT_TYPES = new Set(['actor', 'system', 'container', 'component']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
+/**
+ * Um elemento pode apontar para um app ou serviço da mesma organização (nunca
+ * para os dois). Esses vínculos alimentam a lista de dependências dos modelos.
+ */
+async function validateAssetLink(
+  orgId: string,
+  appId: string | null | undefined,
+  serviceId: string | null | undefined
+): Promise<string | null> {
+  if (appId != null && serviceId != null) {
+    return 'Um elemento não pode referenciar app e serviço ao mesmo tempo';
+  }
+  if (appId != null) {
+    if (!isUuid(appId)) return 'appId inválido';
+    const found = await pool.query(
+      'SELECT id FROM apps WHERE id = $1 AND org_id = $2',
+      [appId, orgId]
+    );
+    if (found.rows.length === 0) return 'Aplicação não encontrada na organização';
+  }
+  if (serviceId != null) {
+    if (!isUuid(serviceId)) return 'serviceId inválido';
+    const found = await pool.query(
+      'SELECT id FROM services WHERE id = $1 AND org_id = $2',
+      [serviceId, orgId]
+    );
+    if (found.rows.length === 0) return 'Serviço não encontrado na organização';
+  }
+  return null;
 }
 
 export class ElementController {
@@ -30,7 +66,7 @@ export class ElementController {
 
   static async create(req: AuthenticatedRequest, res: Response) {
     const { modelId } = req.params;
-    const { title, type, description, metadata, positionX, positionY, order } = req.body as {
+    const { title, type, description, metadata, positionX, positionY, order, appId, serviceId } = req.body as {
       title?: string;
       type?: string;
       description?: string | null;
@@ -38,6 +74,8 @@ export class ElementController {
       positionX?: number;
       positionY?: number;
       order?: number;
+      appId?: string | null;
+      serviceId?: string | null;
     };
 
     const cleanTitle = typeof title === 'string' ? title.trim() : '';
@@ -46,6 +84,9 @@ export class ElementController {
     }
     if (typeof type !== 'string' || !ELEMENT_TYPES.has(type)) {
       return res.status(400).json({ error: 'type inválido' });
+    }
+    if ((appId != null || serviceId != null) && type !== 'container') {
+      return res.status(400).json({ error: 'appId/serviceId exigem type "container"' });
     }
     if (description !== undefined && description !== null && typeof description !== 'string') {
       return res.status(400).json({ error: 'description inválida' });
@@ -65,11 +106,16 @@ export class ElementController {
         return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
       }
 
+      const linkError = await validateAssetLink(String(model.org_id), appId, serviceId);
+      if (linkError) return res.status(400).json({ error: linkError });
+
       const element = await pool.query(
-        `INSERT INTO elements (model_id, title, type, description, metadata, position_x, position_y, "order")
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        `INSERT INTO elements (model_id, app_id, service_id, title, type, description, metadata, position_x, position_y, "order")
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
         [
           modelId,
+          appId ?? null,
+          serviceId ?? null,
           cleanTitle,
           type,
           description ?? null,
@@ -109,7 +155,7 @@ export class ElementController {
 
   static async update(req: AuthenticatedRequest, res: Response) {
     const { modelId, elementId } = req.params;
-    const { title, type, description, metadata, positionX, positionY, order } = req.body as {
+    const { title, type, description, metadata, positionX, positionY, order, appId, serviceId } = req.body as {
       title?: string;
       type?: string;
       description?: string | null;
@@ -117,6 +163,8 @@ export class ElementController {
       positionX?: number;
       positionY?: number;
       order?: number;
+      appId?: string | null;
+      serviceId?: string | null;
     };
 
     if (title !== undefined) {
@@ -126,6 +174,9 @@ export class ElementController {
     }
     if (type !== undefined && (typeof type !== 'string' || !ELEMENT_TYPES.has(type))) {
       return res.status(400).json({ error: 'type inválido' });
+    }
+    if ((appId != null || serviceId != null) && type !== undefined && type !== 'container') {
+      return res.status(400).json({ error: 'appId/serviceId exigem type "container"' });
     }
     if (description !== undefined && description !== null && typeof description !== 'string') {
       return res.status(400).json({ error: 'description inválida' });
@@ -145,6 +196,10 @@ export class ElementController {
         return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
       }
 
+      const linkError = await validateAssetLink(String(model.org_id), appId, serviceId);
+      if (linkError) return res.status(400).json({ error: linkError });
+      const linkingAsset = appId != null || serviceId != null;
+
       const sets: string[] = [];
       const values: unknown[] = [];
       let index = 1;
@@ -156,6 +211,8 @@ export class ElementController {
       if (type !== undefined) {
         sets.push(`type = $${index++}`);
         values.push(type);
+      } else if (linkingAsset) {
+        sets.push(`type = 'container'`);
       }
       if (description !== undefined) {
         sets.push(`description = $${index++}`);
@@ -164,6 +221,20 @@ export class ElementController {
       if (metadata !== undefined) {
         sets.push(`metadata = $${index++}`);
         values.push(metadata);
+      }
+      if (appId !== undefined) {
+        sets.push(`app_id = $${index++}`);
+        values.push(appId);
+        if (appId !== null) {
+          sets.push(`service_id = NULL`);
+        }
+      }
+      if (serviceId !== undefined) {
+        sets.push(`service_id = $${index++}`);
+        values.push(serviceId);
+        if (serviceId !== null) {
+          sets.push(`app_id = NULL`);
+        }
       }
       if (positionX !== undefined) {
         sets.push(`position_x = $${index++}`);

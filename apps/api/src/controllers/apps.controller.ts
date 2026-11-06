@@ -2,6 +2,12 @@ import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getOrgResourceAccess, getOrgRole, isOrgMember, isWriterRole } from '../auth/access.js';
+import {
+  detachAssetChange,
+  listAssetDependencies,
+  propagateAssetChange,
+  type AssetLike,
+} from '../c4/assets.js';
 
 export class AppController {
   static async list(req: AuthenticatedRequest, res: Response) {
@@ -116,17 +122,35 @@ export class AppController {
       );
       const updated = result.rows[0];
 
-      await pool.query(
-        `UPDATE elements
-            SET title = $1, description = $2, metadata = $3, updated_at = NOW()
-          WHERE app_id = $4`,
-        [updated.name, updated.description, updated.metadata, id]
+      await propagateAssetChange(
+        'app',
+        updated as unknown as AssetLike,
+        app as unknown as AssetLike
       );
 
       return res.json(updated);
     } catch (err) {
       console.error('[apps] update error', err);
       return res.status(500).json({ error: 'Erro ao atualizar aplicação' });
+    }
+  }
+
+  /** Modelos que reutilizam esta aplicação (elements e draw.io). */
+  static async dependencies(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+
+    try {
+      const app = await getOrgResourceAccess('apps', req.user!.id, id);
+      if (!app) return res.status(404).json({ error: 'Aplicação não encontrada' });
+
+      const dependencies = await listAssetDependencies(
+        'app',
+        app as unknown as AssetLike
+      );
+      return res.json(dependencies);
+    } catch (err) {
+      console.error('[apps] dependencies error', err);
+      return res.status(500).json({ error: 'Erro ao listar dependências da aplicação' });
     }
   }
 
@@ -140,6 +164,7 @@ export class AppController {
         return res.status(403).json({ error: 'Sem permissão para excluir esta aplicação' });
       }
 
+      await detachAssetChange('app', app as unknown as AssetLike);
       await pool.query('DELETE FROM apps WHERE id = $1', [id]);
       return res.json({ ok: true });
     } catch (err) {

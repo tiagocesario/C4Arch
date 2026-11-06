@@ -1,5 +1,7 @@
 import type {
   AppObject,
+  AssetDependency,
+  C4ModelType,
   CreateAppInput,
   CreateEdgeInput,
   CreateElementInput,
@@ -77,6 +79,7 @@ function num(value: unknown, fallback = 0): number {
 }
 
 function mapModel(raw: Raw): Model {
+  const c4Type = str(raw.c4_type ?? raw.c4Type, 'container') as C4ModelType;
   return {
     id: str(raw.id),
     orgId: str(raw.org_id ?? raw.orgId),
@@ -84,6 +87,8 @@ function mapModel(raw: Raw): Model {
     title: str(raw.title),
     description: nullableStr(raw.description),
     status: (raw.status === 'final' ? 'final' : 'draft') as ModelStatus,
+    c4Type,
+    c4Scope: nullableStr(raw.c4_scope ?? raw.c4Scope),
     drawioXml: nullableStr(raw.drawio_xml ?? raw.drawioXml),
     orgName: nullableStr(raw.org_name ?? raw.orgName),
     createdAt: str(raw.created_at ?? raw.createdAt),
@@ -91,10 +96,22 @@ function mapModel(raw: Raw): Model {
   };
 }
 
+function mapDependency(raw: Raw): AssetDependency {
+  return {
+    ...mapModel(raw),
+    folderName: nullableStr(raw.folder_name ?? raw.folderName),
+    occurrences: num(raw.occurrences, 0),
+    viaElements: raw.via_elements === true || raw.viaElements === true,
+    viaDrawio: raw.via_drawio === true || raw.viaDrawio === true,
+  };
+}
+
 function mapElement(raw: Raw): Element {
   return {
     id: str(raw.id),
     modelId: str(raw.model_id ?? raw.modelId),
+    appId: nullableStr(raw.app_id ?? raw.appId),
+    serviceId: nullableStr(raw.service_id ?? raw.serviceId),
     type: (str(raw.type, 'system') as Element['type']),
     title: str(raw.title),
     description: nullableStr(raw.description),
@@ -248,6 +265,8 @@ export const createModel = async (input: CreateModelInput): Promise<Model> => {
       title: input.title,
       description: input.description ?? null,
       status: input.status ?? 'draft',
+      c4Type: input.c4Type ?? 'container',
+      c4Scope: input.c4Scope ?? null,
       drawioXml: input.drawioXml ?? null,
     }),
   });
@@ -284,10 +303,12 @@ export const createElement = async (modelId: string, input: CreateElementInput):
     body: JSON.stringify({
       title: input.title,
       type: input.type,
+      appId: input.appId ?? null,
+      serviceId: input.serviceId ?? null,
       description: input.description ?? null,
       metadata: input.metadata ?? null,
-      position_x: input.positionX ?? 0,
-      position_y: input.positionY ?? 0,
+      positionX: input.positionX ?? 0,
+      positionY: input.positionY ?? 0,
       order: input.order ?? 0,
     }),
   });
@@ -300,10 +321,12 @@ export const updateElement = async (modelId: string, id: string, input: UpdateEl
     body: JSON.stringify({
       title: input.title,
       type: input.type,
+      appId: input.appId,
+      serviceId: input.serviceId,
       description: input.description,
       metadata: input.metadata,
-      position_x: input.positionX,
-      position_y: input.positionY,
+      positionX: input.positionX,
+      positionY: input.positionY,
       order: input.order,
     }),
   });
@@ -400,6 +423,11 @@ export const updateApp = async (id: string, input: Partial<CreateAppInput>): Pro
 export const deleteApp = (id: string) =>
   req<{ ok: boolean }>('/api/apps/' + id, { method: 'DELETE' });
 
+export const listAppDependencies = async (id: string): Promise<AssetDependency[]> => {
+  const rows = await req<Raw[]>('/api/apps/' + id + '/dependencies');
+  return rows.map(mapDependency);
+};
+
 export const listServices = async (orgId: string): Promise<ServiceObject[]> => {
   const rows = await req<Raw[]>('/api/services?orgId=' + encodeURIComponent(orgId));
   return rows.map(mapService);
@@ -436,6 +464,11 @@ export const updateService = async (id: string, input: Partial<CreateServiceInpu
 
 export const deleteService = (id: string) =>
   req<{ ok: boolean }>('/api/services/' + id, { method: 'DELETE' });
+
+export const listServiceDependencies = async (id: string): Promise<AssetDependency[]> => {
+  const rows = await req<Raw[]>('/api/services/' + id + '/dependencies');
+  return rows.map(mapDependency);
+};
 
 // ---------------------------------------------------------------------------
 // draw.io

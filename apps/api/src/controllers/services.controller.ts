@@ -2,6 +2,12 @@ import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getOrgResourceAccess, getOrgRole, isOrgMember, isWriterRole } from '../auth/access.js';
+import {
+  detachAssetChange,
+  listAssetDependencies,
+  propagateAssetChange,
+  type AssetLike,
+} from '../c4/assets.js';
 
 const MAX_PORT = 65535;
 
@@ -129,17 +135,35 @@ export class ServiceController {
       );
       const updated = result.rows[0];
 
-      await pool.query(
-        `UPDATE elements
-            SET title = $1, description = $2, metadata = $3, updated_at = NOW()
-          WHERE service_id = $4`,
-        [updated.name, updated.description, updated.metadata, id]
+      await propagateAssetChange(
+        'service',
+        updated as unknown as AssetLike,
+        service as unknown as AssetLike
       );
 
       return res.json(updated);
     } catch (err) {
       console.error('[services] update error', err);
       return res.status(500).json({ error: 'Erro ao atualizar serviço' });
+    }
+  }
+
+  /** Modelos que reutilizam este serviço (elements e draw.io). */
+  static async dependencies(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+
+    try {
+      const service = await getOrgResourceAccess('services', req.user!.id, id);
+      if (!service) return res.status(404).json({ error: 'Serviço não encontrado' });
+
+      const dependencies = await listAssetDependencies(
+        'service',
+        service as unknown as AssetLike
+      );
+      return res.json(dependencies);
+    } catch (err) {
+      console.error('[services] dependencies error', err);
+      return res.status(500).json({ error: 'Erro ao listar dependências do serviço' });
     }
   }
 
@@ -153,6 +177,7 @@ export class ServiceController {
         return res.status(403).json({ error: 'Sem permissão para excluir este serviço' });
       }
 
+      await detachAssetChange('service', service as unknown as AssetLike);
       await pool.query('DELETE FROM services WHERE id = $1', [id]);
       return res.json({ ok: true });
     } catch (err) {

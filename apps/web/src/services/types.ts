@@ -7,6 +7,18 @@ export type ElementType = 'actor' | 'system' | 'container' | 'component';
 export type EdgeType = 'call' | 'http' | 'message' | 'depends';
 export type ModelStatus = 'draft' | 'final';
 
+export const C4_MODEL_TYPES = [
+  'system-context',
+  'container',
+  'component',
+  'code',
+  'system-landscape',
+  'dynamic',
+  'deployment',
+] as const;
+
+export type C4ModelType = (typeof C4_MODEL_TYPES)[number];
+
 export interface Model {
   id: string;
   orgId: string;
@@ -14,6 +26,8 @@ export interface Model {
   title: string;
   description?: string | null;
   status: ModelStatus;
+  c4Type: C4ModelType;
+  c4Scope?: string | null;
   drawioXml?: string | null;
   orgName?: string | null;
   createdAt: string;
@@ -23,6 +37,8 @@ export interface Model {
 export interface Element {
   id: string;
   modelId: string;
+  appId?: string | null;
+  serviceId?: string | null;
   type: ElementType;
   title: string;
   description?: string | null;
@@ -31,6 +47,17 @@ export interface Element {
   positionY: number;
   order: number;
   updatedAt: string;
+}
+
+/**
+ * Modelo que reutiliza um app/serviço. `occurrences` conta elementos REST e
+ * objetos do draw.io; as flags indicam onde o vínculo foi encontrado.
+ */
+export interface AssetDependency extends Model {
+  folderName?: string | null;
+  occurrences: number;
+  viaElements: boolean;
+  viaDrawio: boolean;
 }
 
 export interface Edge {
@@ -88,6 +115,8 @@ export interface CreateModelInput {
   title: string;
   description?: string | null;
   status?: ModelStatus;
+  c4Type?: C4ModelType;
+  c4Scope?: string | null;
   drawioXml?: string | null;
 }
 
@@ -96,6 +125,8 @@ export interface UpdateModelInput {
   description?: string | null;
   status?: ModelStatus;
   folderId?: string | null;
+  c4Type?: C4ModelType;
+  c4Scope?: string | null;
   drawioXml?: string | null;
 }
 
@@ -125,6 +156,8 @@ export interface CreateServiceInput {
 export interface CreateElementInput {
   title: string;
   type: ElementType;
+  appId?: string | null;
+  serviceId?: string | null;
   description?: string | null;
   metadata?: Record<string, unknown> | null;
   positionX?: number;
@@ -135,6 +168,8 @@ export interface CreateElementInput {
 export interface UpdateElementInput {
   title?: string;
   type?: ElementType;
+  appId?: string | null;
+  serviceId?: string | null;
   description?: string | null;
   metadata?: Record<string, unknown> | null;
   positionX?: number;

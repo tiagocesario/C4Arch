@@ -3,6 +3,14 @@ import { AuthenticatedRequest } from '../auth/middleware.js';
 import { signDrawioToken } from '../auth/tokens.js';
 import { getModelAccess, isWriterRole } from '../auth/access.js';
 import { pool } from '../db.js';
+import {
+  ASSET_MARKER_ID,
+  ASSET_MARKER_KIND,
+  ASSET_MARKER_NAME,
+  assetShapeLabel,
+  type AssetKind,
+  type AssetLike,
+} from '../c4/assets.js';
 
 const MAX_XML_LENGTH = 100_000;
 const PAGE_TOKEN_TTL = '8h';
@@ -52,15 +60,23 @@ function emptyDiagramXml(id: string, title: string): string {
 }
 
 /** Um shape de biblioteca do draw.io é um mxGraphModel independente. */
-function libraryShapeXml(name: string, detail: string, style: string): string {
-  const label = detail ? `${name}\n${detail}` : name;
+function libraryShapeXml(
+  kind: AssetKind,
+  asset: AssetLike,
+  style: string
+): string {
+  const label = assetShapeLabel(kind, asset);
   return (
     '<mxGraphModel><root>' +
     '<mxCell id="0"/>' +
     '<mxCell id="1" parent="0"/>' +
-    `<mxCell id="shape" value="${escapeXmlAttribute(label)}" style="${style}" vertex="1" parent="1">` +
+    `<object id="c4arch-${escapeXmlAttribute(asset.id)}" label="${escapeXmlAttribute(label)}"` +
+    ` ${ASSET_MARKER_ID}="${escapeXmlAttribute(asset.id)}"` +
+    ` ${ASSET_MARKER_KIND}="${kind}"` +
+    ` ${ASSET_MARKER_NAME}="${escapeXmlAttribute(asset.name)}">` +
+    `<mxCell id="shape" style="${style}" vertex="1" parent="1">` +
     '<mxGeometry x="0" y="0" width="180" height="80" as="geometry"/>' +
-    '</mxCell></root></mxGraphModel>'
+    '</mxCell></object></root></mxGraphModel>'
   );
 }
 
@@ -70,12 +86,12 @@ function libraryShapeXml(name: string, detail: string, style: string): string {
  */
 async function buildLibraryXml(orgId: string): Promise<string> {
   const [apps, services] = await Promise.all([
-    pool.query<{ name: string; description: string | null }>(
-      'SELECT name, description FROM apps WHERE org_id = $1 ORDER BY name ASC',
+    pool.query<AssetLike>(
+      'SELECT id, org_id, name, description, metadata FROM apps WHERE org_id = $1 ORDER BY name ASC',
       [orgId]
     ),
-    pool.query<{ name: string; description: string | null; protocol: string; port: number | null }>(
-      'SELECT name, description, protocol, port FROM services WHERE org_id = $1 ORDER BY name ASC',
+    pool.query<AssetLike>(
+      'SELECT id, org_id, name, description, protocol, port, metadata FROM services WHERE org_id = $1 ORDER BY name ASC',
       [orgId]
     ),
   ]);
@@ -84,7 +100,7 @@ async function buildLibraryXml(orgId: string): Promise<string> {
 
   for (const app of apps.rows) {
     entries.push({
-      xml: libraryShapeXml(app.name, (app.description ?? '').trim(), APP_STYLE),
+      xml: libraryShapeXml('app', app, APP_STYLE),
       w: 180,
       h: 80,
       title: `App: ${app.name}`,
@@ -92,13 +108,8 @@ async function buildLibraryXml(orgId: string): Promise<string> {
   }
 
   for (const service of services.rows) {
-    const endpoint = `${service.protocol || 'http'}${service.port ? `:${service.port}` : ''}`;
-    const detail = (service.description ?? '').trim()
-      ? `${endpoint} — ${(service.description ?? '').trim()}`
-      : endpoint;
-
     entries.push({
-      xml: libraryShapeXml(service.name, detail, SERVICE_STYLE),
+      xml: libraryShapeXml('service', service, SERVICE_STYLE),
       w: 180,
       h: 80,
       title: `Serviço: ${service.name}`,

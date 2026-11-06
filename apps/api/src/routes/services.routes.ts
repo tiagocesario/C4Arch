@@ -6,6 +6,7 @@ const router = Router();
 
 router.get('/', verifyToken, ServiceController.list);
 router.post('/', verifyToken, ServiceController.create);
+router.get('/:id/dependencies', verifyToken, ServiceController.dependencies);
 router.put('/:id', verifyToken, ServiceController.update);
 router.delete('/:id', verifyToken, ServiceController.remove);
 
