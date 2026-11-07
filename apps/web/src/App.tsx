@@ -1675,7 +1675,7 @@ export default function App() {
                   const linkedModels = models.filter((item) => item.folderId === folder.id);
                   const expanded = viewingFolderId === folder.id;
                   return (
-                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: folderDepth(folder) * 24 }}>
+                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: folderDepth(folder) * 24, borderLeft: folderDepth(folder) > 0 ? '2px solid #3b82f6' : '1px solid #2a2f3a' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <div
                           onClick={() => setViewingFolderId(expanded ? null : folder.id)}
