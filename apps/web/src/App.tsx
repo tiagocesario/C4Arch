@@ -492,6 +492,20 @@ export default function App() {
     return folderTree.filter((folder) => keep.has(folder.id));
   })();
 
+  // Pastas visiveis conforme a expansao (raiz e subpastas): um no aparece
+  // apenas se todos os seus ancestrais estiverem expandidos (ou em busca).
+  const visibleFolders = filteredFolders.filter((folder) => {
+    if (folderSearch.trim() !== '') return true;
+    let current: Folder | undefined = folder;
+    while (current?.parentId) {
+      const parent = folders.find((f) => f.id === current!.parentId);
+      if (!parent) break;
+      if (!expandedFolderIds.has(parent.id)) return false;
+      current = parent;
+    }
+    return true;
+  });
+
   // Resolve o nome da pasta. precisa existir antes de `filteredModels`.
   function folderName(id?: string | null): string {
     return folders.find((folder) => folder.id === id)?.name ?? 'Sem pasta';
@@ -1678,9 +1692,12 @@ export default function App() {
                 </div>
               )}
               <div style={{ display: 'grid', gap: 8 }}>
-                {filteredFolders.map((folder) => {
+                {visibleFolders.map((folder) => {
                   const linkedModels = models.filter((item) => item.folderId === folder.id);
-                  const expanded = expandedFolderIds.has(folder.id);
+                  const expanded =
+                    folderSearch.trim() !== ''
+                      ? true
+                      : expandedFolderIds.has(folder.id);
                   const hasChildren = linkedModels.length > 0 || folders.some((item) => item.parentId === folder.id);
                   return (
                     <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: folderDepth(folder) * 24, borderLeft: folderDepth(folder) > 0 ? '2px solid #3b82f6' : '1px solid #2a2f3a' }}>
