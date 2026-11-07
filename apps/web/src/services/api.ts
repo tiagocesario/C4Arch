@@ -93,6 +93,14 @@ function mapModel(raw: Raw): Model {
     c4Type,
     c4Scope: nullableStr(raw.c4_scope ?? raw.c4Scope),
     drawioXml: nullableStr(raw.drawio_xml ?? raw.drawioXml),
+    diagrams: Array.isArray(raw.diagrams)
+      ? (raw.diagrams as Array<{ c4Type?: unknown; drawioXml?: unknown }>)
+          .filter((d) => !!d && typeof d === 'object')
+          .map((d) => ({
+            c4Type: str(d.c4Type, 'container') as C4ModelType,
+            drawioXml: nullableStr(d.drawioXml),
+          }))
+      : [],
     orgName: nullableStr(raw.org_name ?? raw.orgName),
     createdAt: str(raw.created_at ?? raw.createdAt),
     updatedAt: str(raw.updated_at ?? raw.updatedAt),
@@ -586,20 +594,30 @@ export const importDrawio = (modelId: string, xml: string) =>
  * Solicita um token escopado de 5 minutos (em vez de colocar o JWT de sessão
  * na URL). O token só abre o editor do modelo informado.
  */
-export async function getDrawioEditorUrl(modelId: string): Promise<string> {
+export async function getDrawioEditorUrl(modelId: string, diagramType?: string): Promise<string> {
   const { token } = await req<{ token: string }>(
     '/api/models/' + modelId + '/drawio/token',
     { method: 'POST' }
   );
+  const type = diagramType ? '&type=' + encodeURIComponent(diagramType) : '';
   return (
-    API + '/api/models/' + modelId + '/drawio?token=' + encodeURIComponent(token)
+    API + '/api/models/' + modelId + '/drawio?token=' + encodeURIComponent(token) + type
   );
 }
 
-export async function openDrawioEditor(modelId: string): Promise<void> {
-  const url = await getDrawioEditorUrl(modelId);
+export async function openDrawioEditor(modelId: string, diagramType?: string): Promise<void> {
+  const url = await getDrawioEditorUrl(modelId, diagramType);
   window.open(url, '_blank', 'noopener');
 }
+
+/** Adiciona um novo tipo de diagrama ao mesmo modelo (sem criar novo modelo). */
+export const addModelDiagram = async (modelId: string, c4Type: C4ModelType): Promise<Model> => {
+  const raw = await req<Raw>('/api/models/' + modelId + '/diagrams', {
+    method: 'POST',
+    body: JSON.stringify({ c4Type }),
+  });
+  return mapModel(raw);
+};
 
 /**
  * Preview somente leitura do diagrama salvo. O XML vai no hash (#R), então não

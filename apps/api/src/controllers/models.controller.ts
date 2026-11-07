@@ -8,6 +8,7 @@ import {
   type C4ModelType,
 } from '../c4/model-types.js';
 import { generateDAS } from '../c4/das.js';
+import { parseDiagrams } from '../c4/diagrams.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -183,6 +184,43 @@ export class ModelController {
     } catch (err) {
       console.error('[models] get error', err);
       return res.status(500).json({ error: 'Erro ao carregar modelo' });
+    }
+  }
+
+  /**
+   * Vincula um novo tipo de diagrama ao MESMO modelo (não cria novo modelo).
+   * Os diagramas extras ficam na coluna JSONB `diagrams`.
+   */
+  static async addDiagram(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+    const { c4Type } = req.body as { c4Type?: C4ModelType };
+
+    if (!isUuid(id)) return res.status(404).json({ error: 'Modelo não encontrado' });
+    if (!isC4ModelType(c4Type)) {
+      return res.status(400).json({ error: 'c4Type inválido' });
+    }
+
+    try {
+      const model = await getModelAccess(req.user!.id, id);
+      if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      if (!isWriterRole(model.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
+      }
+
+      const diagrams = parseDiagrams(model.diagrams);
+      if (model.c4_type === c4Type || diagrams.some((d) => d.c4Type === c4Type)) {
+        return res.status(409).json({ error: 'Este tipo de diagrama já existe neste modelo' });
+      }
+
+      const next = [...diagrams, { c4Type, drawioXml: null }];
+      const result = await pool.query(
+        'UPDATE models SET diagrams = $1::jsonb, updated_at = NOW() WHERE id = $2 RETURNING *',
+        [JSON.stringify(next), id]
+      );
+      return res.status(201).json({ ...result.rows[0], diagrams: parseDiagrams(result.rows[0].diagrams) });
+    } catch (err) {
+      console.error('[models] addDiagram error', err);
+      return res.status(500).json({ error: 'Erro ao adicionar tipo de diagrama' });
     }
   }
 

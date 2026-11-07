@@ -4,6 +4,8 @@ import { signDrawioToken } from '../auth/tokens.js';
 import { getModelAccess, isWriterRole } from '../auth/access.js';
 import { pool } from '../db.js';
 import { generateDAS } from '../c4/das.js';
+import { parseDiagrams, resolveDiagramXml, withDiagramXml } from '../c4/diagrams.js';
+import { isC4ModelType } from '../c4/model-types.js';
 import {
   ASSET_MARKER_ID,
   ASSET_MARKER_KIND,
@@ -171,10 +173,10 @@ export class DrawioController {
       const model = await getModelAccess(req.user!.id, id);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
 
-      const result = await pool.query('SELECT drawio_xml FROM models WHERE id = $1', [id]);
-      const xml = result.rows[0]?.drawio_xml;
+      const diagramType = typeof req.query.type === 'string' ? req.query.type : String(model.c4_type ?? 'container');
+      const xml = resolveDiagramXml(model, diagramType);
       if (!xml) {
-        return res.status(404).json({ error: 'Modelo ainda não possui diagrama draw.io' });
+        return res.status(404).json({ error: 'Este tipo de diagrama ainda não possui desenho draw.io' });
       }
 
       res.setHeader('Content-Type', 'application/xml; charset=utf-8');
@@ -229,10 +231,27 @@ export class DrawioController {
         return res.status(403).json({ error: 'Somente owner ou editor pode salvar o diagrama' });
       }
 
-      await pool.query('UPDATE models SET drawio_xml = $1, updated_at = NOW() WHERE id = $2', [
-        xml,
-        id,
-      ]);
+      const diagramType = typeof req.query.type === 'string' ? req.query.type : String(model.c4_type ?? 'container');
+      if (!isC4ModelType(diagramType)) {
+        return res.status(400).json({ error: 'type de diagrama inválido' });
+      }
+
+      if (diagramType === model.c4_type) {
+        await pool.query('UPDATE models SET drawio_xml = $1, updated_at = NOW() WHERE id = $2', [
+          xml,
+          id,
+        ]);
+      } else {
+        const diagrams = withDiagramXml(model, diagramType, xml);
+        const exists = parseDiagrams(model.diagrams).some((d) => d.c4Type === diagramType);
+        if (!exists) {
+          return res.status(404).json({ error: 'Tipo de diagrama não vinculado a este modelo' });
+        }
+        await pool.query(
+          'UPDATE models SET diagrams = $1::jsonb, updated_at = NOW() WHERE id = $2',
+          [JSON.stringify(diagrams), id]
+        );
+      }
 
       // Regenera o DAS com base no desenho atualizado
       try {
@@ -285,9 +304,13 @@ export class DrawioController {
         return res.status(403).json({ error: 'Somente owner ou editor pode abrir o editor draw.io' });
       }
 
+      const diagramType = typeof req.query.type === 'string' ? req.query.type : String(model.c4_type ?? 'container');
+      if (!isC4ModelType(diagramType)) {
+        return res.status(400).json({ error: 'type de diagrama inválido' });
+      }
       const title = String(model.title ?? 'Modelo');
-      const storedXml = typeof model.drawio_xml === 'string' ? model.drawio_xml : '';
-      const xml = storedXml.trim() ? storedXml : emptyDiagramXml(id, title);
+      const storedXml = resolveDiagramXml(model, diagramType) ?? '';
+      const xml = storedXml.trim() ? storedXml : emptyDiagramXml(id, `${title} (${diagramType})`);
 
       // O token da URL vale 5 min. A página recebe um token próprio, com escopo
       // no mesmo modelo, para que o autosave continue funcionando durante a
@@ -328,8 +351,9 @@ export class DrawioController {
       // servidor do draw.io e serve como cópia/alternativa de edição.
       officialUrl.hash = 'R' + encodeURIComponent(xml);
 
-      const exportUrl = `/api/models/${encodeURIComponent(id)}/drawio/xml?token=${encodeURIComponent(pageToken)}`;
-      const importUrl = `/api/models/${encodeURIComponent(id)}/drawio/import?token=${encodeURIComponent(pageToken)}`;
+      const typeParam = encodeURIComponent(diagramType);
+      const exportUrl = `/api/models/${encodeURIComponent(id)}/drawio/xml?token=${encodeURIComponent(pageToken)}&type=${typeParam}`;
+      const importUrl = `/api/models/${encodeURIComponent(id)}/drawio/import?token=${encodeURIComponent(pageToken)}&type=${typeParam}`;
       const safeTitle = escapeHtml(title);
 
       const html = `<!doctype html>

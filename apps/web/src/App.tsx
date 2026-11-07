@@ -30,6 +30,7 @@ import {
   openDrawioEditor,
   getDrawioEditorUrl,
   getDrawioPreviewUrl,
+  addModelDiagram,
 } from './services/api';
 import { Canvas } from './components/Canvas';
 import * as ws from './services/ws';
@@ -198,6 +199,8 @@ export default function App() {
   const [services, setServices] = useState<ServiceObject[]>([]);
 
   const [showCreateModel, setShowCreateModel] = useState(false);
+  const [creatingModel, setCreatingModel] = useState(false);
+  const [createModelError, setCreateModelError] = useState<string | null>(null);
   const [newModelTitle, setNewModelTitle] = useState('');
   const [newModelDescription, setNewModelDescription] = useState('');
   const [newModelFolderId, setNewModelFolderId] = useState<string | null>(null);
@@ -226,6 +229,7 @@ export default function App() {
   const [dependenciesError, setDependenciesError] = useState<string | null>(null);
 
   const [previewModel, setPreviewModel] = useState<Model | null>(null);
+  const [previewDiagramType, setPreviewDiagramType] = useState<C4ModelType>('container');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -271,7 +275,19 @@ export default function App() {
         setOrgId(session.org?.id ?? '');
         ws.setToken(token);
         const list = await listModels();
-        if (!cancelled) setModels(list);
+        if (cancelled) return;
+        setModels(list);
+        // Restaura a tela/modelo aberto antes do F5.
+        try {
+          const saved = JSON.parse(localStorage.getItem('c4arch_view') || '{}');
+          if (saved?.selectedId && list.some((m) => m.id === saved.selectedId)) {
+            await openModel(saved.selectedId);
+          } else if (saved?.mode && saved.mode !== 'list') {
+            setMode(saved.mode as Mode);
+          }
+        } catch {
+          // ignora estado inválido
+        }
       } catch {
         if (cancelled) return;
         localStorage.removeItem('c4arch_token');
@@ -322,6 +338,18 @@ export default function App() {
     ws.join(selectedId);
   }, [selectedId]);
 
+  // Persiste a tela/modelo atual para sobreviver ao F5.
+  useEffect(() => {
+    if (!loggedIn) return;
+    try {
+      localStorage.setItem('c4arch_view', JSON.stringify({ mode, selectedId }));
+    } catch {
+      // ignora
+    }
+  }, [loggedIn, mode, selectedId]);
+
+  // (limpeza feita em clearSession)
+
   // Se o próprio owner for rebaixado em outra sessão (ou por ele mesmo), a
   // tela de gestão deixa de ser acessível imediatamente na UI.
   useEffect(() => {
@@ -333,6 +361,7 @@ export default function App() {
   function clearSession() {
     localStorage.removeItem('c4arch_token');
     localStorage.removeItem('c4arch_session');
+    localStorage.removeItem('c4arch_view');
     ws.setToken(null);
     setLoggedIn(false);
     setOrgId('');
@@ -430,41 +459,58 @@ export default function App() {
     setNewModelParentFilter('');
     setLinkToExisting(false);
     setOpenDrawioAfterCreate(true);
+    setCreatingModel(false);
+    setCreateModelError(null);
     setShowCreateModel(true);
   }
 
   async function onCreateModelFromModal() {
+    setCreateModelError(null);
+
+    const linkParentId = linkToExisting ? newModelParentId : null;
+    if (linkToExisting && !linkParentId) {
+      setCreateModelError('Selecione o modelo existente na lista.');
+      return;
+    }
+
     const title = newModelTitle.trim();
-    if (!title) {
-      setError('Informe o título do modelo.');
+    if (!linkParentId && !title) {
+      setCreateModelError('Informe o título do modelo.');
       return;
     }
 
     // Abre a aba antes do await para não ser bloqueada como popup.
     const popup = openDrawioAfterCreate ? window.open('about:blank', '_blank') : null;
 
+    setCreatingModel(true);
     try {
-      const currentOrgId = await ensureOrgId();
-      if (!currentOrgId) {
-        popup?.close();
-        setError('Organização não encontrada. Faça login novamente.');
-        return;
+      let targetId: string;
+
+      if (linkParentId) {
+        // Vincula o novo tipo de diagrama ao MESMO modelo, sem criar outro.
+        const updated = await addModelDiagram(linkParentId, newModelC4Type);
+        setModels((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
+        targetId = updated.id;
+      } else {
+        const currentOrgId = await ensureOrgId();
+        if (!currentOrgId) {
+          popup?.close();
+          setCreateModelError('Organização não encontrada. Faça login novamente.');
+          return;
+        }
+        const created = await createModel({
+          orgId: currentOrgId,
+          folderId: newModelFolderId,
+          title,
+          description: newModelDescription.trim() || null,
+          status: 'draft',
+          c4Type: newModelC4Type,
+          c4Scope: newModelC4Scope.trim() || null,
+        });
+        setModels((previous) => [created, ...previous]);
+        targetId = created.id;
       }
-      const parentModel = linkToExisting && newModelParentId
-        ? models.find((m) => m.id === newModelParentId)
-        : null;
-      const created = await createModel({
-        orgId: currentOrgId,
-        // O novo tipo de diagrama herda a pasta do modelo original.
-        folderId: linkToExisting ? (parentModel?.folderId ?? null) : newModelFolderId,
-        parentId: linkToExisting ? newModelParentId : null,
-        title,
-        description: newModelDescription.trim() || null,
-        status: 'draft',
-        c4Type: newModelC4Type,
-        c4Scope: newModelC4Scope.trim() || null,
-      });
-      setModels((previous) => [created, ...previous]);
+
       setShowCreateModel(false);
       setError(null);
       // O botão "Editor C4" foi ocultado; o fluxo abre apenas o draw.io.
@@ -472,19 +518,25 @@ export default function App() {
       setSelectedId(null);
       setModel(null);
 
+      const diagramType = linkParentId ? newModelC4Type : undefined;
       if (openDrawioAfterCreate) {
-        const url = await getDrawioEditorUrl(created.id);
+        const url = await getDrawioEditorUrl(targetId, diagramType);
         if (popup && !popup.closed) {
           popup.location.href = url;
         } else {
-          await openDrawioEditor(created.id);
+          await openDrawioEditor(targetId, diagramType);
         }
       } else {
         popup?.close();
       }
+      await refreshModels();
     } catch (err) {
       popup?.close();
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setCreateModelError(message);
+      setError(message);
+    } finally {
+      setCreatingModel(false);
     }
   }
 
@@ -528,10 +580,10 @@ export default function App() {
     }
   }
 
-  function openDrawio(id: string) {
+  function openDrawio(id: string, diagramType?: string) {
     // Abre a aba antes do await para não ser bloqueada como popup.
     const popup = window.open('about:blank', '_blank');
-    getDrawioEditorUrl(id)
+    getDrawioEditorUrl(id, diagramType)
       .then((url) => {
         if (popup && !popup.closed) {
           popup.location.replace(url);
@@ -550,23 +602,50 @@ export default function App() {
       });
   }
 
-  async function openPreview(target: Model) {
-    setPreviewModel(target);
+  function modelDiagramTypes(m: Model): C4ModelType[] {
+    const types = [m.c4Type, ...(m.diagrams ?? []).map((d) => d.c4Type)];
+    return Array.from(new Set(types.filter(Boolean))) as C4ModelType[];
+  }
+
+  async function loadPreviewDiagram(target: Model, dt: C4ModelType) {
+    setPreviewDiagramType(dt);
     setPreviewUrl(null);
     setPreviewError(null);
     setPreviewLoading(true);
     try {
       const detail = await getModel(target.id);
       setPreviewModel({ ...target, ...detail });
-      if (!detail.drawioXml || !detail.drawioXml.trim()) {
-        setPreviewError('Este modelo ainda não possui um desenho salvo no draw.io.');
+      const xml =
+        dt === detail.c4Type
+          ? detail.drawioXml
+          : (detail.diagrams ?? []).find((d) => d.c4Type === dt)?.drawioXml;
+      if (!xml || !xml.trim()) {
+        setPreviewError('Este tipo de diagrama ainda não possui um desenho salvo no draw.io.');
         return;
       }
-      setPreviewUrl(getDrawioPreviewUrl(detail.drawioXml));
+      setPreviewUrl(getDrawioPreviewUrl(xml));
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : String(err));
     } finally {
       setPreviewLoading(false);
+    }
+  }
+
+  async function openPreview(target: Model, diagramType?: C4ModelType) {
+    const dt = diagramType ?? target.c4Type ?? 'container';
+    setPreviewModel(target);
+    await loadPreviewDiagram(target, dt);
+  }
+
+  async function evolveDiagram(target: Model, nextType: C4ModelType) {
+    try {
+      const updated = await addModelDiagram(target.id, nextType);
+      setModels((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
+      setPreviewModel((previous) => (previous && previous.id === updated.id ? { ...previous, ...updated } : previous));
+      await loadPreviewDiagram(updated, nextType);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -861,7 +940,8 @@ export default function App() {
 
               {showCreateModel && (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}>
-                  <div
+                  <form
+                    onSubmit={(e) => { e.preventDefault(); onCreateModelFromModal(); }}
                     style={{
                       background: '#1a1d27',
                       padding: 20,
@@ -874,21 +954,23 @@ export default function App() {
                       overflowY: 'auto',
                     }}
                   >
-                    <h3 style={{ margin: 0 }}>Novo modelo</h3>
+                    <h3 style={{ margin: 0 }}>{linkToExisting ? 'Novo tipo de diagrama' : 'Novo modelo'}</h3>
                     <input
                       type="text"
-                      placeholder="Título do modelo"
+                      placeholder={linkToExisting ? 'Título (usa o do modelo existente)' : 'Título do modelo'}
                       value={newModelTitle}
                       onChange={(e) => setNewModelTitle(e.target.value)}
-                      style={{ ...inputStyle, width: '100%' }}
-                      autoFocus
+                      disabled={linkToExisting}
+                      style={{ ...inputStyle, width: '100%', opacity: linkToExisting ? 0.6 : 1 }}
+                      autoFocus={!linkToExisting}
                     />
                     <textarea
                       placeholder="Descrição (opcional)"
                       value={newModelDescription}
                       onChange={(e) => setNewModelDescription(e.target.value)}
                       rows={3}
-                      style={{ ...inputStyle, width: '100%', resize: 'vertical' }}
+                      disabled={linkToExisting}
+                      style={{ ...inputStyle, width: '100%', resize: 'vertical', opacity: linkToExisting ? 0.6 : 1 }}
                     />
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
                       <span>Tipo de diagrama C4</span>
@@ -908,7 +990,8 @@ export default function App() {
                       placeholder="Escopo (ex.: sistema de vendas)"
                       value={newModelC4Scope}
                       onChange={(e) => setNewModelC4Scope(e.target.value)}
-                      style={{ ...inputStyle, width: '100%' }}
+                      disabled={linkToExisting}
+                      style={{ ...inputStyle, width: '100%', opacity: linkToExisting ? 0.6 : 1 }}
                     />
                     <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
                       <input
@@ -989,20 +1072,19 @@ export default function App() {
                         )}
                       </div>
                     )}
-                    <span style={smallMuted}>
-                      {linkToExisting && newModelParentId
-                        ? 'Pasta herdada do modelo original (não editável).'
-                        : 'Pasta'}
-                    </span>
-                    <select
-                      value={newModelFolderId ?? ''}
-                      onChange={(e) => setNewModelFolderId(e.target.value ? e.target.value : null)}
-                      disabled={linkToExisting && !!newModelParentId}
-                      style={{ ...inputStyle, width: '100%', opacity: linkToExisting && newModelParentId ? 0.7 : 1 }}
-                    >
-                      <option value="">Sem pasta</option>
-                      {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-                    </select>
+                    {!linkToExisting && (
+                      <>
+                        <span style={smallMuted}>Pasta</span>
+                        <select
+                          value={newModelFolderId ?? ''}
+                          onChange={(e) => setNewModelFolderId(e.target.value ? e.target.value : null)}
+                          style={{ ...inputStyle, width: '100%' }}
+                        >
+                          <option value="">Sem pasta</option>
+                          {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+                        </select>
+                      </>
+                    )}
                     <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
                       <input
                         type="checkbox"
@@ -1011,11 +1093,20 @@ export default function App() {
                       />
                       Abrir draw.io após criar
                     </label>
+                    {createModelError && (
+                      <div style={{ color: '#f87171', fontSize: 13 }}>{createModelError}</div>
+                    )}
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      <button onClick={() => setShowCreateModel(false)} style={buttonStyle}>Cancelar</button>
-                      <button onClick={onCreateModelFromModal} style={primaryButtonStyle}>Criar</button>
+                      <button type="button" onClick={() => setShowCreateModel(false)} style={buttonStyle}>Cancelar</button>
+                      <button
+                        type="submit"
+                        style={{ ...primaryButtonStyle, opacity: creatingModel ? 0.7 : 1 }}
+                        disabled={creatingModel}
+                      >
+                        {creatingModel ? 'Salvando...' : linkToExisting ? 'Adicionar tipo' : 'Criar'}
+                      </button>
                     </div>
-                  </div>
+                  </form>
                 </div>
               )}
 
@@ -1490,14 +1581,14 @@ export default function App() {
               <div>
                 <h3 style={{ margin: 0 }}>{previewModel.title}</h3>
                 <div style={smallMuted}>
-                  {C4_TYPE_LABEL[previewModel.c4Type] ?? previewModel.c4Type}
+                  {C4_TYPE_LABEL[previewDiagramType] ?? previewDiagramType}
                   {previewModel.c4Scope ? ` · ${previewModel.c4Scope}` : ''}
                   {' · '}Preview draw.io (somente leitura)
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
                 {isWriter && (
-                  <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Abrir editor draw.io</button>
+                  <button onClick={() => openDrawio(previewModel.id, previewDiagramType)} style={primaryButtonStyle}>Abrir editor draw.io</button>
                 )}
                 {previewUrl && (
                   <a
@@ -1512,6 +1603,41 @@ export default function App() {
                 <button onClick={closePreview} style={buttonStyle}>Fechar</button>
               </div>
             </div>
+            <div style={{ padding: '8px 14px', borderBottom: '1px solid #2a2f3a', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              {modelDiagramTypes(previewModel).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => loadPreviewDiagram(previewModel, type)}
+                  style={{
+                    ...buttonStyle,
+                    background: previewDiagramType === type ? '#4f46e5' : 'transparent',
+                    color: previewDiagramType === type ? '#fff' : '#e8eaed',
+                    border: '1px solid #2a2f3a',
+                  }}
+                >
+                  {C4_TYPE_LABEL[type] ?? type}
+                </button>
+              ))}
+              {isWriter && (
+                <>
+                  {!modelDiagramTypes(previewModel).includes('container') && modelDiagramTypes(previewModel).includes('system-context') && (
+                    <button onClick={() => evolveDiagram(previewModel, 'container')} style={{ ...primaryButtonStyle, background: '#7c3aed' }}>
+                      Evoluir para Container
+                    </button>
+                  )}
+                  {!modelDiagramTypes(previewModel).includes('component') && modelDiagramTypes(previewModel).includes('container') && (
+                    <button onClick={() => evolveDiagram(previewModel, 'component')} style={{ ...primaryButtonStyle, background: '#7c3aed' }}>
+                      Evoluir para Componente
+                    </button>
+                  )}
+                  {!modelDiagramTypes(previewModel).includes('code') && modelDiagramTypes(previewModel).includes('component') && (
+                    <button onClick={() => evolveDiagram(previewModel, 'code')} style={{ ...primaryButtonStyle, background: '#7c3aed' }}>
+                      Evoluir para Código
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
             <div style={{ flex: 1, background: '#fff', position: 'relative', minHeight: 0 }}>
               {previewLoading && (
                 <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#1f2937' }}>
@@ -1523,7 +1649,7 @@ export default function App() {
                   <div>{previewError}</div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                     {isWriter && (
-                      <button onClick={() => openDrawio(previewModel.id)} style={primaryButtonStyle}>Criar/editar no draw.io</button>
+                      <button onClick={() => openDrawio(previewModel.id, previewDiagramType)} style={primaryButtonStyle}>Criar/editar no draw.io</button>
                     )}
                   </div>
                 </div>

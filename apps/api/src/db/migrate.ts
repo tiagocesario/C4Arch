@@ -71,6 +71,7 @@ export async function runMigrations() {
       c4_scope     TEXT,
       parent_id    UUID REFERENCES models(id) ON DELETE CASCADE,
       drawio_xml   TEXT,
+      diagrams     JSONB NOT NULL DEFAULT '[]'::jsonb,
       created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
@@ -190,6 +191,7 @@ export async function runMigrations() {
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS c4_type TEXT NOT NULL DEFAULT 'container'`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS c4_scope TEXT`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES models(id) ON DELETE CASCADE`,
+    `ALTER TABLE models ADD COLUMN IF NOT EXISTS diagrams JSONB NOT NULL DEFAULT '[]'::jsonb`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS das_content TEXT`,
     `CREATE INDEX IF NOT EXISTS idx_models_parent_id ON models(parent_id)`,
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_models_group_c4type ON models (COALESCE(parent_id, id), c4_type)`,

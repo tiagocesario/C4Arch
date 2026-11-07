@@ -19,6 +19,9 @@ router.put('/:id', verifyToken, ModelController.update);
 // Excluir modelo
 router.delete('/:id', verifyToken, ModelController.remove);
 
+// Adicionar um novo tipo de diagrama ao mesmo modelo
+router.post('/:id/diagrams', verifyToken, ModelController.addDiagram);
+
 // Obter DAS do modelo
 router.get('/:id/das', verifyToken, ModelController.das);
 

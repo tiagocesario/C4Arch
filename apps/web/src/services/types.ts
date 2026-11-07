@@ -19,6 +19,11 @@ export const C4_MODEL_TYPES = [
 
 export type C4ModelType = (typeof C4_MODEL_TYPES)[number];
 
+export interface ModelDiagram {
+  c4Type: C4ModelType;
+  drawioXml?: string | null;
+}
+
 export interface Model {
   id: string;
   orgId: string;
@@ -30,6 +35,8 @@ export interface Model {
   c4Type: C4ModelType;
   c4Scope?: string | null;
   drawioXml?: string | null;
+  /** Tipos de diagrama extras vinculados ao mesmo modelo. */
+  diagrams?: ModelDiagram[];
   orgName?: string | null;
   createdAt: string;
   updatedAt: string;
