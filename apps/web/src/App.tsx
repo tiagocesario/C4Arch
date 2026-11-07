@@ -2465,11 +2465,7 @@ export default function App() {
               {dasLoading ? (
                 <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
               ) : dasViewMode === 'edit' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 4 }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <h4 style={{ margin: 0 }}>Editor do DAS (formulario)</h4>
-                    <span style={smallMuted}>Preencha os campos abaixo. Cada campo corresponde a uma secao do documento.</span>
-                  </div>
+                <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 0 }}>
                   {(() => {
                     const parsed = parseDasSections(dasContent);
                     const fields: { label: string; description: string; value: string; onChange: (value: string) => void }[] = [];
@@ -2492,31 +2488,74 @@ export default function App() {
                         },
                       });
                     });
-                    return fields.map((field, index) => (
-                      <div
-                        key={index}
-                        style={{
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: 6,
-                          padding: 12,
-                          background: '#0f1115',
-                          border: '1px solid #2a2f3a',
-                          borderRadius: 8,
-                        }}
-                      >
-                        <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <span style={{ color: '#93c5fd' }}>{index + 1}.</span> {field.label}
-                        </label>
-                        <span style={smallMuted}>{field.description}</span>
-                        <textarea
-                          value={field.value}
-                          onChange={(e) => field.onChange(e.target.value)}
-                          placeholder={'Descreva ' + field.label.toLowerCase() + '...'}
-                          style={{ width: '100%', minHeight: 110, background: '#0b0d12', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
-                        />
-                      </div>
-                    ));
+                    return (
+                      <>
+                        <aside
+                          style={{
+                            width: '28%',
+                            minWidth: 180,
+                            borderRight: '1px solid #2a2f3a',
+                            paddingRight: 12,
+                            overflow: 'auto',
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+                            <h4 style={{ margin: 0 }}>Editor do DAS</h4>
+                            <span style={smallMuted}>Formulario por secoes</span>
+                          </div>
+                          <nav style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {fields.map((field, index) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => {
+                                  const el = document.getElementById('das-field-' + index);
+                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }}
+                                style={{
+                                  ...buttonStyle,
+                                  textAlign: 'left',
+                                  justifyContent: 'flex-start',
+                                  background: 'transparent',
+                                }}
+                              >
+                                <span style={{ color: '#93c5fd', marginRight: 6 }}>{index + 1}.</span> {field.label}
+                              </button>
+                            ))}
+                          </nav>
+                        </aside>
+                        <div style={{ flex: 1, overflow: 'auto', paddingRight: 4, maxWidth: 800 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {fields.map((field, index) => (
+                              <div
+                                id={'das-field-' + index}
+                                key={index}
+                                style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: 6,
+                                  padding: 12,
+                                  background: '#0f1115',
+                                  border: '1px solid #2a2f3a',
+                                  borderRadius: 8,
+                                }}
+                              >
+                                <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  <span style={{ color: '#93c5fd' }}>{index + 1}.</span> {field.label}
+                                </label>
+                                <span style={smallMuted}>{field.description}</span>
+                                <textarea
+                                  value={field.value}
+                                  onChange={(e) => field.onChange(e.target.value)}
+                                  placeholder={'Descreva ' + field.label.toLowerCase() + '...'}
+                                  style={{ width: '100%', minHeight: 110, background: '#0b0d12', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    );
                   })()}
                 </div>
               ) : (
