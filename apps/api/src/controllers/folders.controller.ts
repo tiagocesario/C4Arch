@@ -106,6 +106,34 @@ export class FolderController {
           if (parent.rows.length === 0) {
             return res.status(404).json({ error: 'Pasta pai não encontrada' });
           }
+
+          // Previne ciclo: o novo pai não pode ser a própria pasta nem um
+          // descendente dela.
+          const allFolders = await pool.query(
+            'SELECT id, parent_id FROM folders WHERE org_id = $1',
+            [orgId]
+          );
+          const childrenByParent = new Map<string, string[]>();
+          for (const row of allFolders.rows) {
+            const key = row.parent_id ?? '';
+            const list = childrenByParent.get(key) ?? [];
+            list.push(row.id);
+            childrenByParent.set(key, list);
+          }
+          const descendants = new Set<string>();
+          const stack = [id];
+          while (stack.length > 0) {
+            const current = stack.pop() as string;
+            for (const child of childrenByParent.get(current) ?? []) {
+              if (!descendants.has(child)) {
+                descendants.add(child);
+                stack.push(child);
+              }
+            }
+          }
+          if (descendants.has(parentId)) {
+            return res.status(400).json({ error: 'parentId inválido: pasta descendente' });
+          }
         }
         sets.push(`parent_id = $${index++}`);
         values.push(parentId);

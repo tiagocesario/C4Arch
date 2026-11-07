@@ -1492,7 +1492,7 @@ export default function App() {
                           style={{ ...inputStyle, width: '100%' }}
                         >
                           <option value="">Sem pasta</option>
-                          {folderTree.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}{folder.name}</option>)}
+                          {folderTree.map((folder) => <option key={folder.id} value={folder.id}>{'\u00a0'.repeat(folderDepth(folder) * 2)}{folder.name}</option>)}
                         </select>
                       </>
                     )}
@@ -1650,8 +1650,8 @@ export default function App() {
                   <input id="folder-name" placeholder="Nome da pasta" style={inputStyle} />
                   <select id="folder-parent" style={inputStyle}>
                     <option value="">Pasta raiz</option>
-                    {folders.map((f) => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
+                    {folderTree.map((f) => (
+                      <option key={f.id} value={f.id}>{'\u00a0'.repeat(folderDepth(f) * 2)}{f.name}</option>
                     ))}
                   </select>
                   <button
@@ -1737,13 +1737,13 @@ export default function App() {
                           title="Mover para pasta pai"
                         >
                           <option value="">Pasta raiz</option>
-                          {folders
+                          {folderTree
                             .filter(
                               (f) =>
                                 f.id !== folder.id && !descendantIds(folder.id).has(f.id)
                             )
                             .map((f) => (
-                              <option key={f.id} value={f.id}>{f.name}</option>
+                              <option key={f.id} value={f.id}>{'\u00a0'.repeat(folderDepth(f) * 2)}{f.name}</option>
                             ))}
                         </select>
                         <button
@@ -2609,7 +2609,7 @@ export default function App() {
               style={{ ...inputStyle, width: '100%' }}
             >
               <option value="">Sem pasta</option>
-              {folderTree.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}{folder.name}</option>)}
+              {folderTree.map((folder) => <option key={folder.id} value={folder.id}>{'\u00a0'.repeat(folderDepth(folder) * 2)}{folder.name}</option>)}
             </select>
             {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

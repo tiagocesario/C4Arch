@@ -331,6 +331,10 @@ Mensagens do servidor:
       nova posição da árvore.
 - [x] O filtro de pastas funciona ao digitar, ignora acentos e mantém
       ancestrais/descendentes visíveis.
+- [x] Seletores de pasta (criação, edição e movimentação) exibem a hierarquia
+      com indentação por profundidade, sem duplicação de nomes.
+- [x] A API rejeita `parentId` igual à própria pasta ou a um descendente,
+      prevenindo ciclos na hierarquia de pastas.
 - [x] É possível importar vários arquivos/pastas locais de uma vez, com um
       resultado por item e sem interromper o lote em caso de falha.
 - [x] Links públicos de arquivo do Google Drive e outras URLs são baixados pelo
