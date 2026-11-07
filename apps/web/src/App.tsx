@@ -325,6 +325,7 @@ export default function App() {
   const [model, setModel] = useState<ModelDetail | null>(null);
   const [dasModel, setDasModel] = useState<Model | null>(null);
   const [dasContent, setDasContent] = useState<string>('');
+  const [dasBaselineContent, setDasBaselineContent] = useState<string>('');
   const [dasLoading, setDasLoading] = useState(false);
   const [dasSaving, setDasSaving] = useState(false);
   const [dasViewMode, setDasViewMode] = useState<'edit' | 'preview'>('preview');
@@ -1587,6 +1588,7 @@ export default function App() {
                             e.stopPropagation();
                             setDasModel(item);
                             setDasContent('');
+                            setDasBaselineContent('');
                             setDasPreviewUrl(null);
                             setDasViewMode('preview');
                             setDasLoading(true);
@@ -1596,6 +1598,7 @@ export default function App() {
                                 getModel(item.id),
                               ]);
                               setDasContent(content);
+                              setDasBaselineContent(content);
                               if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
                             } catch (err) {
                               setError(err instanceof Error ? err.message : String(err));
@@ -2361,6 +2364,12 @@ export default function App() {
                 <button
                   onClick={async () => {
                     if (!dasModel) return;
+                    if (dasContent !== dasBaselineContent) {
+                      const ok = window.confirm(
+                        'Existem alteracoes nao salvas no DAS. Regenerar ira substitui-las pelo documento gerado. Deseja continuar?'
+                      );
+                      if (!ok) return;
+                    }
                     setDasLoading(true);
                     try {
                       const [content, detail] = await Promise.all([
@@ -2368,6 +2377,7 @@ export default function App() {
                         getModel(dasModel.id),
                       ]);
                       setDasContent(content);
+                      setDasBaselineContent(content);
                       if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
                     } catch (err) {
                       setError(err instanceof Error ? err.message : String(err));
@@ -2403,6 +2413,7 @@ export default function App() {
                     setDasSaving(true);
                     try {
                       await updateModelDAS(dasModel.id, dasContent);
+                      setDasBaselineContent(dasContent);
                       setError(null);
                     } catch (err) {
                       setError(err instanceof Error ? err.message : String(err));
