@@ -88,6 +88,16 @@ function markdownToHtml(md: string): string {
   return html;
 }
 
+// Normaliza texto para busca: minúsculas e sem acentos, para que "servico"
+// encontre "Serviço" enquanto o usuário digita.
+function normalizeText(value: string | null | undefined): string {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
 const ROLE_LABEL: Record<UserRole, string> = {
   owner: 'Owner',
   editor: 'Editor',
@@ -238,12 +248,40 @@ export default function App() {
   const [folderFilter, setFolderFilter] = useState<string>('all');
   const [folderSearch, setFolderSearch] = useState('');
   const [viewingFolderId, setViewingFolderId] = useState<string | null>(null);
-  const sortedFolders = [...folders].sort((a, b) => {
-    const pa = a.parentId ?? '';
-    const pb = b.parentId ?? '';
-    if (pa !== pb) return pa.localeCompare(pb);
-    return a.name.localeCompare(b.name);
-  });
+
+  // Ordena as pastas em árvore (pai seguido dos filhos) para que a hierarquia
+  // fique visível e estável após mover uma subpasta para a raiz.
+  const folderTree = (() => {
+    const byParent = new Map<string, Folder[]>();
+    for (const folder of folders) {
+      const key = folder.parentId ?? '';
+      const siblings = byParent.get(key) ?? [];
+      siblings.push(folder);
+      byParent.set(key, siblings);
+    }
+    for (const siblings of byParent.values()) {
+      siblings.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    const ordered: Folder[] = [];
+    const seen = new Set<string>();
+    const walk = (parentKey: string) => {
+      for (const folder of byParent.get(parentKey) ?? []) {
+        if (seen.has(folder.id)) continue;
+        seen.add(folder.id);
+        ordered.push(folder);
+        walk(folder.id);
+      }
+    };
+    walk('');
+    // Pastas órfãs (pai removido/inexistente) aparecem no final como raiz.
+    for (const folder of folders) {
+      if (!seen.has(folder.id)) {
+        seen.add(folder.id);
+        ordered.push(folder);
+      }
+    }
+    return ordered;
+  })();
 
   const folderDepth = (folder: Folder): number => {
     let depth = 0;
@@ -260,9 +298,44 @@ export default function App() {
     return depth;
   };
 
-  const filteredFolders = sortedFolders.filter((folder) =>
-    folder.name.toLowerCase().includes(folderSearch.trim().toLowerCase())
-  );
+  const descendantIds = (rootId: string): Set<string> => {
+    const result = new Set<string>();
+    const stack = [rootId];
+    while (stack.length > 0) {
+      const current = stack.pop() as string;
+      for (const folder of folders) {
+        if (folder.parentId === current && !result.has(folder.id)) {
+          result.add(folder.id);
+          stack.push(folder.id);
+        }
+      }
+    }
+    return result;
+  };
+
+  const filteredFolders = (() => {
+    const term = normalizeText(folderSearch);
+    if (!term) return folderTree;
+    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+    const keep = new Set<string>();
+    for (const folder of folders) {
+      if (!normalizeText(folder.name).includes(term)) continue;
+      // Mantém os ancestrais visíveis para preservar o contexto da hierarquia.
+      let current: Folder | undefined = folder;
+      const guard = new Set<string>();
+      while (current && !guard.has(current.id)) {
+        guard.add(current.id);
+        keep.add(current.id);
+        current = current.parentId ? byId.get(current.parentId) : undefined;
+      }
+    }
+    return folderTree.filter((folder) => keep.has(folder.id));
+  })();
+
+  // Resolve o nome da pasta. precisa existir antes de `filteredModels`.
+  function folderName(id?: string | null): string {
+    return folders.find((folder) => folder.id === id)?.name ?? 'Sem pasta';
+  }
 
   // -------------------------------------------------------------------------
   // Bootstrap / sessão
@@ -284,6 +357,21 @@ export default function App() {
         setBooting(false);
         return;
       }
+      // Lê a tela salva ANTES de qualquer setState. O efeito de persistência
+      // dispara assim que `loggedIn` vira true e, sem isso, sobrescreveria o
+      // estado salvo com `list`/`null` antes da restauração.
+      let savedView: {
+        mode?: Mode;
+        selectedId?: string | null;
+        previewModelId?: string | null;
+        previewDiagramType?: C4ModelType | null;
+      } = {};
+      try {
+        savedView = JSON.parse(localStorage.getItem('c4arch_view') || '{}') ?? {};
+      } catch {
+        savedView = {};
+      }
+
       try {
         const session = await me();
         if (cancelled) return;
@@ -298,15 +386,25 @@ export default function App() {
         if (cancelled) return;
         setModels(list);
         // Restaura a tela/modelo aberto antes do F5.
-        try {
-          const saved = JSON.parse(localStorage.getItem('c4arch_view') || '{}');
-          if (saved?.selectedId && list.some((m) => m.id === saved.selectedId)) {
-            await openModel(saved.selectedId);
-          } else if (saved?.mode && saved.mode !== 'list') {
-            setMode(saved.mode as Mode);
-          }
-        } catch {
-          // ignora estado inválido
+        const previewTarget = savedView.previewModelId
+          ? list.find((item) => item.id === savedView.previewModelId)
+          : undefined;
+        if (previewTarget) {
+          await openPreview(
+            previewTarget,
+            (savedView.previewDiagramType ?? previewTarget.c4Type) as C4ModelType
+          );
+        } else if (
+          savedView.selectedId &&
+          list.some((item) => item.id === savedView.selectedId)
+        ) {
+          await openModel(savedView.selectedId);
+        } else if (
+          savedView.mode &&
+          savedView.mode !== 'list' &&
+          savedView.mode !== 'edit'
+        ) {
+          setMode(savedView.mode);
         }
       } catch {
         if (cancelled) return;
@@ -358,15 +456,25 @@ export default function App() {
     ws.join(selectedId);
   }, [selectedId]);
 
-  // Persiste a tela/modelo atual para sobreviver ao F5.
+  // Persiste a tela/modelo atual para sobreviver ao F5. Só grava depois do
+  // bootstrap terminar, para não apagar a tela salva durante a restauração.
   useEffect(() => {
-    if (!loggedIn) return;
+    if (!loggedIn || booting) return;
+    if (mode === 'edit' && !selectedId) return;
     try {
-      localStorage.setItem('c4arch_view', JSON.stringify({ mode, selectedId }));
+      localStorage.setItem(
+        'c4arch_view',
+        JSON.stringify({
+          mode,
+          selectedId,
+          previewModelId: previewModel?.id ?? null,
+          previewDiagramType: previewModel ? previewDiagramType : null,
+        })
+      );
     } catch {
       // ignora
     }
-  }, [loggedIn, mode, selectedId]);
+  }, [loggedIn, booting, mode, selectedId, previewModel, previewDiagramType]);
 
   // (limpeza feita em clearSession)
 
@@ -812,10 +920,12 @@ export default function App() {
     }
   }
 
+  const searchTerm = normalizeText(search);
   const filteredModels = models.filter((item) => {
     const matchesSearch =
-      item.title.toLowerCase().includes(search.toLowerCase()) ||
-      folderName(item.folderId).toLowerCase().includes(search.toLowerCase());
+      !searchTerm ||
+      normalizeText(item.title).includes(searchTerm) ||
+      normalizeText(folderName(item.folderId)).includes(searchTerm);
     const matchesFolder = folderFilter === 'all' ? true : item.folderId === folderFilter;
     return matchesSearch && matchesFolder;
   });
@@ -827,7 +937,6 @@ export default function App() {
     return !term || m.title.toLowerCase().includes(term);
   });
 
-  const folderName = (id?: string | null) => folders.find((folder) => folder.id === id)?.name ?? 'Sem pasta';
   const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
   if (booting) {
@@ -942,7 +1051,7 @@ export default function App() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Pesquisar modelo..."
+                  placeholder="Pesquisar modelo ou pasta..."
                   style={{ ...inputStyle, minWidth: 220 }}
                 />
                 <select
@@ -951,8 +1060,10 @@ export default function App() {
                   style={inputStyle}
                 >
                   <option value="all">Todas as pastas</option>
-                  {folders.map((folder) => (
-                    <option key={folder.id} value={folder.id}>{folder.name}</option>
+                  {folderTree.map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {'\u00a0'.repeat(folderDepth(folder) * 2)}{folder.name}
+                    </option>
                   ))}
                 </select>
                 {isWriter && (
@@ -1311,22 +1422,35 @@ export default function App() {
                         <button
                           onClick={async () => {
                             const name = window.prompt('Novo nome:', folder.name);
-                            if (!name) return;
-                            await updateFolder(folder.id, { name });
-                            setFolders(await listFolders(orgId));
+                            if (!name || !name.trim()) return;
+                            try {
+                              const updated = await updateFolder(folder.id, { name: name.trim() });
+                              setFolders((previous) =>
+                                previous.map((item) => (item.id === updated.id ? updated : item))
+                              );
+                              setFolders(await listFolders(orgId));
+                            } catch (err) {
+                              setError(err instanceof Error ? err.message : String(err));
+                            }
                           }}
                           style={buttonStyle}
                         >
                           Renomear
                         </button>
                         <select
-                          defaultValue={folder.parentId ?? ''}
+                          value={folder.parentId ?? ''}
                           onChange={async (e) => {
                             const newParent = e.target.value || null;
-                            if (newParent === folder.parentId) return;
+                            if (newParent === (folder.parentId ?? null)) return;
                             try {
-                              await updateFolder(folder.id, { parentId: newParent });
+                              const updated = await updateFolder(folder.id, { parentId: newParent });
+                              // Atualiza imediatamente para a hierarquia refletir
+                              // o novo pai, e depois confirma com o servidor.
+                              setFolders((previous) =>
+                                previous.map((item) => (item.id === updated.id ? updated : item))
+                              );
                               setFolders(await listFolders(orgId));
+                              setError(null);
                             } catch (err) {
                               setError(err instanceof Error ? err.message : String(err));
                             }
@@ -1336,7 +1460,10 @@ export default function App() {
                         >
                           <option value="">Pasta raiz</option>
                           {folders
-                            .filter((f) => f.id !== folder.id)
+                            .filter(
+                              (f) =>
+                                f.id !== folder.id && !descendantIds(folder.id).has(f.id)
+                            )
                             .map((f) => (
                               <option key={f.id} value={f.id}>{f.name}</option>
                             ))}
