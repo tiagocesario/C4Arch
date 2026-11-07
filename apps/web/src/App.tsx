@@ -1501,7 +1501,7 @@ export default function App() {
                           style={{ ...inputStyle, width: '100%' }}
                         >
                           <option value="">Sem pasta</option>
-                          {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+                          {folderTree.map((folder) => <option key={folder.id} value={folder.id}>{folderTreePrefix(folder)}{folder.name}</option>)}
                         </select>
                       </>
                     )}
@@ -2619,7 +2619,7 @@ export default function App() {
               style={{ ...inputStyle, width: '100%' }}
             >
               <option value="">Sem pasta</option>
-              {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+              {folderTree.map((folder) => <option key={folder.id} value={folder.id}>{folderTreePrefix(folder)}{folder.name}</option>)}
             </select>
             {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
