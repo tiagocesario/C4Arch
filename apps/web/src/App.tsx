@@ -396,8 +396,15 @@ export default function App() {
   const [search, setSearch] = useState('');
   const [folderFilter, setFolderFilter] = useState<string>('all');
   const [folderSearch, setFolderSearch] = useState('');
-  const [viewingFolderId, setViewingFolderId] = useState<string | null>(null);
-
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
+  const toggleFolderView = (id: string) => {
+    setExpandedFolderIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   // Ordena as pastas em árvore (pai seguido dos filhos) para que a hierarquia
   // fique visível e estável após mover uma subpasta para a raiz.
   const folderTree = (() => {
@@ -1673,21 +1680,24 @@ export default function App() {
               <div style={{ display: 'grid', gap: 8 }}>
                 {filteredFolders.map((folder) => {
                   const linkedModels = models.filter((item) => item.folderId === folder.id);
-                  const expanded = viewingFolderId === folder.id;
+                  const expanded = expandedFolderIds.has(folder.id);
+                  const hasChildren = linkedModels.length > 0 || folders.some((item) => item.parentId === folder.id);
                   return (
                     <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: folderDepth(folder) * 24, borderLeft: folderDepth(folder) > 0 ? '2px solid #3b82f6' : '1px solid #2a2f3a' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <div
-                          onClick={() => setViewingFolderId(expanded ? null : folder.id)}
-                          style={{ cursor: 'pointer', flex: 1, minWidth: 180 }}
-                          title="Clique para listar os modelos vinculados"
+                          onClick={() => toggleFolderView(folder.id)}
+                          style={{ cursor: 'pointer', flex: 1, minWidth: 180, display: 'flex', alignItems: 'center', gap: 8 }}
+                          title="Clique para expandir/recolher o conteudo da pasta"
                         >
-                          <div style={{ fontWeight: 600 }}>
-                            {folder.name}{' '}
-                            <span style={{ fontSize: 11, color: '#93c5fd', border: '1px solid #1d4ed8', borderRadius: 999, padding: '1px 6px' }}>
-                              {linkedModels.length} {linkedModels.length === 1 ? 'modelo' : 'modelos'}
-                            </span>
-                          </div>
+                          <span style={{ color: '#94a3b8', fontFamily: 'monospace', width: 12, textAlign: 'center' }}>
+                            {hasChildren ? (expanded ? '\u25BE' : '\u25B8') : '\u2022'}
+                          </span>
+                          <span style={{ fontSize: 18 }} aria-hidden="true">{expanded ? '\u{1F4C2}' : '\u{1F4C1}'}</span>
+                          <span style={{ fontWeight: 600 }}>{folder.name}</span>
+                          <span style={{ fontSize: 11, color: '#93c5fd', border: '1px solid #1d4ed8', borderRadius: 999, padding: '1px 6px' }}>
+                            {linkedModels.length} {linkedModels.length === 1 ? 'modelo' : 'modelos'}
+                          </span>
                           <div style={smallMuted}>{folder.id}</div>
                           {folder.parentId && (
                             <div style={{ ...smallMuted, fontSize: 11 }}>
@@ -1713,7 +1723,7 @@ export default function App() {
                           }}
                           style={buttonStyle}
                         >
-                          Renomear
+                          {'\u270F\uFE0F'} Renomear
                         </button>
                         <select
                           value={folder.parentId ?? ''}
@@ -1754,7 +1764,7 @@ export default function App() {
                           }}
                           style={dangerButtonStyle}
                         >
-                          Excluir
+                          {'\u{1F5D1}\uFE0F'} Excluir
                         </button>
                       </div>
                     )}
@@ -1770,7 +1780,7 @@ export default function App() {
                               style={{ background: '#0f1115', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
                             >
                               <div>
-                                <div style={{ fontWeight: 600 }}>{item.title}</div>
+                                <div style={{ fontWeight: 600 }}>{'\u{1F4C4}'} {item.title}</div>
                                 <div style={smallMuted}>
                                   {C4_TYPE_LABEL[item.c4Type] ?? item.c4Type}
                                   {item.c4Scope ? ` · ${item.c4Scope}` : ''}

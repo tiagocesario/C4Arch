@@ -333,6 +333,8 @@ Mensagens do servidor:
       ancestrais/descendentes visíveis.
 - [x] Seletores de pasta (criação, edição e movimentação) exibem a hierarquia
       com indentação por profundidade, sem duplicação de nomes.
+- [x] Painel de pastas com visualização expansível (expandir/recolher) e ícones
+      objetivos para pasta, modelo e ações.
 - [x] A API rejeita `parentId` igual à própria pasta ou a um descendente,
       prevenindo ciclos na hierarquia de pastas.
 - [x] É possível importar vários arquivos/pastas locais de uma vez, com um
