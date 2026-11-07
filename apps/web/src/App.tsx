@@ -432,19 +432,28 @@ export default function App() {
     return ordered;
   })();
 
-  const folderDepth = (folder: Folder): number => {
-    let depth = 0;
+  const isLastFolderSibling = (folder: Folder): boolean => {
+    const siblings = folders
+      .filter((item) => (item.parentId ?? null) === (folder.parentId ?? null))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return siblings.length === 0 || siblings[siblings.length - 1]?.id === folder.id;
+  };
+
+  const folderTreePrefix = (folder: Folder): string => {
+    const ancestors: Folder[] = [];
     let current: Folder | undefined = folder;
-    const visited = new Set<string>();
     while (current?.parentId) {
-      if (visited.has(current.id)) break;
-      visited.add(current.id);
-      const parent = folders.find((f) => f.id === current!.parentId);
+      const parent = folders.find((item) => item.id === current!.parentId);
       if (!parent) break;
-      depth += 1;
+      ancestors.unshift(parent);
       current = parent;
     }
-    return depth;
+    let prefix = '';
+    for (const ancestor of ancestors) {
+      prefix += isLastFolderSibling(ancestor) ? '    ' : '│   ';
+    }
+    prefix += isLastFolderSibling(folder) ? '└── ' : '├── ';
+    return prefix;
   };
 
   const descendantIds = (rootId: string): Set<string> => {
@@ -1335,7 +1344,7 @@ export default function App() {
                   <option value="all">Todas as pastas</option>
                   {folderTree.map((folder) => (
                     <option key={folder.id} value={folder.id}>
-                      {'\u00a0'.repeat(folderDepth(folder) * 2)}{folder.name}
+                      {folderTreePrefix(folder)}{folder.name}
                     </option>
                   ))}
                 </select>
@@ -1650,8 +1659,8 @@ export default function App() {
                   <input id="folder-name" placeholder="Nome da pasta" style={inputStyle} />
                   <select id="folder-parent" style={inputStyle}>
                     <option value="">Pasta raiz</option>
-                    {folders.map((f) => (
-                      <option key={f.id} value={f.id}>{f.name}</option>
+                    {folderTree.map((f) => (
+                      <option key={f.id} value={f.id}>{folderTreePrefix(f)}{f.name}</option>
                     ))}
                   </select>
                   <button
@@ -1675,16 +1684,17 @@ export default function App() {
                   const linkedModels = models.filter((item) => item.folderId === folder.id);
                   const expanded = viewingFolderId === folder.id;
                   return (
-                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: folderDepth(folder) * 24 }}>
+                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: 0 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <div
                           onClick={() => setViewingFolderId(expanded ? null : folder.id)}
                           style={{ cursor: 'pointer', flex: 1, minWidth: 180 }}
                           title="Clique para listar os modelos vinculados"
                         >
-                          <div style={{ fontWeight: 600 }}>
-                            {folder.name}{' '}
-                            <span style={{ fontSize: 11, color: '#93c5fd', border: '1px solid #1d4ed8', borderRadius: 999, padding: '1px 6px' }}>
+                          <div style={{ fontWeight: 600, whiteSpace: 'pre', fontFamily: 'monospace' }}>
+                            <span style={{ color: '#7b8290' }}>{folderTreePrefix(folder)}</span>
+                            {'📁 '}{folder.name}{' '}
+                            <span style={{ fontSize: 11, color: '#93c5fd', border: '1px solid #1d4ed8', borderRadius: 999, padding: '1px 6px', fontFamily: 'ui-sans-serif, system-ui, sans-serif' }}>
                               {linkedModels.length} {linkedModels.length === 1 ? 'modelo' : 'modelos'}
                             </span>
                           </div>
@@ -1743,7 +1753,7 @@ export default function App() {
                                 f.id !== folder.id && !descendantIds(folder.id).has(f.id)
                             )
                             .map((f) => (
-                              <option key={f.id} value={f.id}>{f.name}</option>
+                              <option key={f.id} value={f.id}>{folderTreePrefix(f)}{f.name}</option>
                             ))}
                         </select>
                         <button
@@ -2153,7 +2163,7 @@ export default function App() {
                   <option value="">Sem pasta</option>
                   {folderTree.map((folder) => (
                     <option key={folder.id} value={folder.id}>
-                      {'\u00a0'.repeat(folderDepth(folder) * 2)}{folder.name}
+                      {folderTreePrefix(folder)}{folder.name}
                     </option>
                   ))}
                 </select>
