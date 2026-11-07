@@ -1242,6 +1242,34 @@ export default function App() {
     );
   }
 
+  const parseDasSections = (content: string): { preamble: string; sections: { heading: string; body: string }[] } => {
+    const lines = content.split('\\n');
+    const sections: { heading: string; body: string }[] = [];
+    const preamble: string[] = [];
+    let current: { heading: string; body: string } | null = null;
+    for (const line of lines) {
+      if (line.startsWith('## ')) {
+        if (current) sections.push(current);
+        current = { heading: line.slice(3).trim(), body: '' };
+      } else if (current) {
+        current.body += (current.body ? '\\n' : '') + line;
+      } else {
+        preamble.push(line);
+      }
+    }
+    if (current) sections.push(current);
+    return { preamble: preamble.join('\\n').trim(), sections };
+  };
+
+  const buildDasFromSections = (preamble: string, sections: { heading: string; body: string }[]): string => {
+    const parts: string[] = [];
+    if (preamble.trim()) parts.push(preamble.trim());
+    for (const section of sections) {
+      parts.push(`## ${section.heading}\\n\\n${section.body.trim()}`);
+    }
+    return parts.join('\\n\\n');
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f1115', color: '#e8eaed' }}>
       <header style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', gap: '12px', alignItems: 'center' }}>
@@ -2437,11 +2465,42 @@ export default function App() {
               {dasLoading ? (
                 <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
               ) : dasViewMode === 'edit' ? (
-                <textarea
-                  value={dasContent}
-                  onChange={(e) => setDasContent(e.target.value)}
-                  style={{ width: '100%', height: '100%', background: '#0f1115', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'none' }}
-                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  {(() => {
+                    const parsed = parseDasSections(dasContent);
+                    const fields: { label: string; description: string; value: string; onChange: (value: string) => void }[] = [];
+                    fields.push({
+                      label: 'Cabecalho',
+                      description: 'Titulo e metadados iniciais do documento (markdown).',
+                      value: parsed.preamble,
+                      onChange: (value) => setDasContent(buildDasFromSections(value, parsed.sections)),
+                    });
+                    parsed.sections.forEach((section, index) => {
+                      fields.push({
+                        label: section.heading,
+                        description: 'Conteudo da secao "' + section.heading + '" do DAS.',
+                        value: section.body,
+                        onChange: (value) => {
+                          const nextSections = parsed.sections.map((item, itemIndex) =>
+                            itemIndex === index ? { ...item, body: value } : item
+                          );
+                          setDasContent(buildDasFromSections(parsed.preamble, nextSections));
+                        },
+                      });
+                    });
+                    return fields.map((field, index) => (
+                      <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <label style={{ fontWeight: 600 }}>{field.label}</label>
+                        <span style={smallMuted}>{field.description}</span>
+                        <textarea
+                          value={field.value}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          style={{ width: '100%', minHeight: 120, background: '#0f1115', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+                        />
+                      </div>
+                    ));
+                  })()}
+                </div>
               ) : (
                 <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}>
                   <div
