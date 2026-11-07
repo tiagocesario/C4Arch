@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../auth/middleware.js';
 import { signDrawioToken } from '../auth/tokens.js';
 import { getModelAccess, isWriterRole } from '../auth/access.js';
 import { pool } from '../db.js';
-import { generateDAS } from '../c4/das.js';
+import { regenerateModelDAS } from '../c4/das.js';
 import { parseDiagrams, resolveDiagramXml, withDiagramXml } from '../c4/diagrams.js';
 import { isC4ModelType } from '../c4/model-types.js';
 import {
@@ -253,36 +253,9 @@ export class DrawioController {
         );
       }
 
-      // Regenera o DAS com base no desenho atualizado
+      // Regenera o DAS com todos os tipos de diagrama do modelo.
       try {
-        const modelRow = await pool.query('SELECT * FROM models WHERE id = $1', [id]);
-        const m = modelRow.rows[0];
-        if (m) {
-          const elems = await pool.query('SELECT * FROM elements WHERE model_id = $1 ORDER BY "order"', [id]);
-          const edgs = await pool.query('SELECT * FROM edges WHERE model_id = $1', [id]);
-          let folderName: string | null = null;
-          if (m.folder_id) {
-            const f = await pool.query('SELECT name FROM folders WHERE id = $1', [m.folder_id]);
-            folderName = f.rows[0]?.name ?? null;
-          }
-          const das = generateDAS(
-            {
-              id: m.id,
-              title: m.title,
-              description: m.description,
-              status: m.status,
-              c4_type: m.c4_type,
-              c4_scope: m.c4_scope,
-              folder_id: m.folder_id,
-              org_id: m.org_id,
-            },
-            elems.rows,
-            edgs.rows,
-            folderName,
-            xml
-          );
-          await pool.query('UPDATE models SET das_content = $1 WHERE id = $2', [das, id]);
-        }
+        await regenerateModelDAS(id);
       } catch (e) {
         console.error('[drawio] das regen error', e);
       }

@@ -31,6 +31,7 @@ import {
   getDrawioEditorUrl,
   getDrawioPreviewUrl,
   addModelDiagram,
+  importModel,
 } from './services/api';
 import { Canvas } from './components/Canvas';
 import * as ws from './services/ws';
@@ -97,6 +98,35 @@ function normalizeText(value: string | null | undefined): string {
     .toLowerCase()
     .trim();
 }
+
+function stripFileExtension(value: string): string {
+  return value
+    .replace(/(\.drawio)?\.xml$/i, '')
+    .replace(/\.drawio$/i, '')
+    .trim();
+}
+
+function nameFromImportUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    const fromPath = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() ?? '');
+    if (fromPath && fromPath !== 'view' && fromPath !== 'edit') {
+      return stripFileExtension(fromPath);
+    }
+    const driveId = url.pathname.match(/\/file\/d\/([^/]+)/)?.[1] ?? url.searchParams.get('id');
+    return driveId ? `Modelo importado ${driveId.slice(0, 8)}` : 'Modelo importado';
+  } catch {
+    return 'Modelo importado';
+  }
+}
+
+interface ImportResult {
+  name: string;
+  ok: boolean;
+  error?: string;
+}
+
+type ImportSource = 'files' | 'folder' | 'drive' | 'urls';
 
 const ROLE_LABEL: Record<UserRole, string> = {
   owner: 'Owner',
@@ -220,6 +250,17 @@ export default function App() {
   const [newModelParentFilter, setNewModelParentFilter] = useState('');
   const [linkToExisting, setLinkToExisting] = useState(false);
   const [openDrawioAfterCreate, setOpenDrawioAfterCreate] = useState(true);
+
+  const [showImportModels, setShowImportModels] = useState(false);
+  const [importSource, setImportSource] = useState<ImportSource>('files');
+  const [importFolderId, setImportFolderId] = useState<string | null>(null);
+  const [importType, setImportType] = useState<C4ModelType | 'auto'>('auto');
+  const [importFiles, setImportFiles] = useState<File[]>([]);
+  const [importLinks, setImportLinks] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState('');
+  const [importResults, setImportResults] = useState<ImportResult[]>([]);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const [editingModel, setEditingModel] = useState<Model | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -672,6 +713,126 @@ export default function App() {
     }
   }
 
+  function openImportModels() {
+    setImportSource('files');
+    setImportFolderId(null);
+    setImportType('auto');
+    setImportFiles([]);
+    setImportLinks('');
+    setImportResults([]);
+    setImportError(null);
+    setImportProgress('');
+    setShowImportModels(true);
+  }
+
+  function closeImportModels() {
+    if (importing) return;
+    setShowImportModels(false);
+  }
+
+  async function runImportModels() {
+    setImportError(null);
+    setImportResults([]);
+
+    const items: {
+      name: string;
+      title?: string;
+      xml?: string;
+      url?: string;
+      source: string;
+    }[] = [];
+
+    try {
+      if (importSource === 'files' || importSource === 'folder') {
+        const supportedFiles = importFiles.filter((file) => /\.(drawio|xml)$/i.test(file.name));
+        if (supportedFiles.length === 0) {
+          throw new Error('Selecione um ou mais arquivos .drawio/.xml.');
+        }
+        for (const file of supportedFiles) {
+          const xml = await file.text();
+          if (!xml.trimStart().startsWith('<')) {
+            throw new Error(`${file.name}: o conteúdo não parece ser XML draw.io.`);
+          }
+          const relativePath =
+            (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
+          items.push({
+            name: file.name,
+            title: stripFileExtension(file.name),
+            xml,
+            source: relativePath,
+          });
+        }
+      } else {
+        const links = importLinks
+          .split(/[\r\n,;]+/)
+          .map((link) => link.trim())
+          .filter(Boolean);
+        if (links.length === 0) {
+          throw new Error(
+            importSource === 'drive'
+              ? 'Cole um ou mais links de arquivos do Google Drive.'
+              : 'Cole uma ou mais URLs de arquivos draw.io.'
+          );
+        }
+        for (const link of links) {
+          if (!/^https?:\/\//i.test(link)) {
+            throw new Error(`URL inválida: ${link}`);
+          }
+          items.push({ name: nameFromImportUrl(link), url: link, source: link });
+        }
+      }
+
+      if (items.length > 100) {
+        throw new Error('Importe no máximo 100 arquivos por vez.');
+      }
+
+      setImporting(true);
+      const results: ImportResult[] = [];
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        setImportProgress(`Importando ${index + 1} de ${items.length}: ${item.name}`);
+        try {
+          const created = await importModel({
+            orgId,
+            folderId: importFolderId,
+            title: item.title,
+            name: item.name,
+            description: `Importado de ${item.source}`,
+            c4Type: importType === 'auto' ? undefined : importType,
+            xml: item.xml,
+            url: item.url,
+            source: item.source,
+          });
+          setModels((previous) =>
+            previous.some((model) => model.id === created.id) ? previous : [created, ...previous]
+          );
+          results.push({ name: item.name, ok: true });
+        } catch (err) {
+          results.push({
+            name: item.name,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+        setImportResults([...results]);
+      }
+
+      setImportProgress('');
+      setImportFiles([]);
+      setImportLinks('');
+      try {
+        setModels(await listModels());
+      } catch {
+        // mantém a lista otimista
+      }
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+      setImportProgress('');
+    }
+  }
+
   function openEditModel(target: Model) {
     setEditingModel(target);
     setEditTitle(target.title);
@@ -1072,6 +1233,11 @@ export default function App() {
                 </select>
                 {isWriter && (
                   <button onClick={openCreateModel} style={primaryButtonStyle}>+ Novo modelo</button>
+                )}
+                {isWriter && (
+                  <button onClick={openImportModels} style={buttonStyle} title="Importar modelos de arquivos, Google Drive ou URL">
+                    Importar
+                  </button>
                 )}
               </div>
 
@@ -1726,6 +1892,224 @@ export default function App() {
             </footer>
           </div>
         </ReactFlowProvider>
+      )}
+
+      {showImportModels && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1150,
+            padding: 16,
+          }}
+          onClick={closeImportModels}
+        >
+          <div
+            style={{
+              background: '#1a1d27',
+              border: '1px solid #2a2f3a',
+              borderRadius: 10,
+              width: 'min(720px, 96vw)',
+              maxHeight: '90vh',
+              overflowY: 'auto',
+              padding: 20,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0 }}>Importar modelos</h3>
+                <div style={smallMuted}>
+                  Importe um ou vários arquivos <code>.drawio</code>/<code>.xml</code> de pasta
+                  local, Google Drive ou outra URL. Cada arquivo vira um modelo com DAS gerado
+                  automaticamente.
+                </div>
+              </div>
+              <button onClick={closeImportModels} style={buttonStyle} disabled={importing}>
+                Fechar
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {(
+                [
+                  ['files', 'Arquivos'],
+                  ['folder', 'Pasta local'],
+                  ['drive', 'Google Drive'],
+                  ['urls', 'Outras URLs'],
+                ] as [ImportSource, string][]
+              ).map(([source, label]) => (
+                <button
+                  key={source}
+                  onClick={() => {
+                    setImportSource(source);
+                    setImportFiles([]);
+                    setImportLinks('');
+                    setImportResults([]);
+                    setImportError(null);
+                  }}
+                  style={{
+                    ...buttonStyle,
+                    background: importSource === source ? '#4f46e5' : 'transparent',
+                    border: '1px solid #2a2f3a',
+                    color: importSource === source ? '#fff' : '#e8eaed',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {(importSource === 'files' || importSource === 'folder') && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                {importSource === 'files' ? (
+                  <input
+                    key="import-files"
+                    type="file"
+                    multiple
+                    accept=".drawio,.xml,application/xml,text/xml"
+                    onChange={(e) => {
+                      setImportFiles(Array.from(e.target.files ?? []));
+                      setImportResults([]);
+                      setImportError(null);
+                    }}
+                    style={{ color: '#e8eaed' }}
+                  />
+                ) : (
+                  <input
+                    key="import-folder"
+                    type="file"
+                    multiple
+                    onChange={(e) => {
+                      setImportFiles(Array.from(e.target.files ?? []));
+                      setImportResults([]);
+                      setImportError(null);
+                    }}
+                    ref={(element) => {
+                      if (element) {
+                        element.setAttribute('webkitdirectory', '');
+                        element.setAttribute('directory', '');
+                      }
+                    }}
+                    style={{ color: '#e8eaed' }}
+                  />
+                )}
+                <div style={smallMuted}>
+                  {importFiles.length > 0
+                    ? `${importFiles.length} arquivo(s) selecionado(s).`
+                    : 'Selecione um ou vários arquivos. Formatos: .drawio, .xml.'}
+                </div>
+              </div>
+            )}
+
+            {(importSource === 'drive' || importSource === 'urls') && (
+              <div style={{ display: 'grid', gap: 6 }}>
+                <textarea
+                  value={importLinks}
+                  onChange={(e) => {
+                    setImportLinks(e.target.value);
+                    setImportResults([]);
+                    setImportError(null);
+                  }}
+                  rows={5}
+                  placeholder={
+                    importSource === 'drive'
+                      ? 'https://drive.google.com/file/d/<id>/view\n(um link por linha; o arquivo precisa estar compartilhado como "Qualquer pessoa com o link")'
+                      : 'https://exemplo.com/diagrama.drawio\n(uma URL por linha)'
+                  }
+                  style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
+                />
+                <div style={smallMuted}>
+                  {importSource === 'drive'
+                    ? 'A importação lê arquivos individuais do Drive via link público. Pastas do Drive devem ser sincronizadas localmente e importadas pela aba "Pasta local".'
+                    : 'O servidor baixa cada URL e valida se o conteúdo é XML draw.io.'}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
+              <label style={{ display: 'grid', gap: 4 }}>
+                <span style={smallMuted}>Pasta de destino</span>
+                <select
+                  value={importFolderId ?? ''}
+                  onChange={(e) => setImportFolderId(e.target.value || null)}
+                  style={inputStyle}
+                >
+                  <option value="">Sem pasta</option>
+                  {folderTree.map((folder) => (
+                    <option key={folder.id} value={folder.id}>
+                      {'\u00a0'.repeat(folderDepth(folder) * 2)}{folder.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'grid', gap: 4 }}>
+                <span style={smallMuted}>Tipo de diagrama</span>
+                <select
+                  value={importType}
+                  onChange={(e) => setImportType(e.target.value as C4ModelType | 'auto')}
+                  style={inputStyle}
+                >
+                  <option value="auto">Detectar pelo nome do arquivo</option>
+                  {C4_MODEL_TYPES.map((type) => (
+                    <option key={type} value={type}>
+                      {C4_TYPE_LABEL[type]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {importProgress && <div style={{ color: '#93c5fd' }}>{importProgress}</div>}
+
+            {importResults.length > 0 && (
+              <div
+                style={{
+                  maxHeight: 170,
+                  overflowY: 'auto',
+                  border: '1px solid #2a2f3a',
+                  borderRadius: 6,
+                  padding: 8,
+                  display: 'grid',
+                  gap: 4,
+                  fontSize: 12,
+                }}
+              >
+                {importResults.map((result, index) => (
+                  <div
+                    key={`${result.name}-${index}`}
+                    style={{ color: result.ok ? '#86efac' : '#fca5a5' }}
+                  >
+                    {result.ok ? '✓' : '✗'} {result.name}
+                    {result.error ? ` — ${result.error}` : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {importError && <div style={{ color: '#f87171' }}>{importError}</div>}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={closeImportModels} style={buttonStyle} disabled={importing}>
+                Cancelar
+              </button>
+              <button
+                onClick={runImportModels}
+                style={{ ...primaryButtonStyle, opacity: importing ? 0.7 : 1 }}
+                disabled={importing}
+              >
+                {importing ? 'Importando...' : 'Importar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {previewModel && (

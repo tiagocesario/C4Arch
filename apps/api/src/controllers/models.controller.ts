@@ -7,10 +7,12 @@ import {
   isC4ModelType,
   type C4ModelType,
 } from '../c4/model-types.js';
-import { generateDAS } from '../c4/das.js';
+import { generateDAS, regenerateModelDAS } from '../c4/das.js';
 import { parseDiagrams } from '../c4/diagrams.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_DRAWIO_XML_LENGTH = 100_000;
+const MAX_IMPORT_SIZE = 100_000;
 
 function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);
@@ -19,6 +21,137 @@ function isUuid(value: unknown): value is string {
 function cleanOptionalText(value: unknown, max: number): string | null {
   if (typeof value !== 'string' || !value.trim()) return null;
   return value.trim().slice(0, max);
+}
+
+function stripModelExtension(value: string): string {
+  return value
+    .replace(/(\.drawio)?\.xml$/i, '')
+    .replace(/\.drawio$/i, '')
+    .trim();
+}
+
+function decodeEntities(value: string): string {
+  return value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function extractXmlTitle(xml: string): string | null {
+  const diagram = xml.match(/<diagram\b[^>]*\bname="([^"]+)"/i);
+  if (diagram) return decodeEntities(diagram[1]).trim();
+  const title = xml.match(/<title>([^<]+)<\/title>/i);
+  return title ? decodeEntities(title[1]).trim() : null;
+}
+
+function inferC4Type(text: string): C4ModelType | null {
+  const normalized = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+  if (/contexto|context/.test(normalized)) return 'system-context';
+  if (/container/.test(normalized)) return 'container';
+  if (/componente|component/.test(normalized)) return 'component';
+  if (/codigo|code/.test(normalized)) return 'code';
+  if (/landscape|panorama/.test(normalized)) return 'system-landscape';
+  if (/dinamic|dynamic|fluxo/.test(normalized)) return 'dynamic';
+  if (/deploy|implant/.test(normalized)) return 'deployment';
+  return null;
+}
+
+function isPrivateHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host === '::1' ||
+    host === 'metadata.google.internal' ||
+    host.endsWith('.local') ||
+    host.endsWith('.localhost')
+  ) {
+    return true;
+  }
+  const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!match) return false;
+  const a = Number(match[1]);
+  const b = Number(match[2]);
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 192 && b === 168) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 100 && b >= 64 && b <= 127)
+  );
+}
+
+/**
+ * Normaliza links do Google Drive para download direto e aplica uma proteção
+ * SSRF básica para importação por URL.
+ */
+function resolveImportUrl(rawUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error('URL inválida');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Apenas URLs http(s) são suportadas');
+  }
+  if (isPrivateHost(url.hostname)) {
+    throw new Error('URL de rede interna não é permitida');
+  }
+
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  if (host === 'drive.google.com' || host === 'docs.google.com') {
+    if (/\/drive\/folders\//.test(url.pathname)) {
+      throw new Error(
+        'Links de pasta do Google Drive não permitem listar arquivos sem OAuth; informe os links dos arquivos individualmente.'
+      );
+    }
+    const fromPath = url.pathname.match(/\/file\/d\/([^/]+)/)?.[1];
+    const fileId = fromPath ?? url.searchParams.get('id');
+    if (fileId) {
+      return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
+    }
+  }
+  return url.toString();
+}
+
+async function downloadImportXml(rawUrl: string): Promise<string> {
+  const url = resolveImportUrl(rawUrl);
+  const response = await fetch(url, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(15_000),
+    headers: {
+      Accept: 'application/xml,text/xml,*/*',
+      'User-Agent': 'C4Arch-Importer/1.0',
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`A fonte retornou HTTP ${response.status}`);
+  }
+  if (isPrivateHost(new URL(response.url).hostname)) {
+    throw new Error('Redirecionamento para rede interna não é permitido');
+  }
+  const declaredSize = Number(response.headers.get('content-length') ?? 0);
+  if (declaredSize > MAX_IMPORT_SIZE) {
+    throw new Error('Arquivo remoto maior que o limite de 100 KB');
+  }
+  const text = await response.text();
+  if (text.length > MAX_IMPORT_SIZE) {
+    throw new Error('Arquivo remoto maior que o limite de 100 KB');
+  }
+  if (!text.trimStart().startsWith('<')) {
+    throw new Error(
+      'A fonte não retornou um XML draw.io. No Google Drive, compartilhe o arquivo como "Qualquer pessoa com o link".'
+    );
+  }
+  return text;
 }
 
 export class ModelController {
@@ -41,16 +174,18 @@ export class ModelController {
   }
 
   static async create(req: AuthenticatedRequest, res: Response) {
-    const { orgId, title, description, status, folderId, c4Type, c4Scope, parentId } = req.body as {
-      orgId?: string;
-      title?: string;
-      description?: string | null;
-      status?: 'draft' | 'final';
-      folderId?: string | null;
-      c4Type?: C4ModelType;
-      c4Scope?: string | null;
-      parentId?: string | null;
-    };
+    const { orgId, title, description, status, folderId, c4Type, c4Scope, parentId, drawioXml } =
+      req.body as {
+        orgId?: string;
+        title?: string;
+        description?: string | null;
+        status?: 'draft' | 'final';
+        folderId?: string | null;
+        c4Type?: C4ModelType;
+        c4Scope?: string | null;
+        parentId?: string | null;
+        drawioXml?: string | null;
+      };
 
     const cleanTitle = typeof title === 'string' ? title.trim() : '';
     if (!isUuid(orgId) || !cleanTitle) {
@@ -73,6 +208,14 @@ export class ModelController {
     }
     if (parentId !== undefined && parentId !== null && !isUuid(parentId)) {
       return res.status(400).json({ error: 'parentId inválido' });
+    }
+    if (drawioXml !== undefined && drawioXml !== null) {
+      if (typeof drawioXml !== 'string' || !drawioXml.trimStart().startsWith('<')) {
+        return res.status(400).json({ error: 'drawioXml inválido' });
+      }
+      if (drawioXml.length > MAX_DRAWIO_XML_LENGTH) {
+        return res.status(413).json({ error: 'drawioXml muito grande' });
+      }
     }
  
     try {
@@ -113,8 +256,8 @@ export class ModelController {
       }
  
       const model = await pool.query(
-        `INSERT INTO models (org_id, title, description, status, folder_id, c4_type, c4_scope, parent_id)
-         VALUES ($1, $2, $3, COALESCE($4, 'draft'), $5, $6, $7, $8) RETURNING *`,
+        `INSERT INTO models (org_id, title, description, status, folder_id, c4_type, c4_scope, parent_id, drawio_xml)
+         VALUES ($1, $2, $3, COALESCE($4, 'draft'), $5, $6, $7, $8, $9) RETURNING *`,
         [
           orgId,
           cleanTitle,
@@ -124,6 +267,7 @@ export class ModelController {
           c4Type ?? DEFAULT_C4_MODEL_TYPE,
           cleanOptionalText(c4Scope, 200),
           parentId ?? null,
+          drawioXml ?? null,
         ]
       );
       const created = model.rows[0];
@@ -147,7 +291,8 @@ export class ModelController {
         [],
         [],
         folderName,
-        created.drawio_xml ?? null
+        created.drawio_xml ?? null,
+        parseDiagrams(created.diagrams)
       );
       await pool.query('UPDATE models SET das_content = $1 WHERE id = $2', [das, created.id]);
       created.das_content = das;
@@ -155,6 +300,114 @@ export class ModelController {
     } catch (err) {
       console.error('[models] create error', err);
       return res.status(500).json({ error: 'Erro ao criar modelo' });
+    }
+  }
+
+  /**
+   * Importa um modelo a partir de um XML draw.io enviado pelo navegador
+   * (arquivo/pasta local) ou baixado de uma URL (Google Drive ou outra fonte).
+   * O frontend chama esta rota uma vez por arquivo para permitir importação em
+   * lote com relatório individual de sucesso/falha.
+   */
+  static async importModel(req: AuthenticatedRequest, res: Response) {
+    const { orgId, folderId, title, description, c4Type, xml, url, name, source } =
+      req.body as {
+        orgId?: string;
+        folderId?: string | null;
+        title?: string;
+        description?: string | null;
+        c4Type?: C4ModelType;
+        xml?: string;
+        url?: string;
+        name?: string;
+        source?: string;
+      };
+
+    if (!isUuid(orgId)) {
+      return res.status(400).json({ error: 'orgId inválido' });
+    }
+    if (folderId !== undefined && folderId !== null && !isUuid(folderId)) {
+      return res.status(400).json({ error: 'folderId inválido' });
+    }
+    if (c4Type !== undefined && !isC4ModelType(c4Type)) {
+      return res.status(400).json({ error: 'c4Type inválido' });
+    }
+    if ((!xml && !url) || (xml && url)) {
+      return res.status(400).json({ error: 'Informe xml OU url (exatamente uma fonte)' });
+    }
+    if (typeof xml === 'string') {
+      if (!xml.trimStart().startsWith('<')) {
+        return res.status(400).json({ error: 'XML inválido' });
+      }
+      if (xml.length > MAX_IMPORT_SIZE) {
+        return res.status(413).json({ error: 'XML muito grande' });
+      }
+    }
+    if (url !== undefined && typeof url !== 'string') {
+      return res.status(400).json({ error: 'url inválida' });
+    }
+
+    try {
+      const role = await getOrgRole(req.user!.id, orgId);
+      if (!isWriterRole(role)) {
+        return res.status(403).json({ error: 'Sem permissão de escrita nesta organização' });
+      }
+
+      if (folderId) {
+        const folder = await pool.query(
+          'SELECT id FROM folders WHERE id = $1 AND org_id = $2',
+          [folderId, orgId]
+        );
+        if (folder.rows.length === 0) {
+          return res.status(404).json({ error: 'Pasta não encontrada ou não pertence à organização' });
+        }
+      }
+
+      const content = typeof xml === 'string' ? xml : await downloadImportXml(url as string);
+      if (content.length > MAX_IMPORT_SIZE) {
+        return res.status(413).json({ error: 'XML muito grande' });
+      }
+
+      const sourceName = typeof name === 'string' ? name : title;
+      const explicitTitle = typeof title === 'string' ? stripModelExtension(title) : '';
+      const derivedTitle =
+        explicitTitle ||
+        extractXmlTitle(content) ||
+        (sourceName ? stripModelExtension(sourceName) : '') ||
+        'Modelo importado';
+      const cleanTitle = derivedTitle.slice(0, 200);
+      const effectiveType =
+        c4Type ?? inferC4Type(`${sourceName ?? ''} ${cleanTitle}`) ?? DEFAULT_C4_MODEL_TYPE;
+      const importDescription =
+        cleanOptionalText(description, 5000) ??
+        (source ? `Importado de ${source}`.slice(0, 5000) : null);
+
+      const result = await pool.query(
+        `INSERT INTO models
+           (org_id, title, description, status, folder_id, c4_type, drawio_xml)
+         VALUES ($1, $2, $3, 'draft', $4, $5, $6)
+         RETURNING *`,
+        [orgId, cleanTitle, importDescription, folderId ?? null, effectiveType, content]
+      );
+      const created = result.rows[0];
+
+      // O DAS já nasce preenchido com o diagrama importado.
+      created.das_content = await regenerateModelDAS(created.id);
+      return res.status(201).json({ ...created, diagrams: [] });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (
+        message.includes('URL inválida') ||
+        message.includes('http(s)') ||
+        message.includes('rede interna') ||
+        message.includes('Google Drive') ||
+        message.includes('XML draw.io') ||
+        message.includes('limite de 100 KB')
+      ) {
+        return res.status(400).json({ error: message });
+      }
+      console.error('[models] importModel error', err);
+      return res.status(500).json({ error: 'Erro ao importar modelo' });
     }
   }
 
@@ -217,7 +470,13 @@ export class ModelController {
         'UPDATE models SET diagrams = $1::jsonb, updated_at = NOW() WHERE id = $2 RETURNING *',
         [JSON.stringify(next), id]
       );
-      return res.status(201).json({ ...result.rows[0], diagrams: parseDiagrams(result.rows[0].diagrams) });
+      // O DAS é regenerado e passa a incluir o novo tipo de diagrama.
+      const das = await regenerateModelDAS(id);
+      return res.status(201).json({
+        ...result.rows[0],
+        diagrams: parseDiagrams(result.rows[0].diagrams),
+        das_content: das,
+      });
     } catch (err) {
       console.error('[models] addDiagram error', err);
       return res.status(500).json({ error: 'Erro ao adicionar tipo de diagrama' });
@@ -349,35 +608,8 @@ export class ModelController {
         values
       );
       const updated = result.rows[0];
-      // Regenera o DAS automaticamente a partir do modelo atual
-      const elems = await pool.query('SELECT * FROM elements WHERE model_id = $1 ORDER BY "order"', [id]);
-      const edgs = await pool.query(
-        `SELECT e.* FROM edges e WHERE e.model_id = $1`,
-        [id]
-      );
-      let folderName: string | null = null;
-      if (updated.folder_id) {
-        const f = await pool.query('SELECT name FROM folders WHERE id = $1', [updated.folder_id]);
-        folderName = f.rows[0]?.name ?? null;
-      }
-      const das = generateDAS(
-        {
-          id: updated.id,
-          title: updated.title,
-          description: updated.description,
-          status: updated.status,
-          c4_type: updated.c4_type,
-          c4_scope: updated.c4_scope,
-          folder_id: updated.folder_id,
-          org_id: updated.org_id,
-        },
-        elems.rows,
-        edgs.rows,
-        folderName,
-        updated.drawio_xml ?? null
-      );
-      await pool.query('UPDATE models SET das_content = $1 WHERE id = $2', [das, id]);
-      updated.das_content = das;
+      // Regenera o DAS automaticamente com todos os tipos de diagrama.
+      updated.das_content = await regenerateModelDAS(id);
       return res.json(updated);
     } catch (err) {
       console.error('[models] update error', err);
@@ -392,7 +624,12 @@ export class ModelController {
       const model = await getModelAccess(req.user!.id, id);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
       const result = await pool.query('SELECT das_content FROM models WHERE id = $1', [id]);
-      return res.json({ id, content: result.rows[0]?.das_content ?? '' });
+      let content = result.rows[0]?.das_content ?? '';
+      if (!content.trim()) {
+        // Modelos antigos sem DAS recebem o documento automaticamente.
+        content = (await regenerateModelDAS(id)) ?? '';
+      }
+      return res.json({ id, content });
     } catch (err) {
       console.error('[models] das error', err);
       return res.status(500).json({ error: 'Erro ao carregar DAS' });

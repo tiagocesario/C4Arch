@@ -13,6 +13,7 @@ import type {
   Edge,
   Element,
   Folder,
+  ImportModelInput,
   MeResponse,
   Model,
   ModelDetail,
@@ -280,6 +281,28 @@ export const createModel = async (input: CreateModelInput): Promise<Model> => {
       c4Type: input.c4Type ?? 'container',
       c4Scope: input.c4Scope ?? null,
       drawioXml: input.drawioXml ?? null,
+    }),
+  });
+  return mapModel(raw);
+};
+
+/**
+ * Importa um modelo a partir de XML local ou de uma URL (Google Drive ou
+ * outra fonte). A API baixa a URL no servidor para evitar CORS/SSRF no browser.
+ */
+export const importModel = async (input: ImportModelInput): Promise<Model> => {
+  const raw = await req<Raw>('/api/models/import', {
+    method: 'POST',
+    body: JSON.stringify({
+      orgId: input.orgId,
+      folderId: input.folderId ?? null,
+      title: input.title,
+      description: input.description ?? null,
+      c4Type: input.c4Type,
+      xml: input.xml,
+      url: input.url,
+      name: input.name,
+      source: input.source,
     }),
   });
   return mapModel(raw);

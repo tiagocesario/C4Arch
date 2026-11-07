@@ -10,6 +10,9 @@ router.get('/', verifyToken, ModelController.list);
 // Criar modelo
 router.post('/', verifyToken, ModelController.create);
 
+// Importar um modelo de arquivo local, Google Drive ou outra URL
+router.post('/import', verifyToken, ModelController.importModel);
+
 // Obter modelo com elementos e conexões
 router.get('/:id', verifyToken, ModelController.get);
 

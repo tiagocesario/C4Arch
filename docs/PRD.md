@@ -1,6 +1,6 @@
 # C4Arch — Product Requirements Document (PRD)
 
-- **Versão:** 0.3.0 (revisada em 05/11/2026)
+- **Versão:** 0.4.0 (revisada em 06/11/2026)
 - **Status:** MVP em estabilização
 - **Licença:** MIT
 - **Substitui:** `docs/PDR.md` (mantido como registro histórico)
@@ -66,6 +66,14 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
   visíveis.
 - Vínculo legado por `parent_id` mantido para compatibilidade com modelos
   antigos (ver ADR-0017 e ADR-0018).
+- Importação de um ou vários modelos a partir de arquivos/pastas locais,
+  Google Drive (links públicos de arquivo) e outras URLs, com detecção
+  automática do tipo de diagrama pelo nome e relatório individual de
+  sucesso/falha.
+- DAS (Documento de Arquitetura de Soluções) gerado automaticamente a partir de
+  todos os tipos de diagrama do modelo, incluindo inventário e elementos/
+  conexões identificados no draw.io. A geração vale para modelos novos e é
+  aplicada aos modelos antigos no startup da API.
 
 ### 4.2 Funcionalidades em estabilização / fora do MVP
 
@@ -144,6 +152,38 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 4. O filtro por nome ignora acentos e mantém ancestrais e descendentes
    visíveis para preservar o contexto da hierarquia.
 
+### 5.7 Importar modelos
+
+1. Em **Modelos**, o usuário clica em **Importar**.
+2. Escolhe a fonte: **Arquivos**, **Pasta local**, **Google Drive** ou
+   **Outras URLs**.
+3. Para arquivos/pastas locais, o navegador lê o conteúdo `.drawio`/`.xml` e
+   envia o XML para `POST /api/models/import`; pastas usam `webkitdirectory`.
+4. Para Google Drive ou outra URL, o usuário informa um link por linha. A API
+   baixa o arquivo no servidor (evitando CORS), normaliza links públicos de
+   arquivo do Drive para download direto e bloqueia hosts internos (SSRF).
+5. Opcionalmente escolhe a pasta de destino e o tipo de diagrama. No modo
+   automático, o tipo é inferido pelo nome do arquivo/título (contexto,
+   container, componente, código, landscape, dinâmico, implantação) e o padrão
+   é `container`.
+6. O frontend chama a rota uma vez por arquivo/URL e mostra o progresso e o
+   resultado de cada item (✓/✗), permitindo lotes de até 100 itens.
+7. Cada modelo importado nasce `draft`, guarda o XML em `drawio_xml` e já tem o
+   DAS gerado.
+
+### 5.8 Gerar o DAS automaticamente
+
+1. O DAS é regenerado em `POST /api/models`, `PUT /api/models/:id`,
+   `POST /api/models/:id/diagrams`, na importação draw.io e na primeira leitura
+   de um modelo sem conteúdo.
+2. A geração percorre o diagrama primário (`c4_type`/`drawio_xml`) e todos os
+   tipos extras de `models.diagrams`, extraindo rótulos de shapes e conexões.
+3. O documento inclui informações do modelo, inventário de diagramas, seções
+   por nível C4 (contexto, containers, componentes, código), demais tipos
+   (landscape, dinâmico, implantação) e tabelas de elementos/conexões.
+4. No startup, a API regenera o DAS de todos os modelos existentes, garantindo
+   que modelos antigos recebam o formato atual.
+
 ## 6. Requisitos funcionais (numeração estável)
 
 | ID | Requisito | Estado |
@@ -170,6 +210,8 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 | RF-20 | Navegar entre tipos de diagrama no preview e evoluir contexto → container → componente → código | Entregue |
 | RF-21 | Persistir e restaurar a tela atual no F5 (modo, modelo/preview e tipo de diagrama) | Entregue |
 | RF-22 | Hierarquia de pastas em árvore, movimentação para pai/raiz e prevenção de ciclos | Entregue |
+| RF-23 | Importar um ou vários modelos de arquivo/pasta local, Google Drive (link público de arquivo) ou outra URL, com detecção de tipo e relatório por item | Entregue |
+| RF-24 | Gerar e regenerar o DAS automaticamente a partir de todos os tipos de diagrama do modelo, incluindo modelos antigos no startup | Entregue |
 
 ## 7. Requisitos não funcionais
 
@@ -232,6 +274,17 @@ Worker (versões/sincronização futura)
 - `PUT /api/folders/:id` aceita `name` e/ou `parentId`; `parentId: null` move a
   pasta para a raiz. A API rejeita `parentId` igual ao próprio `id`; o
   frontend também impede selecionar descendentes (ciclos).
+- `POST /api/models/import` recebe exatamente uma fonte: `xml` (conteúdo do
+  arquivo/pasta local) ou `url` (Google Drive ou outra fonte). Aceita também
+  `orgId` (obrigatório), `folderId`, `title`, `description`, `c4Type`, `name` e
+  `source`. Responde `201` com o modelo criado, `400` para URL/fonte inválida
+  (inclui pasta do Drive e host interno), `404` para pasta inexistente, `413`
+  para XML acima de 100 kB e `403` para viewer.
+- `GET /api/models/:id/das` devolve `{ id, content }`; se o modelo ainda não
+  tiver DAS, o conteúdo é gerado na hora.
+- O DAS (`models.das_content`) é derivado dos diagramas e elementos do modelo,
+  não é uma fonte editável independente: qualquer criação, edição, novo tipo de
+  diagrama, importação draw.io ou restart da API o regenera.
 
 ### 9.2 WebSocket
 
@@ -270,6 +323,18 @@ Mensagens do servidor:
       nova posição da árvore.
 - [x] O filtro de pastas funciona ao digitar, ignora acentos e mantém
       ancestrais/descendentes visíveis.
+- [x] É possível importar vários arquivos/pastas locais de uma vez, com um
+      resultado por item e sem interromper o lote em caso de falha.
+- [x] Links públicos de arquivo do Google Drive e outras URLs são baixados pelo
+      servidor; links de pasta do Drive e hosts internos são rejeitados com
+      mensagem clara.
+- [x] O tipo de diagrama é inferido pelo nome do arquivo/título quando o modo
+      automático está selecionado.
+- [x] Modelos importados já exibem DAS preenchido com os shapes e conexões do
+      XML importado.
+- [x] O DAS inclui inventário e seções de todos os tipos de diagrama do modelo,
+      inclusive após adicionar um novo tipo.
+- [x] Modelos antigos recebem o DAS atualizado no startup da API.
 - [x] Código morto e dependências não utilizadas foram removidos.
 
 ## 11. Roadmap

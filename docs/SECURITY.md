@@ -90,6 +90,26 @@ Ameaças tratadas nesta revisão:
   `Cache-Control: no-store`.
 - XML de importação é limitado a 100 kB e validado minimamente.
 
+### Importação de modelos
+
+- `POST /api/models/import` exige `orgId`, papel `owner`/`editor` e valida a
+  pasta de destino contra a organização (sem IDOR).
+- A fonte é exatamente uma: XML enviado pelo navegador ou URL baixada pelo
+  servidor. O corpo total continua limitado a 100 kB e o XML remoto a 100 kB
+  (checando `Content-Length` e o tamanho lido).
+- A URL precisa ser `http(s)`, ter host público e não pode resolver para
+  loopback/LAN/metadata (`localhost`, `127.0.0.0/8`, `10/8`, `172.16/12`,
+  `192.168/16`, `169.254/16`, `100.64/10`, `.local`, `::1`). Redirecionamentos
+  são seguidos e o host final é revalidado.
+- Download com timeout de 15 s, `Accept` de XML, `User-Agent` próprio e
+  validação de que o conteúdo começa com `<` (XML draw.io).
+- Links de pasta do Google Drive são rejeitados explicitamente; apenas links
+  públicos de arquivo (`/file/d/<id>` ou `?id=<id>`) são normalizados para
+  download direto. O arquivo precisa estar compartilhado como "Qualquer pessoa
+  com o link".
+- Cada item é importado em uma chamada independente; falhas retornam mensagem
+  clara por item sem interromper o lote.
+
 ### API HTTP
 
 - `helmet` com `x-powered-by` desabilitado.
@@ -174,6 +194,12 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - Teste manual de WebSocket: conexão sem token rejeitada, conexão com token e
   `join` autorizado, `join` em modelo de outra organização negado e `patch` de
   `viewer` bloqueado com `error: "sem permissão de escrita"`.
+- Importação de modelos validada: XML local com inferência de tipo, URL pública
+  (httpbin) e rejeição de pasta do Google Drive e de `127.0.0.1` com `400`.
+- DAS automático validado: geração no modelo importado, inventário e seções
+  5.2–5.5 após adicionar container/componente/código, e backfill no startup.
+- Fluxo de UI validado com navegador: abertura do modal, importação de dois
+  arquivos, tipos inferidos e modelos visíveis após refresh.
 
 Ferramentas SAST/DAST (Trivy, Semgrep, Gitleaks, Docker Scout) não estão
 instaladas no ambiente; quando disponíveis, devem ser adicionadas ao CI.

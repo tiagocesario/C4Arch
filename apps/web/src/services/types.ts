@@ -147,6 +147,19 @@ export interface CreateModelInput {
   drawioXml?: string | null;
 }
 
+/** Importação de um modelo a partir de arquivo local, Drive ou URL. */
+export interface ImportModelInput {
+  orgId: string;
+  folderId?: string | null;
+  title?: string;
+  description?: string | null;
+  c4Type?: C4ModelType;
+  xml?: string;
+  url?: string;
+  name?: string;
+  source?: string;
+}
+
 export interface UpdateModelInput {
   title?: string;
   description?: string | null;

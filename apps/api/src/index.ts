@@ -2,6 +2,7 @@ import { app } from './server.js';
 import { createServer } from 'http';
 import { connectDb, seedDemo } from './db.js';
 import { runMigrations } from './db/migrate.js';
+import { regenerateAllDAS } from './c4/das.js';
 import { config } from './config.js';
 
 const start = async () => {
@@ -10,6 +11,16 @@ const start = async () => {
 
   if (config.seedDemo) {
     await seedDemo();
+  }
+
+  // Aplica o DAS enriquecido a todos os modelos existentes (novos e antigos).
+  try {
+    const changed = await regenerateAllDAS();
+    if (changed > 0) {
+      console.log(`[api] DAS regenerado para ${changed} modelo(s) existente(s)`);
+    }
+  } catch (err) {
+    console.error('[api] Falha ao regenerar DAS dos modelos existentes', err);
   }
 
   const server = createServer(app);

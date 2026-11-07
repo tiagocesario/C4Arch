@@ -25,6 +25,14 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
   (lista, pastas, editor ou preview do modelo e o tipo de diagrama aberto).
 - **Draw.io integrado por tipo de diagrama:** o editor, o preview e o
   import/export aceitam `?type=<c4Type>` para abrir o diagrama correto.
+- **Importação em lote de modelos:** em **Modelos → Importar**, carregue um ou
+  vários arquivos `.drawio`/`.xml` de arquivo, pasta local, Google Drive (link
+  público de arquivo) ou outra URL. O tipo C4 é detectado pelo nome e o
+  resultado é reportado por item.
+- **DAS automático:** o Documento de Arquitetura de Soluções é gerado a partir
+  de todos os tipos de diagrama do modelo (inventário, elementos e conexões) e
+  regenerado ao criar/editar o modelo, adicionar um tipo ou importar draw.io.
+  No startup da API, a geração também é aplicada aos modelos antigos.
 
 ## Quick start (Windows)
 
@@ -71,9 +79,9 @@ c4arch/
   componentes, modelo de dados, segurança e deploy), com as imagens do desenho
   draw.io.
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
-  Destaques recentes: `ADR-0017` (vínculo legado via `parent_id`) e
-  `ADR-0018` (multi-diagrama no mesmo modelo via `models.diagrams` e
-  persistência de tela no F5).
+  Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
+  `models.diagrams` e persistência de tela no F5) e `ADR-0019` (importação de
+  modelos por arquivo/Drive/URL e DAS automático).
 
 ## Login de desenvolvimento
 

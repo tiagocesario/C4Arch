@@ -1,6 +1,6 @@
 # Documento de Arquitetura de Soluções (DAS) — C4Arch
 
-> **Versão:** 1.0.0
+> **Versão:** 1.1.0
 > **Status:** Aprovado (MVP em estabilização)
 > **Licença:** MIT
 > **Baseado em:** `docs/DAS-template.md`, `docs/PRD.md`, `docs/PDR.md`, `docs/SECURITY.md`, `docs/ADR/`
@@ -13,7 +13,7 @@
 | Campo | Valor |
 |---|---|
 | Projeto | C4Arch — Arquitetura C4 colaborativa e viva |
-| Versão | 0.3.0 |
+| Versão | 0.4.0 |
 | Data | 06/11/2026 |
 | Autor(es) | Time C4Arch |
 | Revisores | Arquiteto Sênior |
@@ -45,8 +45,9 @@ consultável e versionada.
   com propagação de edições e dependências, perfis/grupos de acesso
   (owner/editor/viewer), multi-diagrama no mesmo modelo (`models.diagrams`
   JSONB), navegação por abas e evolução contexto → container → componente →
-  código, pastas em árvore com filtro por nome, persistência da tela no F5 e
-  geração automática de DAS.
+  código, pastas em árvore com filtro por nome, persistência da tela no F5,
+  importação em lote de modelos (arquivo/pasta local, Google Drive e outras
+  URLs) e geração automática de DAS a partir de todos os tipos de diagrama.
 - **Excluído (fora do MVP):** comentários, histórico de versões/restauração,
   exportação JSON/YAML (model-as-code), sincronização com Google Drive/GitLab
   (ADR-0002 rejeitada no MVP), permissões granulares aplicadas em todas as
@@ -75,7 +76,7 @@ consultável e versionada.
 
 ### 3.1 Requisitos funcionais (resumo)
 
-Referência: `docs/PRD.md` (RF-01 a RF-22). Destaques entregues: login/sessão
+Referência: `docs/PRD.md` (RF-01 a RF-24). Destaques entregues: login/sessão
 persistente (RF-01), organização e membership (RF-02), CRUD de modelo com
 título/descrição/status/pasta (RF-03), busca/filtro de pastas por nome (RF-04),
 editor C4 com nós e conexões (RF-05), edição concorrente sem perda de campos
@@ -84,8 +85,9 @@ draw.io XML (RF-08), pastas/apps/serviços (RF-09), modelos tipados por diagrama
 C4 (RF-15), apps/serviços reutilizáveis com propagação e dependências (RF-16),
 biblioteca draw.io `c4arch` com download (RF-17), perfis e grupos de acesso
 (RF-18), multi-diagrama no mesmo modelo (RF-19), navegação/evolução entre tipos
-(RF-20), restauração da tela no F5 (RF-21) e hierarquia de pastas em árvore
-(RF-22).
+(RF-20), restauração da tela no F5 (RF-21), hierarquia de pastas em árvore
+(RF-22), importação de modelos por arquivo/pasta/Drive/URL (RF-23) e DAS
+automático para todos os tipos de diagrama (RF-24).
 
 ### 3.2 Requisitos não funcionais
 
@@ -236,7 +238,9 @@ flowchart TB
   `DrawioController`, `GroupController`, `UserController`.
 - Middlewares: `verifyToken`, `verifyDrawioAccess`.
 - Acesso/RBAC: `auth/access.ts` (owner/editor/viewer + grupos).
-- Geração de DAS: `c4/das.ts` (`generateDAS`, `parseDrawio`).
+- Geração de DAS: `c4/das.ts` (`generateDAS`, `regenerateModelDAS`,
+  `regenerateAllDAS`, `parseDrawio`). O DAS consolida o diagrama primário e
+  todos os tipos extras de `models.diagrams`.
 - Assets draw.io: `c4/assets.ts` (marcadores `c4archAssetId/Kind/Name`).
 
 #### Web (`apps/web`)
@@ -306,6 +310,27 @@ como `docs/images/c4arch-components.png`.
 - **Realtime/Yjs:** estado ativo de edição em memória por modelo.
 - **Snapshots JSON:** cache/recuperação do realtime (volume `storage`).
 
+### 9.4 DAS automático
+
+O campo `models.das_content` é **derivado**, não uma fonte editável
+independente. A API o regenera em:
+
+- criação de modelo (`POST /api/models`);
+- atualização de modelo (`PUT /api/models/:id`);
+- adição de um tipo de diagrama (`POST /api/models/:id/diagrams`);
+- importação de XML draw.io (`POST /api/models/:id/drawio/import`);
+- importação de modelo por arquivo/Drive/URL (`POST /api/models/import`);
+- primeira leitura de um modelo sem conteúdo (`GET /api/models/:id/das`);
+- startup da API, via `regenerateAllDAS`, aplicando o formato atual a todos os
+  modelos existentes.
+
+A geração percorre o tipo primário (`c4_type`/`drawio_xml`) e os tipos extras
+de `models.diagrams`, extrai rótulos de `<object>` e `<mxCell>` e resolve as
+conexões para os nomes dos elementos. O documento resultante contém informações
+do modelo, inventário de diagramas com contagem de elementos/conexões, seções
+5.2–5.5 para contexto/containers/componentes/código, seção para landscape,
+dinâmico e implantação, além das tabelas de elementos e conexões do Postgres.
+
 ---
 
 ## 10. Segurança
@@ -314,7 +339,11 @@ Autenticação JWT HS256 (`issuer: c4arch`), senhas com `scrypt` + salt,
 autorização por organização em todas as rotas (RBAC owner/editor/viewer),
 tokens escopados de 5 min para draw.io, Helmet, CORS com allowlist, rate limit,
 WebSocket autenticado e autorizado por modelo, containers não-root com
-`cap_drop: ALL`. Detalhes, configuração e riscos residuais em
+`cap_drop: ALL`. A importação por URL (`POST /api/models/import`) baixa o
+conteúdo no servidor com timeout de 15 s, limite de 100 kB, validação de XML e
+bloqueio de hosts internos/loopback (SSRF), inclusive após redirecionamentos.
+Links de pasta do Google Drive são rejeitados (exigiriam OAuth); apenas links
+públicos de arquivo são aceitos. Detalhes, configuração e riscos residuais em
 `docs/SECURITY.md`.
 
 ---
@@ -343,6 +372,7 @@ Referência: `docs/ADR/`. Principais:
 | 0016 | Biblioteca draw.io `c4arch` | Adotada |
 | 0017 | Vínculo de novos tipos de diagrama a um modelo existente (`parent_id`, legado) | Substituída parcialmente pela 0018 |
 | 0018 | Multi-diagrama no mesmo modelo (`models.diagrams`) e persistência da tela no F5 | Adotada |
+| 0019 | Importação de modelos por arquivo/pasta/Drive/URL e geração automática de DAS | Adotada |
 
 ---
 
@@ -415,6 +445,7 @@ Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
 | Versão | Data | Autor | Descrição |
 |---|---|---|---|
 | 1.0.0 | 06/11/2026 | Time C4Arch | Versão inicial do DAS preenchida com base na documentação e no desenho draw.io |
+| 1.1.0 | 06/11/2026 | Time C4Arch | Importação em lote (arquivo/pasta/Drive/URL), DAS automático para todos os tipos de diagrama e backfill de modelos antigos |
 
 ---
 
