@@ -1618,7 +1618,7 @@ export default function App() {
                             setDasContent('');
                             setDasBaselineContent('');
                             setDasPreviewUrl(null);
-                            setDasViewMode('preview');
+                            setDasViewMode('edit');
                             setDasLoading(true);
                             try {
                               const [content, detail] = await Promise.all([
@@ -1855,7 +1855,7 @@ export default function App() {
                                     setDasModel(item);
                                     setDasContent('');
                                     setDasPreviewUrl(null);
-                                    setDasViewMode('preview');
+                                    setDasViewMode('edit');
                                     setDasLoading(true);
                                     Promise.all([getModelDAS(item.id), getModel(item.id)])
                                       .then(([content, detail]) => {
