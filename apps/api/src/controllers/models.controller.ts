@@ -7,7 +7,7 @@ import {
   isC4ModelType,
   type C4ModelType,
 } from '../c4/model-types.js';
-import { generateDAS, regenerateModelDAS } from '../c4/das.js';
+import { regenerateModelDAS } from '../c4/das.js';
 import { parseDiagrams } from '../c4/diagrams.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -271,31 +271,8 @@ export class ModelController {
         ]
       );
       const created = model.rows[0];
-      // Gera o DAS automaticamente
-      let folderName: string | null = null;
-      if (folderId) {
-        const f = await pool.query('SELECT name FROM folders WHERE id = $1', [folderId]);
-        folderName = f.rows[0]?.name ?? null;
-      }
-      const das = generateDAS(
-        {
-          id: created.id,
-          title: created.title,
-          description: created.description,
-          status: created.status,
-          c4_type: created.c4_type,
-          c4_scope: created.c4_scope,
-          folder_id: created.folder_id,
-          org_id: created.org_id,
-        },
-        [],
-        [],
-        folderName,
-        created.drawio_xml ?? null,
-        parseDiagrams(created.diagrams)
-      );
-      await pool.query('UPDATE models SET das_content = $1 WHERE id = $2', [das, created.id]);
-      created.das_content = das;
+      // O DAS é gerado pelo fluxo único, com todos os diagramas e metadados.
+      created.das_content = await regenerateModelDAS(created.id);
       return res.status(201).json(created);
     } catch (err) {
       console.error('[models] create error', err);

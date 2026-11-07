@@ -8,3 +8,86 @@ body {
   background: #f8fafc;
   color: #0f172a;
 }
+
+/* Formatação do DAS na pré-visualização e no PDF. */
+.das-preview h1,
+.das-preview h2,
+.das-preview h3 {
+  color: #1f2937;
+  line-height: 1.25;
+}
+
+.das-preview h1 {
+  font-size: 22px;
+  margin: 0 0 12px;
+}
+
+.das-preview h2 {
+  font-size: 17px;
+  margin: 22px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.das-preview h3 {
+  font-size: 14px;
+  margin: 16px 0 6px;
+}
+
+.das-preview p {
+  margin: 8px 0;
+}
+
+.das-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 10px 0 16px;
+}
+
+.das-preview th,
+.das-preview td {
+  border: 1px solid #d1d5db;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  vertical-align: top;
+  text-align: left;
+}
+
+.das-preview th {
+  background: #f3f4f6;
+  font-weight: 600;
+}
+
+.das-preview tr:nth-child(even) td {
+  background: #fafafa;
+}
+
+.das-preview blockquote {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border-left: 4px solid #93c5fd;
+  background: #eff6ff;
+  color: #1f2937;
+}
+
+.das-preview ul {
+  margin: 8px 0;
+  padding-left: 22px;
+}
+
+.das-preview li {
+  margin: 2px 0;
+}
+
+.das-preview hr {
+  border: none;
+  border-top: 1px solid #d1d5db;
+  margin: 16px 0;
+}
+
+.das-preview code {
+  background: #f3f4f6;
+  padding: 1px 4px;
+  border-radius: 3px;
+}

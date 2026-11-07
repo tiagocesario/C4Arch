@@ -178,10 +178,18 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
    de um modelo sem conteúdo.
 2. A geração percorre o diagrama primário (`c4_type`/`drawio_xml`) e todos os
    tipos extras de `models.diagrams`, extraindo rótulos de shapes e conexões.
-3. O documento inclui informações do modelo, inventário de diagramas, seções
+   O parser entende `<object>`/`<UserObject>`, células nativas, diagramas
+   comprimidos e placeholders (`%c4Name%`, `%c4Description%`,
+   `%c4Technology%`, `%c4Type%`).
+3. Shapes da biblioteca `c4arch` são enriquecidos com nome, descrição e
+   endpoint/tecnologia dos registros de `apps`/`services`.
+4. O documento inclui informações do modelo, inventário de diagramas, seções
    por nível C4 (contexto, containers, componentes, código), demais tipos
-   (landscape, dinâmico, implantação) e tabelas de elementos/conexões.
-4. No startup, a API regenera o DAS de todos os modelos existentes, garantindo
+   (landscape, dinâmico, implantação) e tabelas de elementos/conexões com
+   origem, destino, rótulo e tecnologia.
+5. A pré-visualização e o PDF usam a mesma renderização Markdown (tabelas,
+   listas, citação, títulos) e exibem o desenho draw.io em um iframe.
+6. No startup, a API regenera o DAS de todos os modelos existentes, garantindo
    que modelos antigos recebam o formato atual.
 
 ## 6. Requisitos funcionais (numeração estável)

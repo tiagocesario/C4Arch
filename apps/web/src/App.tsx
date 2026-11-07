@@ -45,6 +45,7 @@ import type {
   SessionUser,
   AssetDependency,
   C4ModelType,
+  ModelDiagram,
 } from './services/types';
 import { C4_MODEL_TYPES } from './services/types';
 import type { UserRole } from './types/user';
@@ -53,40 +54,138 @@ import GroupManagement from './pages/GroupManagement';
 
 type Mode = 'list' | 'edit' | 'users' | 'groups' | 'folders' | 'apps' | 'services';
 
-function markdownToHtml(md: string): string {
-  let html = md
+function escapeHtml(value: string): string {
+  return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
-  // headings
-  html = html.replace(/^### (.*)$/gm, '<h3>$1</h3>');
-  html = html.replace(/^## (.*)$/gm, '<h2>$1</h2>');
-  html = html.replace(/^# (.*)$/gm, '<h1>$1</h1>');
-  // bold
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  // inline code
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // horizontal rule
-  html = html.replace(/^---$/gm, '<hr/>');
-  // tables: convert simple markdown tables
-  html = html.replace(/((?:^\|.+\|$\n?)+)/gm, (block) => {
-    const rows = block.trim().split('\n').filter((r) => r.trim());
-    if (rows.length === 0) return block;
-    const isSep = (r: string) => /^\|[\s\-:|]+\|$/.test(r.trim());
-    const header = rows[0];
-    const bodyRows = rows.slice(isSep(rows[1]) ? 2 : 1);
-    const parseRow = (r: string) =>
-      r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-    const ths = parseRow(header).map((c) => `<th>${c}</th>`).join('');
-    const trs = bodyRows.map((r) => `<tr>${parseRow(r).map((c) => `<td>${c}</td>`).join('')}</tr>`).join('');
-    return `<table><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
-  });
-  // paragraphs: wrap remaining lines
-  html = html.replace(/\n{2,}/g, '</p><p>');
-  html = '<p>' + html + '</p>';
-  // clean up empty p
-  html = html.replace(/<p>\s*<\/p>/g, '');
-  return html;
+}
+
+/** Formatação inline mínima usada pelo DAS (negrito e código). */
+function renderInline(value: string): string {
+  return escapeHtml(value)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+function splitTableRow(row: string): string[] {
+  return row
+    .trim()
+    .replace(/^\||\|$/g, '')
+    .replace(/\\\|/g, '\u0000')
+    .split('|')
+    .map((cell) => cell.replace(/\u0000/g, '|').trim());
+}
+
+/**
+ * Renderizador Markdown simples e seguro para o DAS. Cobre títulos, tabelas,
+ * listas, citações, negrito, código e régua horizontal — o suficiente para o
+ * documento gerado pela API e para o PDF.
+ */
+function markdownToHtml(md: string): string {
+  const lines = md.replace(/\r\n/g, '\n').split('\n');
+  const html: string[] = [];
+  let paragraph: string[] = [];
+  let list: string[] = [];
+  let quote: string[] = [];
+
+  const flushParagraph = () => {
+    if (paragraph.length > 0) {
+      html.push(`<p>${renderInline(paragraph.join(' '))}</p>`);
+      paragraph = [];
+    }
+  };
+  const flushList = () => {
+    if (list.length > 0) {
+      html.push(`<ul>${list.map((item) => `<li>${renderInline(item)}</li>`).join('')}</ul>`);
+      list = [];
+    }
+  };
+  const flushQuote = () => {
+    if (quote.length > 0) {
+      html.push(`<blockquote>${quote.map(renderInline).join('<br/>')}</blockquote>`);
+      quote = [];
+    }
+  };
+  const flushAll = () => {
+    flushParagraph();
+    flushList();
+    flushQuote();
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      flushAll();
+      continue;
+    }
+
+    // Tabelas: agrupa linhas consecutivas que começam e terminam com "|".
+    if (/^\|.*\|$/.test(trimmed)) {
+      const tableLines: string[] = [];
+      while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index])) {
+        tableLines.push(lines[index].trim());
+        index += 1;
+      }
+      index -= 1;
+      flushAll();
+
+      if (tableLines.length >= 2) {
+        const isSeparator = (row: string) => /^\|[\s\-:|]+\|$/.test(row);
+        const header = splitTableRow(tableLines[0]);
+        const bodyStart = isSeparator(tableLines[1]) ? 2 : 1;
+        const body = tableLines.slice(bodyStart).map(splitTableRow);
+        const headHtml = header.map((cell) => `<th>${renderInline(cell)}</th>`).join('');
+        const bodyHtml = body
+          .map((row) => {
+            const cells = header.map((_, cellIndex) => row[cellIndex] ?? '');
+            return `<tr>${cells.map((cell) => `<td>${renderInline(cell)}</td>`).join('')}</tr>`;
+          })
+          .join('');
+        html.push(`<table><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`);
+      } else {
+        html.push(`<p>${renderInline(tableLines.join(' '))}</p>`);
+      }
+      continue;
+    }
+
+    const heading = trimmed.match(/^(#{1,3})\s+(.*)$/);
+    if (heading) {
+      flushAll();
+      const level = heading[1].length;
+      html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+      continue;
+    }
+
+    if (/^---+$/.test(trimmed)) {
+      flushAll();
+      html.push('<hr/>');
+      continue;
+    }
+
+    if (/^>\s?/.test(trimmed)) {
+      flushParagraph();
+      flushList();
+      quote.push(trimmed.replace(/^>\s?/, ''));
+      continue;
+    }
+
+    if (/^[-*]\s+/.test(trimmed)) {
+      flushParagraph();
+      flushQuote();
+      list.push(trimmed.replace(/^[-*]\s+/, ''));
+      continue;
+    }
+
+    flushList();
+    flushQuote();
+    paragraph.push(trimmed);
+  }
+
+  flushAll();
+  return html.join('\n');
 }
 
 // Normaliza texto para busca: minúsculas e sem acentos, para que "servico"
@@ -104,6 +203,15 @@ function stripFileExtension(value: string): string {
     .replace(/(\.drawio)?\.xml$/i, '')
     .replace(/\.drawio$/i, '')
     .trim();
+}
+
+/** Usa o XML do diagrama primário ou, se vazio, o primeiro tipo com desenho. */
+function firstDiagramXml(model: {
+  drawioXml?: string | null;
+  diagrams?: ModelDiagram[];
+}): string | null {
+  if (model.drawioXml) return model.drawioXml;
+  return model.diagrams?.find((diagram) => diagram.drawioXml)?.drawioXml ?? null;
 }
 
 function nameFromImportUrl(raw: string): string {
@@ -1467,7 +1575,7 @@ export default function App() {
                                 getModel(item.id),
                               ]);
                               setDasContent(content);
-                              if (detail.drawioXml) setDasPreviewUrl(getDrawioPreviewUrl(detail.drawioXml));
+                              if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
                             } catch (err) {
                               setError(err instanceof Error ? err.message : String(err));
                             } finally {
@@ -1694,7 +1802,7 @@ export default function App() {
                                     Promise.all([getModelDAS(item.id), getModel(item.id)])
                                       .then(([content, detail]) => {
                                         setDasContent(content);
-                                        if (detail.drawioXml) setDasPreviewUrl(getDrawioPreviewUrl(detail.drawioXml));
+                                        if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
                                       })
                                       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
                                       .finally(() => setDasLoading(false));
@@ -2233,7 +2341,7 @@ export default function App() {
                         getModel(dasModel.id),
                       ]);
                       setDasContent(content);
-                      if (detail.drawioXml) setDasPreviewUrl(getDrawioPreviewUrl(detail.drawioXml));
+                      if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
                     } catch (err) {
                       setError(err instanceof Error ? err.message : String(err));
                     } finally {
@@ -2248,8 +2356,10 @@ export default function App() {
                   onClick={() => {
                     const w = window.open('', '_blank');
                     if (!w) return;
-                    const imgTag = dasPreviewUrl ? `<div style="text-align:center;margin-bottom:16px;"><img src="${dasPreviewUrl}" alt="Diagrama" style="max-width:100%;border:1px solid #ccc;"/></div>` : '';
-                    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${dasModel?.title ?? 'DAS'}</title><style>body{font-family:system-ui,sans-serif;margin:24px;color:#111;}h1,h2,h3{color:#1f2937;}table{border-collapse:collapse;width:100%;margin:8px 0;}th,td{border:1px solid #ccc;padding:6px;font-size:12px;}th{background:#f3f4f6;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}hr{border:none;border-top:1px solid #ccc;margin:12px 0;}@media print{body{margin:12px;}}</style></head><body>${imgTag}${markdownToHtml(dasContent)}</body></html>`;
+                    const imgTag = dasPreviewUrl
+                      ? `<div style="margin-bottom:16px;"><iframe src="${dasPreviewUrl.replace(/&/g, '&amp;')}" title="Diagrama draw.io" style="width:100%;height:380px;border:1px solid #ccc;"></iframe></div>`
+                      : '';
+                    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${dasModel?.title ?? 'DAS'}</title><style>body{font-family:system-ui,sans-serif;margin:24px;color:#111;line-height:1.5;}h1{font-size:22px;}h1,h2,h3{color:#1f2937;line-height:1.25;}h2{font-size:17px;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;}h3{font-size:14px;margin:16px 0 6px;}p{margin:8px 0;}table{border-collapse:collapse;width:100%;margin:10px 0 16px;}th,td{border:1px solid #d1d5db;padding:6px 8px;font-size:11px;line-height:1.35;text-align:left;vertical-align:top;}th{background:#f3f4f6;}tr:nth-child(even) td{background:#fafafa;}blockquote{margin:0 0 16px;padding:8px 12px;border-left:4px solid #93c5fd;background:#eff6ff;}ul{margin:8px 0;padding-left:22px;}li{margin:2px 0;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}hr{border:none;border-top:1px solid #d1d5db;margin:16px 0;}@media print{body{margin:12px;}h2,h3{break-after:avoid;}table{break-inside:auto;}tr{break-inside:avoid;}}</style></head><body>${imgTag}${markdownToHtml(dasContent)}</body></html>`;
                     w.document.write(html);
                     w.document.close();
                     w.focus();
@@ -2301,8 +2411,12 @@ export default function App() {
                     style={{ background: '#ffffff', color: '#1f2937', width: '210mm', maxWidth: '100%', minHeight: '297mm', padding: '20mm', boxShadow: '0 2px 12px rgba(0,0,0,0.4)', borderRadius: 4, lineHeight: 1.6, fontSize: 12, fontFamily: 'system-ui, sans-serif' }}
                   >
                     {dasPreviewUrl && (
-                      <div style={{ marginBottom: 16, textAlign: 'center' }}>
-                        <img src={dasPreviewUrl} alt="Diagrama draw.io" style={{ maxWidth: '100%', border: '1px solid #ccc' }} />
+                      <div style={{ marginBottom: 16 }}>
+                        <iframe
+                          src={dasPreviewUrl}
+                          title="Diagrama draw.io"
+                          style={{ width: '100%', height: 360, border: '1px solid #ccc', borderRadius: 4, background: '#fff' }}
+                        />
                       </div>
                     )}
                     <div dangerouslySetInnerHTML={{ __html: markdownToHtml(dasContent) }} />

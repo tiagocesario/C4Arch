@@ -1,6 +1,6 @@
 # Documento de Arquitetura de Soluções (DAS) — C4Arch
 
-> **Versão:** 1.1.0
+> **Versão:** 1.2.0
 > **Status:** Aprovado (MVP em estabilização)
 > **Licença:** MIT
 > **Baseado em:** `docs/DAS-template.md`, `docs/PRD.md`, `docs/PDR.md`, `docs/SECURITY.md`, `docs/ADR/`
@@ -325,11 +325,19 @@ independente. A API o regenera em:
   modelos existentes.
 
 A geração percorre o tipo primário (`c4_type`/`drawio_xml`) e os tipos extras
-de `models.diagrams`, extrai rótulos de `<object>` e `<mxCell>` e resolve as
-conexões para os nomes dos elementos. O documento resultante contém informações
-do modelo, inventário de diagramas com contagem de elementos/conexões, seções
-5.2–5.5 para contexto/containers/componentes/código, seção para landscape,
-dinâmico e implantação, além das tabelas de elementos e conexões do Postgres.
+de `models.diagrams`. O parser entende objetos com metadados
+(`<object>`/`<UserObject>`), células nativas (`<mxCell>`), páginas comprimidas
+(base64 + deflate) e placeholders do template C4 (`%c4Name%`,
+`%c4Description%`, `%c4Technology%`, `%c4Type%`), resolvendo as conexões para
+os nomes dos elementos. Shapes com marcadores `c4archAssetId`/`c4archAssetKind`
+são enriquecidos com nome, descrição e endpoint/tecnologia dos registros de
+`apps`/`services`. O documento resultante contém informações do modelo,
+inventário de diagramas com contagem de elementos/conexões, seções 5.2–5.5
+para contexto/containers/componentes/código, seção para landscape, dinâmico e
+implantação, além das tabelas agregadas de elementos e conexões (com origem,
+destino, rótulo, tecnologia e diagramas de origem). A pré-visualização e o PDF
+renderizam o mesmo Markdown (títulos, tabelas, listas, citação) e exibem o
+desenho draw.io em um iframe.
 
 ---
 
@@ -446,6 +454,7 @@ Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
 |---|---|---|---|
 | 1.0.0 | 06/11/2026 | Time C4Arch | Versão inicial do DAS preenchida com base na documentação e no desenho draw.io |
 | 1.1.0 | 06/11/2026 | Time C4Arch | Importação em lote (arquivo/pasta/Drive/URL), DAS automático para todos os tipos de diagrama e backfill de modelos antigos |
+| 1.2.0 | 06/11/2026 | Time C4Arch | DAS coerente com os desenhos draw.io: parser de objetos/comprimidos/placeholders, enriquecimento por apps/serviços e formatação em tabelas na pré-visualização/PDF |
 
 ---
 
