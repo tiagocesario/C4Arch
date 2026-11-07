@@ -349,7 +349,8 @@ Mensagens do servidor:
 - [x] O DAS inclui inventário e seções de todos os tipos de diagrama do modelo,
       inclusive após adicionar um novo tipo.
 - [x] Modelos antigos recebem o DAS atualizado no startup da API.
-- [x] Código morto e dependências não utilizadas foram removidos.
+- [x] Editor do DAS em layout de formulario multi-step com navegacao por secoes,
+      descritivos por campo e salvamento ao final.- [x] Código morto e dependências não utilizadas foram removidos.
 
 ## 11. Roadmap
 
