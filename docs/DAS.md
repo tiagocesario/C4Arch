@@ -43,13 +43,15 @@ consultável e versionada.
   biblioteca de shapes `c4arch`, importação/exportação de XML draw.io,
   persistência de snapshots JSON, gestão de pastas, apps e serviços reutilizáveis
   com propagação de edições e dependências, perfis/grupos de acesso
-  (owner/editor/viewer), vínculo de novos tipos de diagrama a um modelo
-  existente (`parent_id`, sem duplicar tipo), geração automática de DAS.
+  (owner/editor/viewer), multi-diagrama no mesmo modelo (`models.diagrams`
+  JSONB), navegação por abas e evolução contexto → container → componente →
+  código, pastas em árvore com filtro por nome, persistência da tela no F5 e
+  geração automática de DAS.
 - **Excluído (fora do MVP):** comentários, histórico de versões/restauração,
   exportação JSON/YAML (model-as-code), sincronização com Google Drive/GitLab
   (ADR-0002 rejeitada no MVP), permissões granulares aplicadas em todas as
-  rotas/UI, múltiplas visões por modelo e hierarquia C4 (`parent_id`), escala
-  horizontal do realtime.
+  rotas/UI, hierarquia C4 genérica em múltiplos níveis e escala horizontal do
+  realtime.
 - **Fronteiras:** PostgreSQL 16 (fonte de verdade), serviço realtime (ws + Yjs)
   com snapshots em volume `storage`, editor draw.io hospedado em
   `embed.diagrams.net` (HTTPS), biblioteca de shapes servida como data URL.
@@ -73,15 +75,17 @@ consultável e versionada.
 
 ### 3.1 Requisitos funcionais (resumo)
 
-Referência: `docs/PRD.md` (RF-01 a RF-18). Destaques entregues: login/sessão
+Referência: `docs/PRD.md` (RF-01 a RF-22). Destaques entregues: login/sessão
 persistente (RF-01), organização e membership (RF-02), CRUD de modelo com
-título/descrição/status/pasta (RF-03), busca/filtro por pasta (RF-04), editor
-C4 com nós e conexões (RF-05), edição concorrente sem perda de campos (RF-06),
-acesso ao draw.io ao criar/editar (RF-07), importação/exportação draw.io XML
-(RF-08), pastas/apps/serviços (RF-09), modelos tipados por diagrama C4
-(RF-15), apps/serviços reutilizáveis com propagação e dependências (RF-16),
+título/descrição/status/pasta (RF-03), busca/filtro de pastas por nome (RF-04),
+editor C4 com nós e conexões (RF-05), edição concorrente sem perda de campos
+(RF-06), acesso ao draw.io ao criar/editar (RF-07), importação/exportação
+draw.io XML (RF-08), pastas/apps/serviços (RF-09), modelos tipados por diagrama
+C4 (RF-15), apps/serviços reutilizáveis com propagação e dependências (RF-16),
 biblioteca draw.io `c4arch` com download (RF-17), perfis e grupos de acesso
-(RF-18).
+(RF-18), multi-diagrama no mesmo modelo (RF-19), navegação/evolução entre tipos
+(RF-20), restauração da tela no F5 (RF-21) e hierarquia de pastas em árvore
+(RF-22).
 
 ### 3.2 Requisitos não funcionais
 
@@ -274,7 +278,7 @@ como `docs/images/c4arch-components.png`.
 | users | Usuários | id (UUID) |
 | organizations | Organizações/workspaces | id (UUID) |
 | memberships | Vínculo usuário-org com papel | (org_id, user_id) |
-| models | Modelos C4 (com `parent_id` para novos tipos de diagrama do mesmo modelo) | id (UUID) |
+| models | Modelos C4; diagrama primário em `c4_type`/`drawio_xml` e tipos extras em `diagrams` (JSONB; `parent_id` legado) | id (UUID) |
 | elements | Elementos C4 (actor/system/container/component) | id (UUID) |
 | edges | Conexões entre elementos | id (UUID) |
 | folders | Pastas (hierárquicas) | id (UUID) |
@@ -287,16 +291,18 @@ como `docs/images/c4arch-components.png`.
 - `organizations 1..n memberships n..1 users`
 - `organizations 1..n models`, `models n..1 folders`
 - `models 1..n elements`, `models 1..n edges`
-- `models 1..n models` (self-reference via `parent_id`: novos tipos de
-  diagrama do mesmo modelo; o índice único `(COALESCE(parent_id, id), c4_type)`
-  impede repetir o tipo no grupo)
+- `models 1..n diagrams` (tipos extras do mesmo modelo em `models.diagrams`;
+  o tipo primário continua em `models.c4_type`/`drawio_xml`)
+- `models 1..n models` (self-reference legada via `parent_id`, mantida para
+  compatibilidade; o índice único `(COALESCE(parent_id, id), c4_type)` impede
+  repetir o tipo no grupo)
 - `elements n..1 apps/services` (opcional)
 - `folders 1..n folders` (self-reference via `parent_id`)
 
 ### 9.3 Persistência
 
 - **PostgreSQL:** fonte de verdade (modelos, elementos, conexões, usuários,
-  orgs, permissões, drawio_xml, das_content).
+  orgs, permissões, `drawio_xml`, `diagrams` JSONB e `das_content`).
 - **Realtime/Yjs:** estado ativo de edição em memória por modelo.
 - **Snapshots JSON:** cache/recuperação do realtime (volume `storage`).
 
@@ -335,7 +341,8 @@ Referência: `docs/ADR/`. Principais:
 | 0014 | Hardening de segurança | Adotada |
 | 0015 | Perfis e grupos de acesso | Adotada |
 | 0016 | Biblioteca draw.io `c4arch` | Adotada |
-| 0017 | Vínculo de novos tipos de diagrama a um modelo existente | Adotada |
+| 0017 | Vínculo de novos tipos de diagrama a um modelo existente (`parent_id`, legado) | Substituída parcialmente pela 0018 |
+| 0018 | Multi-diagrama no mesmo modelo (`models.diagrams`) e persistência da tela no F5 | Adotada |
 
 ---
 

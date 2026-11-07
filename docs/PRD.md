@@ -55,9 +55,17 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 - Biblioteca draw.io nomeada `c4arch` com download do XML.
 - Listagem de modelos vinculados a uma pasta ao clicar nela.
 - Módulo de perfis e grupos de acesso (owner/editor/viewer + grupos customizados).
-- Vínculo de um novo tipo de diagrama a um modelo existente (`parent_id`),
-  com filtro por título no cadastro e bloqueio de duplicidade de tipo por
-  modelo/grupo.
+- Multi-diagrama no mesmo modelo: tipos extras ficam em `models.diagrams`
+  (JSONB), sem criar novos modelos, arquivos ou linhas no banco.
+- Navegação entre tipos de diagrama no preview (abas) e evolução guiada
+  contexto → container → componente → código.
+- Persistência da tela atual no F5: lista, pastas, editor/preview e tipo de
+  diagrama aberto são restaurados após o refresh.
+- Pastas hierárquicas renderizadas em árvore, com movimentação para pasta pai
+  ou raiz e filtro por nome (ignora acentos) mantendo ancestrais e descendentes
+  visíveis.
+- Vínculo legado por `parent_id` mantido para compatibilidade com modelos
+  antigos (ver ADR-0017 e ADR-0018).
 
 ### 4.2 Funcionalidades em estabilização / fora do MVP
 
@@ -66,8 +74,9 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 - Exportação JSON/YAML (model-as-code).
 - Sincronização com Google Drive e GitLab (ADR-0002 permanece rejeitada).
 - Permissões granulares aplicadas em todas as rotas e na UI.
-- Hierarquia C4 genérica em múltiplos níveis (o `parent_id` cobre apenas o
-  vínculo de um novo tipo de diagrama a um modelo existente).
+- Hierarquia C4 genérica em múltiplos níveis e múltiplas visões independentes
+  por modelo (o multi-diagrama cobre os tipos C4 do mesmo sistema; o
+  `parent_id` permanece apenas como compatibilidade legada).
 - Escala horizontal do serviço realtime.
 
 ## 5. Fluxos principais
@@ -80,6 +89,9 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
    modelos, pastas, aplicações e serviços.
 4. Ao recarregar a página, a sessão é restaurada a partir do token salvo e
    validada novamente em `/api/auth/me`.
+5. A tela atual também é restaurada do `localStorage` (`c4arch_view`): modo,
+   modelo em edição, preview aberto e tipo de diagrama selecionado. A leitura
+   ocorre antes de qualquer gravação de estado, para o F5 não voltar à lista.
 
 ### 5.2 Criar um modelo
 
@@ -88,6 +100,9 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 3. A API valida organização, pasta, título e status.
 4. O modelo é criado como `draft` e aberto no editor.
 5. Se a opção estiver marcada, o draw.io é aberto em uma nova aba.
+6. Ao marcar **Vincular a um modelo existente**, o título deixa de ser
+   obrigatório: o tipo de diagrama escolhido é anexado ao **mesmo modelo** via
+   `POST /api/models/:id/diagrams`, herdando a pasta e sem criar novo modelo.
 
 ### 5.3 Editar um modelo
 
@@ -107,6 +122,28 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
    descrição ou metadados.
 5. O snapshot é gravado de forma atômica (`.tmp` + `rename`).
 
+### 5.5 Navegar e evoluir entre tipos de diagrama
+
+1. Clicar em um modelo abre o preview draw.io do tipo primário (`c4_type`).
+2. Abas exibem o tipo primário e os tipos extras armazenados em
+   `models.diagrams`, sem novos modelos.
+3. Ao trocar de aba, o XML correspondente é carregado: primário em
+   `drawio_xml`; extras em `diagrams[].drawioXml`.
+4. Os botões **Evoluir para Container/Componente/Código** chamam
+   `POST /api/models/:id/diagrams` e criam o próximo tipo no mesmo modelo.
+5. O editor draw.io abre no tipo selecionado via `?type=<c4Type>`.
+
+### 5.6 Organizar pastas
+
+1. As pastas são ordenadas em árvore pelo `parent_id` (pai seguido dos filhos),
+   com indentação por profundidade.
+2. Mover uma pasta envia `PUT /api/folders/:id` com `parentId` (ou `null` para
+   a raiz); a UI atualiza o estado imediatamente e confirma com o servidor.
+3. Não é permitido selecionar a própria pasta ou um descendente como pai
+   (prevenção de ciclo).
+4. O filtro por nome ignora acentos e mantém ancestrais e descendentes
+   visíveis para preservar o contexto da hierarquia.
+
 ## 6. Requisitos funcionais (numeração estável)
 
 | ID | Requisito | Estado |
@@ -114,7 +151,7 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 | RF-01 | Login e sessão persistente | Entregue |
 | RF-02 | Organização e membership | Entregue (básico) |
 | RF-03 | CRUD de modelo com título, descrição, status e pasta | Entregue |
-| RF-04 | Busca e filtro por pasta | Entregue |
+| RF-04 | Busca de modelos e filtro de pastas por nome (sem acentos, com contexto hierárquico) | Entregue |
 | RF-05 | Editor C4 com nós e conexões | Entregue |
 | RF-06 | Edição concorrente sem perda de campos | Entregue |
 | RF-07 | Acesso ao draw.io ao criar/editar modelo | Entregue |
@@ -129,7 +166,10 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 | RF-16 | Apps e serviços reutilizáveis com propagação e dependências | Entregue |
 | RF-17 | Biblioteca draw.io `c4arch` com download | Entregue |
 | RF-18 | Perfis e grupos de acesso customizados | Entregue |
-| RF-19 | Vincular novo tipo de diagrama a modelo existente (`parent_id`), sem duplicar tipo | Entregue |
+| RF-19 | Vincular novo tipo de diagrama ao mesmo modelo (`models.diagrams` JSONB), sem duplicar tipo nem criar novo modelo | Entregue |
+| RF-20 | Navegar entre tipos de diagrama no preview e evoluir contexto → container → componente → código | Entregue |
+| RF-21 | Persistir e restaurar a tela atual no F5 (modo, modelo/preview e tipo de diagrama) | Entregue |
+| RF-22 | Hierarquia de pastas em árvore, movimentação para pai/raiz e prevenção de ciclos | Entregue |
 
 ## 7. Requisitos não funcionais
 
@@ -177,12 +217,21 @@ Worker (versões/sincronização futura)
 - Respostas do Postgres (`snake_case`) são normalizadas para `camelCase` no
   frontend por `apps/web/src/services/api.ts`.
 - `POST /api/models` aceita `orgId`, `title`, `description`, `status`,
-  `folderId`, `c4Type`, `c4Scope` e `parentId`. Quando `parentId` é informado,
-  o novo modelo é um novo tipo de diagrama do modelo pai; a API rejeita com
-  `409` se o tipo já existir no grupo (`parent_id`/`id`).
+  `folderId`, `c4Type`, `c4Scope` e `parentId` (legado). O fluxo recomendado
+  para um novo tipo de diagrama é `POST /api/models/:id/diagrams`.
+- `POST /api/models/:id/diagrams` recebe `{ "c4Type": "<tipo>" }`, grava o tipo
+  em `models.diagrams` (JSONB) no **mesmo modelo** e devolve o modelo
+  atualizado. Retorna `409` se o tipo já existir (primário ou extra) e `403`
+  para viewer.
+- `GET /api/models` e `GET /api/models/:id` devolvem `diagrams` normalizado
+  como `[{ c4Type, drawioXml }]`.
 - `PUT /api/models/:id` aceita atualização parcial de `title`, `description`,
   `status` e `folderId`.
-- `GET /api/models/:id` devolve o modelo com `elements` e `edges`.
+- As rotas draw.io (`GET/POST /api/models/:id/drawio`, export/import) aceitam
+  `?type=<c4Type>` para operar no diagrama primário ou extra.
+- `PUT /api/folders/:id` aceita `name` e/ou `parentId`; `parentId: null` move a
+  pasta para a raiz. A API rejeita `parentId` igual ao próprio `id`; o
+  frontend também impede selecionar descendentes (ciclos).
 
 ### 9.2 WebSocket
 
@@ -211,6 +260,16 @@ Mensagens do servidor:
 - [x] Criação de modelo grava descrição e valida pasta/status.
 - [x] Edição de modelo permite título, descrição, status e pasta.
 - [x] É possível abrir o draw.io ao criar um modelo e pelo editor.
+- [x] Vincular um tipo de diagrama existente não exige título e não cria novo
+      modelo/arquivo (gravação em `models.diagrams`).
+- [x] O preview navega entre os tipos de diagrama do modelo e permite evoluir
+      contexto → container → componente → código.
+- [x] O F5 restaura a tela atual, incluindo preview/modelo e tipo de diagrama,
+      sem voltar à lista.
+- [x] Mover uma subpasta para a raiz grava `parent_id = NULL` e a UI reflete a
+      nova posição da árvore.
+- [x] O filtro de pastas funciona ao digitar, ignora acentos e mantém
+      ancestrais/descendentes visíveis.
 - [x] Código morto e dependências não utilizadas foram removidos.
 
 ## 11. Roadmap

@@ -13,6 +13,19 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
 - **Armazenamento do modelo:** snapshots JSON locais no MVP; Drive/GitLab na fase 2.
 - **Ambiente:** Windows (WSL2 ou native).
 
+## Recursos em destaque
+
+- **Multi-diagrama por modelo:** contexto, container, componente e código no
+  mesmo modelo, com abas de navegação no preview e evolução guiada entre níveis
+  (contexto → container → componente → código).
+- **Pastas hierárquicas:** árvore real com indentação, movimentação entre pai e
+  raiz, contagem de modelos e filtro por nome (ignora acentos) mantendo
+  ancestrais e descendentes visíveis.
+- **Continuidade de sessão:** ao pressionar F5, o C4Arch restaura a tela atual
+  (lista, pastas, editor ou preview do modelo e o tipo de diagrama aberto).
+- **Draw.io integrado por tipo de diagrama:** o editor, o preview e o
+  import/export aceitam `?type=<c4Type>` para abrir o diagrama correto.
+
 ## Quick start (Windows)
 
 1. Instalar dependências: Node.js LTS, PostgreSQL, Git.
@@ -58,6 +71,9 @@ c4arch/
   componentes, modelo de dados, segurança e deploy), com as imagens do desenho
   draw.io.
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
+  Destaques recentes: `ADR-0017` (vínculo legado via `parent_id`) e
+  `ADR-0018` (multi-diagrama no mesmo modelo via `models.diagrams` e
+  persistência de tela no F5).
 
 ## Login de desenvolvimento
 

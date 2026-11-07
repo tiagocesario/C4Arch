@@ -1,7 +1,12 @@
 # ADR-0017 — Vínculo de novos tipos de diagrama a um modelo existente
 
-- **Status:** Adotada
+- **Status:** Substituída parcialmente pela ADR-0018
 - **Data:** 2026-11-06 — time C4Arch
+
+> **Nota:** o fluxo por `parent_id` descrito abaixo permanece apenas por
+> compatibilidade com dados existentes. O fluxo atual grava os tipos extras no
+> **mesmo modelo** em `models.diagrams` (JSONB), conforme a
+> [ADR-0018](./ADR-0018-multi-diagrama-mesmo-modelo.md).
 
 ## Contexto
 
