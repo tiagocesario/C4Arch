@@ -328,8 +328,8 @@ export default function App() {
   const [dasBaselineContent, setDasBaselineContent] = useState<string>('');
   const [dasLoading, setDasLoading] = useState(false);
   const [dasSaving, setDasSaving] = useState(false);
-  const [dasViewMode, setDasViewMode] = useState<'edit' | 'preview'>('preview');
-  const [dasPreviewUrl, setDasPreviewUrl] = useState<string | null>(null);
+  const [dasViewMode, setDasViewMode] = useState<'edit' | 'preview'>('edit');
+  const [dasStep, setDasStep] = useState(0);  const [dasPreviewUrl, setDasPreviewUrl] = useState<string | null>(null);
 
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('');
@@ -1619,6 +1619,7 @@ export default function App() {
                             setDasBaselineContent('');
                             setDasPreviewUrl(null);
                             setDasViewMode('edit');
+                            setDasStep(0);
                             setDasLoading(true);
                             try {
                               const [content, detail] = await Promise.all([
@@ -1854,12 +1855,15 @@ export default function App() {
                                   onClick={() => {
                                     setDasModel(item);
                                     setDasContent('');
+                                    setDasBaselineContent('');
                                     setDasPreviewUrl(null);
                                     setDasViewMode('edit');
+                                    setDasStep(0);
                                     setDasLoading(true);
                                     Promise.all([getModelDAS(item.id), getModel(item.id)])
                                       .then(([content, detail]) => {
                                         setDasContent(content);
+                                        setDasBaselineContent(content);
                                         if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
                                       })
                                       .catch((err) => setError(err instanceof Error ? err.message : String(err)))
@@ -2465,7 +2469,7 @@ export default function App() {
               {dasLoading ? (
                 <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
               ) : dasViewMode === 'edit' ? (
-                <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 0 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0 }}>
                   {(() => {
                     const parsed = parseDasSections(dasContent);
                     const fields: { label: string; description: string; value: string; onChange: (value: string) => void }[] = [];
@@ -2488,12 +2492,17 @@ export default function App() {
                         },
                       });
                     });
+
+                    const totalSteps = fields.length;
+                    const currentStep = Math.min(Math.max(dasStep, 0), Math.max(totalSteps - 1, 0));
+                    const field = fields[currentStep];
+
                     return (
-                      <>
+                      <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 0 }}>
                         <aside
                           style={{
-                            width: '28%',
-                            minWidth: 180,
+                            width: '30%',
+                            minWidth: 200,
                             borderRight: '1px solid #2a2f3a',
                             paddingRight: 12,
                             overflow: 'auto',
@@ -2502,59 +2511,93 @@ export default function App() {
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
                             <h4 style={{ margin: 0 }}>Editor do DAS</h4>
                             <span style={smallMuted}>Formulario por secoes</span>
+                            <span style={smallMuted}>Passo {currentStep + 1} de {totalSteps}</span>
                           </div>
                           <nav style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {fields.map((field, index) => (
+                            {fields.map((item, index) => (
                               <button
                                 key={index}
                                 type="button"
-                                onClick={() => {
-                                  const el = document.getElementById('das-field-' + index);
-                                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                }}
+                                onClick={() => setDasStep(index)}
                                 style={{
                                   ...buttonStyle,
                                   textAlign: 'left',
                                   justifyContent: 'flex-start',
-                                  background: 'transparent',
+                                  background: index === currentStep ? '#2a2f3a' : 'transparent',
                                 }}
                               >
-                                <span style={{ color: '#93c5fd', marginRight: 6 }}>{index + 1}.</span> {field.label}
+                                <span style={{ color: '#93c5fd', marginRight: 6 }}>{index + 1}.</span> {item.label}
                               </button>
                             ))}
                           </nav>
                         </aside>
-                        <div style={{ flex: 1, overflow: 'auto', paddingRight: 4, maxWidth: 800 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                            {fields.map((field, index) => (
-                              <div
-                                id={'das-field-' + index}
-                                key={index}
-                                style={{
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: 6,
-                                  padding: 12,
-                                  background: '#0f1115',
-                                  border: '1px solid #2a2f3a',
-                                  borderRadius: 8,
-                                }}
+                        <div style={{ flex: 1, overflow: 'auto', paddingRight: 4, maxWidth: 800, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          {field && (
+                            <div
+                              style={{
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 6,
+                                padding: 12,
+                                background: '#0f1115',
+                                border: '1px solid #2a2f3a',
+                                borderRadius: 8,
+                              }}
+                            >
+                              <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <span style={{ color: '#93c5fd' }}>{currentStep + 1}.</span> {field.label}
+                              </label>
+                              <span style={smallMuted}>{field.description}</span>
+                              <textarea
+                                value={field.value}
+                                onChange={(e) => field.onChange(e.target.value)}
+                                placeholder={'Descreva ' + field.label.toLowerCase() + '...'}
+                                style={{ width: '100%', minHeight: 220, background: '#0b0d12', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+                              />
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => setDasStep((step) => Math.max(step - 1, 0))}
+                              style={buttonStyle}
+                              disabled={currentStep === 0}
+                            >
+                              Voltar
+                            </button>
+                            {currentStep < totalSteps - 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => setDasStep((step) => Math.min(step + 1, totalSteps - 1))}
+                                style={primaryButtonStyle}
                               >
-                                <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  <span style={{ color: '#93c5fd' }}>{index + 1}.</span> {field.label}
-                                </label>
-                                <span style={smallMuted}>{field.description}</span>
-                                <textarea
-                                  value={field.value}
-                                  onChange={(e) => field.onChange(e.target.value)}
-                                  placeholder={'Descreva ' + field.label.toLowerCase() + '...'}
-                                  style={{ width: '100%', minHeight: 110, background: '#0b0d12', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
-                                />
-                              </div>
-                            ))}
+                                Avancar
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  if (!dasModel) return;
+                                  setDasSaving(true);
+                                  try {
+                                    await updateModelDAS(dasModel.id, dasContent);
+                                    setDasBaselineContent(dasContent);
+                                    setError(null);
+                                  } catch (err) {
+                                    setError(err instanceof Error ? err.message : String(err));
+                                  } finally {
+                                    setDasSaving(false);
+                                  }
+                                }}
+                                style={primaryButtonStyle}
+                                disabled={dasSaving}
+                              >
+                                {dasSaving ? 'Salvando...' : 'Salvar'}
+                              </button>
+                            )}
                           </div>
                         </div>
-                      </>
+                      </div>
                     );
                   })()}
                 </div>
