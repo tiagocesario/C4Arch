@@ -236,6 +236,7 @@ export default function App() {
 
   const [search, setSearch] = useState('');
   const [folderFilter, setFolderFilter] = useState<string>('all');
+  const [folderSearch, setFolderSearch] = useState('');
   const [viewingFolderId, setViewingFolderId] = useState<string | null>(null);
   const sortedFolders = [...folders].sort((a, b) => {
     const pa = a.parentId ?? '';
@@ -243,6 +244,25 @@ export default function App() {
     if (pa !== pb) return pa.localeCompare(pb);
     return a.name.localeCompare(b.name);
   });
+
+  const folderDepth = (folder: Folder): number => {
+    let depth = 0;
+    let current: Folder | undefined = folder;
+    const visited = new Set<string>();
+    while (current?.parentId) {
+      if (visited.has(current.id)) break;
+      visited.add(current.id);
+      const parent = folders.find((f) => f.id === current!.parentId);
+      if (!parent) break;
+      depth += 1;
+      current = parent;
+    }
+    return depth;
+  };
+
+  const filteredFolders = sortedFolders.filter((folder) =>
+    folder.name.toLowerCase().includes(folderSearch.trim().toLowerCase())
+  );
 
   // -------------------------------------------------------------------------
   // Bootstrap / sessão
@@ -793,7 +813,9 @@ export default function App() {
   }
 
   const filteredModels = models.filter((item) => {
-    const matchesSearch = item.title.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch =
+      item.title.toLowerCase().includes(search.toLowerCase()) ||
+      folderName(item.folderId).toLowerCase().includes(search.toLowerCase());
     const matchesFolder = folderFilter === 'all' ? true : item.folderId === folderFilter;
     return matchesSearch && matchesFolder;
   });
@@ -1227,6 +1249,13 @@ export default function App() {
           {mode === 'folders' && (
             <div style={{ padding: '16px' }}>
               <h2 style={{ marginTop: 0 }}>Pastas</h2>
+              <input
+                type="text"
+                placeholder="Filtrar pasta por nome..."
+                value={folderSearch}
+                onChange={(e) => setFolderSearch(e.target.value)}
+                style={{ ...inputStyle, width: '100%', maxWidth: 320, marginBottom: 12 }}
+              />
               {isWriter && (
                 <div style={{ display: 'flex', gap: '8px', marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                   <input id="folder-name" placeholder="Nome da pasta" style={inputStyle} />
@@ -1253,11 +1282,11 @@ export default function App() {
                 </div>
               )}
               <div style={{ display: 'grid', gap: 8 }}>
-                {sortedFolders.map((folder) => {
+                {filteredFolders.map((folder) => {
                   const linkedModels = models.filter((item) => item.folderId === folder.id);
                   const expanded = viewingFolderId === folder.id;
                   return (
-                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: (folder.parentId ? 24 : 0) }}>
+                    <div key={folder.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, marginLeft: folderDepth(folder) * 24 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <div
                           onClick={() => setViewingFolderId(expanded ? null : folder.id)}
