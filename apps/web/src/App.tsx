@@ -320,13 +320,17 @@ export default function App() {
     const keep = new Set<string>();
     for (const folder of folders) {
       if (!normalizeText(folder.name).includes(term)) continue;
-      // Mantém os ancestrais visíveis para preservar o contexto da hierarquia.
+      // Mantém ancestrais e descendentes visíveis para preservar o contexto
+      // da hierarquia ao filtrar por parte do nome.
       let current: Folder | undefined = folder;
       const guard = new Set<string>();
       while (current && !guard.has(current.id)) {
         guard.add(current.id);
         keep.add(current.id);
         current = current.parentId ? byId.get(current.parentId) : undefined;
+      }
+      for (const descendantId of descendantIds(folder.id)) {
+        keep.add(descendantId);
       }
     }
     return folderTree.filter((folder) => keep.has(folder.id));
