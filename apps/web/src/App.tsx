@@ -2465,7 +2465,11 @@ export default function App() {
               {dasLoading ? (
                 <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
               ) : dasViewMode === 'edit' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 4 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <h4 style={{ margin: 0 }}>Editor do DAS (formulario)</h4>
+                    <span style={smallMuted}>Preencha os campos abaixo. Cada campo corresponde a uma secao do documento.</span>
+                  </div>
                   {(() => {
                     const parsed = parseDasSections(dasContent);
                     const fields: { label: string; description: string; value: string; onChange: (value: string) => void }[] = [];
@@ -2489,13 +2493,27 @@ export default function App() {
                       });
                     });
                     return fields.map((field, index) => (
-                      <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                        <label style={{ fontWeight: 600 }}>{field.label}</label>
+                      <div
+                        key={index}
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 6,
+                          padding: 12,
+                          background: '#0f1115',
+                          border: '1px solid #2a2f3a',
+                          borderRadius: 8,
+                        }}
+                      >
+                        <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ color: '#93c5fd' }}>{index + 1}.</span> {field.label}
+                        </label>
                         <span style={smallMuted}>{field.description}</span>
                         <textarea
                           value={field.value}
                           onChange={(e) => field.onChange(e.target.value)}
-                          style={{ width: '100%', minHeight: 120, background: '#0f1115', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+                          placeholder={'Descreva ' + field.label.toLowerCase() + '...'}
+                          style={{ width: '100%', minHeight: 110, background: '#0b0d12', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
                         />
                       </div>
                     ));
