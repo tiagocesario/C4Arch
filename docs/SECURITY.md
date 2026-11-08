@@ -41,6 +41,14 @@ Ameaças tratadas nesta revisão:
   em vez de vazar erro interno.
 - Política mínima: senha com 8–1024 caracteres; e-mail normalizado; nome limitado.
 - Registro público pode ser desligado com `ALLOW_REGISTRATION=false`.
+- Login com Google (OAuth 2.0/OIDC) cria ou reutiliza o usuário com senha
+  aleatória (não usada no SSO) e exige um domínio habilitado em
+  `login_domain_rules`; o perfil aplicado vem da regra (padrão `viewer`).
+- A gestão de domínios autorizados é exclusiva de `owner` da organização
+  (`/api/auth/domains`); cada regra vincula um domínio a uma organização e a um
+  papel (`viewer`, `editor` ou `owner`).
+- SSO corporativo via SAML v2 não está implementado nesta versão; o fluxo
+  atual cobre Google OAuth com os mesmos controles de domínio/papel.
 - Seed de demonstração em produção exige `DEMO_ADMIN_PASSWORD` com 12+
   caracteres e sem placeholders; `SEED_DEMO=true` com senha padrão impede o boot.
 - A conexão com o banco também recusa `DB_PASSWORD` de exemplo em produção.
@@ -193,7 +201,10 @@ Variáveis relevantes (ver `.env.example`):
 | `TRUST_PROXY` | `false` | Confia no primeiro proxy para IP/rate limit. |
 | `WS_ALLOW_ANONYMOUS` | `false` | Desliga autenticação do WebSocket. Só dev. |
 | `BIND_ADDR` | `127.0.0.1` | Endereço de bind das portas em dev. |
-| `API_TOKEN_REALTIME` | vazio | Token de serviço opcional para hidratação. |
+| `GOOGLE_CLIENT_ID` | vazio | Habilita login com Google. |
+| `GOOGLE_CLIENT_SECRET` | vazio | Segredo OAuth do Google. |
+| `GOOGLE_CALLBACK_URL` | `http://localhost:4000/api/auth/google/callback` | Callback OAuth. |
+| `FRONTEND_URL` | `http://localhost:3000` | Redirecionamento após SSO. |
 
 Gere segredos com:
 

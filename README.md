@@ -106,8 +106,11 @@ O stack aplica, por padrão:
 - Token escopado de 5 minutos para abrir o draw.io, em vez do JWT de sessão na URL.
 - Helmet, CORS com allowlist, rate limit global e rate limit no login/registro.
 - WebSocket autenticado pelo token de sessão e autorizado por modelo.
-- Senhas com scrypt assíncrono e comparação em tempo constante; mensagens de
-  login genéricas.
+- Login com Google via OAuth 2.0/OIDC, com filtro por domínio de e-mail e
+  vínculo automático a uma organização com perfil configurável (padrão
+  `viewer`). A gestão de domínios é exclusiva de `owner`.
+- (Opcional) SSO corporativo via SAML v2 pode ser adicionado com o mesmo fluxo
+  de domínio/papel; o suporte a SAML não está habilitado nesta versão.
 - Importação por URL com validação de protocolo/host, resolução DNS, bloqueio de
   faixas privadas, redirecionamentos revalidados e limite de bytes (anti-SSRF).
 - Conteúdo do DAS escapado antes de ser injetado na janela de impressão (anti-XSS).
