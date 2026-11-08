@@ -63,7 +63,7 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Formatação inline mínima usada pelo DAS (negrito e código). */
+/** FormataÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o inline mÃƒÆ’Ã‚Â­nima usada pelo DAS (negrito e cÃƒÆ’Ã‚Â³digo). */
 function renderInline(value: string): string {
   return escapeHtml(value)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -80,8 +80,8 @@ function splitTableRow(row: string): string[] {
 }
 
 /**
- * Renderizador Markdown simples e seguro para o DAS. Cobre títulos, tabelas,
- * listas, citações, negrito, código e régua horizontal — o suficiente para o
+ * Renderizador Markdown simples e seguro para o DAS. Cobre tÃƒÆ’Ã‚Â­tulos, tabelas,
+ * listas, citaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes, negrito, cÃƒÆ’Ã‚Â³digo e rÃƒÆ’Ã‚Â©gua horizontal ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â o suficiente para o
  * documento gerado pela API e para o PDF.
  */
 function markdownToHtml(md: string): string {
@@ -124,7 +124,7 @@ function markdownToHtml(md: string): string {
       continue;
     }
 
-    // Tabelas: agrupa linhas consecutivas que começam e terminam com "|".
+    // Tabelas: agrupa linhas consecutivas que comeÃƒÆ’Ã‚Â§am e terminam com "|".
     if (/^\|.*\|$/.test(trimmed)) {
       const tableLines: string[] = [];
       while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index])) {
@@ -190,8 +190,8 @@ function markdownToHtml(md: string): string {
   return html.join('\n');
 }
 
-// Normaliza texto para busca: minúsculas e sem acentos, para que "servico"
-// encontre "Serviço" enquanto o usuário digita.
+// Normaliza texto para busca: minÃƒÆ’Ã‚Âºsculas e sem acentos, para que "servico"
+// encontre "ServiÃƒÆ’Ã‚Â§o" enquanto o usuÃƒÆ’Ã‚Â¡rio digita.
 function normalizeText(value: string | null | undefined): string {
   return (value ?? '')
     .normalize('NFD')
@@ -207,7 +207,7 @@ function stripFileExtension(value: string): string {
     .trim();
 }
 
-/** Usa o XML do diagrama primário ou, se vazio, o primeiro tipo com desenho. */
+/** Usa o XML do diagrama primÃƒÆ’Ã‚Â¡rio ou, se vazio, o primeiro tipo com desenho. */
 function firstDiagramXml(model: {
   drawioXml?: string | null;
   diagrams?: ModelDiagram[];
@@ -281,20 +281,20 @@ const C4_TYPE_LABEL: Record<C4ModelType, string> = {
   'system-context': 'Contexto do sistema',
   container: 'Container',
   component: 'Componente',
-  code: 'Código',
+  code: 'CÃƒÆ’Ã‚Â³digo',
   'system-landscape': 'System landscape',
-  dynamic: 'Dinâmico',
-  deployment: 'Implantação',
+  dynamic: 'DinÃƒÆ’Ã‚Â¢mico',
+  deployment: 'ImplantaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o',
 };
 
 const C4_TYPE_HELP: Record<C4ModelType, string> = {
   'system-context': 'Um software system em foco, com pessoas e sistemas externos.',
-  container: 'Apps, serviços e data stores que compõem um software system.',
-  component: 'Componentes dentro de um container específico.',
+  container: 'Apps, serviÃƒÆ’Ã‚Â§os e data stores que compÃƒÆ’Ã‚Âµem um software system.',
+  component: 'Componentes dentro de um container especÃƒÆ’Ã‚Â­fico.',
   code: 'Classes, interfaces e tabelas de um componente (use sob demanda).',
-  'system-landscape': 'People e software systems de uma organização/empresa.',
-  dynamic: 'Interações em runtime para uma feature ou caso de uso.',
-  deployment: 'Instâncias de systems/containers em um ambiente de deployment.',
+  'system-landscape': 'People e software systems de uma organizaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o/empresa.',
+  dynamic: 'InteraÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes em runtime para uma feature ou caso de uso.',
+  deployment: 'InstÃƒÆ’Ã‚Â¢ncias de systems/containers em um ambiente de deployment.',
 };
 
 interface AssetDraft {
@@ -341,8 +341,8 @@ export default function App() {
   const [orgId, setOrgId] = useState('');
   const [orgName, setOrgName] = useState('');
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
-  // Papel vindo de `memberships` via /api/auth/me. Usado só para a UI; o
-  // servidor revalida a permissão em cada rota.
+  // Papel vindo de `memberships` via /api/auth/me. Usado sÃƒÆ’Ã‚Â³ para a UI; o
+  // servidor revalida a permissÃƒÆ’Ã‚Â£o em cada rota.
   const [currentRole, setCurrentRole] = useState<UserRole | null>(null);
 
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -408,8 +408,8 @@ export default function App() {
       return next;
     });
   };
-  // Ordena as pastas em árvore (pai seguido dos filhos) para que a hierarquia
-  // fique visível e estável após mover uma subpasta para a raiz.
+  // Ordena as pastas em ÃƒÆ’Ã‚Â¡rvore (pai seguido dos filhos) para que a hierarquia
+  // fique visÃƒÆ’Ã‚Â­vel e estÃƒÆ’Ã‚Â¡vel apÃƒÆ’Ã‚Â³s mover uma subpasta para a raiz.
   const folderTree = (() => {
     const byParent = new Map<string, Folder[]>();
     for (const folder of folders) {
@@ -432,7 +432,7 @@ export default function App() {
       }
     };
     walk('');
-    // Pastas órfãs (pai removido/inexistente) aparecem no final como raiz.
+    // Pastas ÃƒÆ’Ã‚Â³rfÃƒÆ’Ã‚Â£s (pai removido/inexistente) aparecem no final como raiz.
     for (const folder of folders) {
       if (!seen.has(folder.id)) {
         seen.add(folder.id);
@@ -479,7 +479,7 @@ export default function App() {
     const keep = new Set<string>();
     for (const folder of folders) {
       if (!normalizeText(folder.name).includes(term)) continue;
-      // Mantém ancestrais e descendentes visíveis para preservar o contexto
+      // MantÃƒÆ’Ã‚Â©m ancestrais e descendentes visÃƒÆ’Ã‚Â­veis para preservar o contexto
       // da hierarquia ao filtrar por parte do nome.
       let current: Folder | undefined = folder;
       const guard = new Set<string>();
@@ -515,7 +515,7 @@ export default function App() {
   }
 
   // -------------------------------------------------------------------------
-  // Bootstrap / sessão
+  // Bootstrap / sessÃƒÆ’Ã‚Â£o
   // -------------------------------------------------------------------------
 
   async function refreshModels() {
@@ -534,9 +534,9 @@ export default function App() {
         setBooting(false);
         return;
       }
-      // Lê a tela salva ANTES de qualquer setState. O efeito de persistência
+      // LÃƒÆ’Ã‚Âª a tela salva ANTES de qualquer setState. O efeito de persistÃƒÆ’Ã‚Âªncia
       // dispara assim que `loggedIn` vira true e, sem isso, sobrescreveria o
-      // estado salvo com `list`/`null` antes da restauração.
+      // estado salvo com `list`/`null` antes da restauraÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o.
       let savedView: {
         mode?: Mode;
         selectedId?: string | null;
@@ -612,8 +612,8 @@ export default function App() {
         const hasIncoming = elements.length > 0 || edges.length > 0;
         const hasLocal = previous.elements.length > 0 || previous.edges.length > 0;
         if (!hasIncoming && hasLocal) {
-          // Modelo só existe no Postgres: semeia o Yjs com o estado do REST
-          // para que arrastar/renomear não crie elementos vazios.
+          // Modelo sÃƒÆ’Ã‚Â³ existe no Postgres: semeia o Yjs com o estado do REST
+          // para que arrastar/renomear nÃƒÆ’Ã‚Â£o crie elementos vazios.
           ws.sendOp({
             type: 'patch',
             modelId: id,
@@ -633,8 +633,8 @@ export default function App() {
     ws.join(selectedId);
   }, [selectedId]);
 
-  // Persiste a tela/modelo atual para sobreviver ao F5. Só grava depois do
-  // bootstrap terminar, para não apagar a tela salva durante a restauração.
+  // Persiste a tela/modelo atual para sobreviver ao F5. SÃƒÆ’Ã‚Â³ grava depois do
+  // bootstrap terminar, para nÃƒÆ’Ã‚Â£o apagar a tela salva durante a restauraÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o.
   useEffect(() => {
     if (!loggedIn || booting) return;
     if (mode === 'edit' && !selectedId) return;
@@ -655,8 +655,8 @@ export default function App() {
 
   // (limpeza feita em clearSession)
 
-  // Se o próprio owner for rebaixado em outra sessão (ou por ele mesmo), a
-  // tela de gestão deixa de ser acessível imediatamente na UI.
+  // Se o prÃƒÆ’Ã‚Â³prio owner for rebaixado em outra sessÃƒÆ’Ã‚Â£o (ou por ele mesmo), a
+  // tela de gestÃƒÆ’Ã‚Â£o deixa de ser acessÃƒÆ’Ã‚Â­vel imediatamente na UI.
   useEffect(() => {
     if (loggedIn && mode === 'users' && currentRole !== 'owner') {
       setMode('list');
@@ -740,16 +740,16 @@ export default function App() {
 
   async function openCreateModel() {
     if (!loggedIn) {
-      setError('Faça login primeiro para criar modelos.');
+      setError('FaÃƒÆ’Ã‚Â§a login primeiro para criar modelos.');
       return;
     }
     try {
       const currentOrgId = await ensureOrgId();
       if (!currentOrgId) {
-        setError('Organização não encontrada. Faça login novamente.');
+        setError('OrganizaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o nÃƒÆ’Ã‚Â£o encontrada. FaÃƒÆ’Ã‚Â§a login novamente.');
         return;
       }
-      // Garante que o seletor de modelo pai mostre também os modelos recém-criados.
+      // Garante que o seletor de modelo pai mostre tambÃƒÆ’Ã‚Â©m os modelos recÃƒÆ’Ã‚Â©m-criados.
       await refreshModels();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -780,11 +780,11 @@ export default function App() {
 
     const title = newModelTitle.trim();
     if (!linkParentId && !title) {
-      setCreateModelError('Informe o título do modelo.');
+      setCreateModelError('Informe o tÃƒÆ’Ã‚Â­tulo do modelo.');
       return;
     }
 
-    // Abre a aba antes do await para não ser bloqueada como popup.
+    // Abre a aba antes do await para nÃƒÆ’Ã‚Â£o ser bloqueada como popup.
     const popup = openDrawioAfterCreate ? window.open('about:blank', '_blank') : null;
 
     setCreatingModel(true);
@@ -800,7 +800,7 @@ export default function App() {
         const currentOrgId = await ensureOrgId();
         if (!currentOrgId) {
           popup?.close();
-          setCreateModelError('Organização não encontrada. Faça login novamente.');
+          setCreateModelError('OrganizaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o nÃƒÆ’Ã‚Â£o encontrada. FaÃƒÆ’Ã‚Â§a login novamente.');
           return;
         }
         const created = await createModel({
@@ -818,7 +818,7 @@ export default function App() {
 
       setShowCreateModel(false);
       setError(null);
-      // O botão "Editor C4" foi ocultado; o fluxo abre apenas o draw.io.
+      // O botÃƒÆ’Ã‚Â£o "Editor C4" foi ocultado; o fluxo abre apenas o draw.io.
       setMode('list');
       setSelectedId(null);
       setModel(null);
@@ -883,7 +883,7 @@ export default function App() {
         for (const file of supportedFiles) {
           const xml = await file.text();
           if (!xml.trimStart().startsWith('<')) {
-            throw new Error(`${file.name}: o conteúdo não parece ser XML draw.io.`);
+            throw new Error(`${file.name}: o conteÃƒÆ’Ã‚Âºdo nÃƒÆ’Ã‚Â£o parece ser XML draw.io.`);
           }
           const relativePath =
             (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name;
@@ -908,14 +908,14 @@ export default function App() {
         }
         for (const link of links) {
           if (!/^https?:\/\//i.test(link)) {
-            throw new Error(`URL inválida: ${link}`);
+            throw new Error(`URL invÃƒÆ’Ã‚Â¡lida: ${link}`);
           }
           items.push({ name: nameFromImportUrl(link), url: link, source: link });
         }
       }
 
       if (items.length > 100) {
-        throw new Error('Importe no máximo 100 arquivos por vez.');
+        throw new Error('Importe no mÃƒÆ’Ã‚Â¡ximo 100 arquivos por vez.');
       }
 
       setImporting(true);
@@ -955,7 +955,7 @@ export default function App() {
       try {
         setModels(await listModels());
       } catch {
-        // mantém a lista otimista
+        // mantÃƒÆ’Ã‚Â©m a lista otimista
       }
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
@@ -981,7 +981,7 @@ export default function App() {
     if (!editingModel) return;
     const title = editTitle.trim();
     if (!title) {
-      setError('O título do modelo não pode ser vazio.');
+      setError('O tÃƒÆ’Ã‚Â­tulo do modelo nÃƒÆ’Ã‚Â£o pode ser vazio.');
       return;
     }
     setSavingModel(true);
@@ -1006,7 +1006,7 @@ export default function App() {
   }
 
   function openDrawio(id: string, diagramType?: string) {
-    // Abre a aba antes do await para não ser bloqueada como popup.
+    // Abre a aba antes do await para nÃƒÆ’Ã‚Â£o ser bloqueada como popup.
     const popup = window.open('about:blank', '_blank');
     getDrawioEditorUrl(id, diagramType)
       .then((url) => {
@@ -1015,7 +1015,7 @@ export default function App() {
           try {
             popup.opener = null;
           } catch {
-            // Alguns navegadores bloqueiam a alteração após a navegação.
+            // Alguns navegadores bloqueiam a alteraÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o apÃƒÆ’Ã‚Â³s a navegaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o.
           }
         } else {
           window.location.assign(url);
@@ -1045,7 +1045,7 @@ export default function App() {
           ? detail.drawioXml
           : (detail.diagrams ?? []).find((d) => d.c4Type === dt)?.drawioXml;
       if (!xml || !xml.trim()) {
-        setPreviewError('Este tipo de diagrama ainda não possui um desenho salvo no draw.io.');
+        setPreviewError('Este tipo de diagrama ainda nÃƒÆ’Ã‚Â£o possui um desenho salvo no draw.io.');
         return;
       }
       setPreviewUrl(getDrawioPreviewUrl(xml));
@@ -1082,7 +1082,7 @@ export default function App() {
   }
 
   async function onDeleteModel(target: Model) {
-    if (!window.confirm('Excluir "' + target.title + '"? Esta ação não pode ser desfeita.')) return;
+    if (!window.confirm('Excluir "' + target.title + '"? Esta aÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o nÃƒÆ’Ã‚Â£o pode ser desfeita.')) return;
     try {
       await deleteModel(target.id);
       setModels((previous) => previous.filter((item) => item.id !== target.id));
@@ -1110,8 +1110,8 @@ export default function App() {
   async function onSaveElementTitle(id: string, title: string) {
     if (!selectedId) return;
     try {
-      // Persiste no Postgres e propaga ao Yjs. Sem o patch WS, o próximo
-      // movimento do nó reenviaria o título antigo guardado no CRDT.
+      // Persiste no Postgres e propaga ao Yjs. Sem o patch WS, o prÃƒÆ’Ã‚Â³ximo
+      // movimento do nÃƒÆ’Ã‚Â³ reenviaria o tÃƒÆ’Ã‚Â­tulo antigo guardado no CRDT.
       await updateElement(selectedId, id, { title });
       ws.sendOp({
         type: 'patch',
@@ -1127,7 +1127,7 @@ export default function App() {
   }
 
   // -------------------------------------------------------------------------
-  // Apps, serviços e dependências
+  // Apps, serviÃƒÆ’Ã‚Â§os e dependÃƒÆ’Ã‚Âªncias
   // -------------------------------------------------------------------------
 
   function openCreateAsset(kind: 'app' | 'service') {
@@ -1159,13 +1159,13 @@ export default function App() {
       return;
     }
     if (!orgId) {
-      setError('Organização não encontrada.');
+      setError('OrganizaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o nÃƒÆ’Ã‚Â£o encontrada.');
       return;
     }
 
     const portValue = assetDraft.port.trim() ? Number(assetDraft.port) : null;
     if (portValue !== null && (!Number.isInteger(portValue) || portValue < 1 || portValue > 65535)) {
-      setError('Porta inválida (1–65535).');
+      setError('Porta invÃƒÆ’Ã‚Â¡lida (1ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“65535).');
       return;
     }
 
@@ -1227,7 +1227,7 @@ export default function App() {
     return matchesSearch && matchesFolder;
   });
 
-  // Candidatos para vincular como modelo pai: busca por título, sem depender
+  // Candidatos para vincular como modelo pai: busca por tÃƒÆ’Ã‚Â­tulo, sem depender
   // de abrir o <select> nativo.
   const parentCandidates = models.filter((m) => {
     const term = newModelParentFilter.trim().toLowerCase();
@@ -1239,7 +1239,7 @@ export default function App() {
   if (booting) {
     return (
       <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0f1115', color: '#7b8290' }}>
-        Carregando sessão...
+        Carregando sessÃƒÆ’Ã‚Â£o...
       </div>
     );
   }
@@ -1276,10 +1276,10 @@ export default function App() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f1115', color: '#e8eaed' }}>
       <header style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', gap: '12px', alignItems: 'center' }}>
         <h1 style={{ margin: 0, fontWeight: 600 }}>C4Arch</h1>
-        <span style={{ ...smallMuted, marginLeft: 'auto' }}>React Flow + Yjs · Docker</span>
+        <span style={{ ...smallMuted, marginLeft: 'auto' }}>React Flow + Yjs Ãƒâ€šÃ‚Â· Docker</span>
         {loggedIn && currentRole && (
           <span
-            title="Perfil na organização (definido em memberships)"
+            title="Perfil na organizaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o (definido em memberships)"
             style={{
               ...smallMuted,
               color: '#c7d2fe',
@@ -1288,7 +1288,7 @@ export default function App() {
               padding: '3px 9px',
             }}
           >
-            {currentUser?.email} · {ROLE_LABEL[currentRole]}
+            {currentUser?.email} Ãƒâ€šÃ‚Â· {ROLE_LABEL[currentRole]}
           </span>
         )}
         {loggedIn && (
@@ -1320,7 +1320,7 @@ export default function App() {
               </svg>
               <h2 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 700 }}>C4Arch</h2>
               <p style={{ margin: 0, color: '#7b8290', fontSize: 14 }}>
-                Modele arquitetura C4 viva em equipe, com persistência e edição em tempo real.
+                Modele arquitetura C4 viva em equipe, com persistÃƒÆ’Ã‚Âªncia e ediÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o em tempo real.
               </p>
             </div>
           </div>
@@ -1353,9 +1353,9 @@ export default function App() {
             <button onClick={() => setMode('list')} style={{ ...buttonStyle, background: mode === 'list' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Modelos</button>
             <button onClick={() => setMode('folders')} style={{ ...buttonStyle, background: mode === 'folders' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Pastas</button>
             <button onClick={() => setMode('apps')} style={{ ...buttonStyle, background: mode === 'apps' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Apps</button>
-            <button onClick={() => setMode('services')} style={{ ...buttonStyle, background: mode === 'services' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Serviços</button>
+            <button onClick={() => setMode('services')} style={{ ...buttonStyle, background: mode === 'services' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>ServiÃƒÆ’Ã‚Â§os</button>
             {currentRole === 'owner' && (
-              <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Usuários</button>
+              <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>UsuÃƒÆ’Ã‚Â¡rios</button>
             )}
             {currentRole === 'owner' && (
               <button onClick={() => setMode('groups')} style={{ ...buttonStyle, background: mode === 'groups' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Perfis/Grupos</button>
@@ -1420,7 +1420,7 @@ export default function App() {
                     <h3 style={{ margin: 0 }}>{linkToExisting ? 'Novo tipo de diagrama' : 'Novo modelo'}</h3>
                     <input
                       type="text"
-                      placeholder={linkToExisting ? 'Título (usa o do modelo existente)' : 'Título do modelo'}
+                      placeholder={linkToExisting ? 'TÃƒÆ’Ã‚Â­tulo (usa o do modelo existente)' : 'TÃƒÆ’Ã‚Â­tulo do modelo'}
                       value={newModelTitle}
                       onChange={(e) => setNewModelTitle(e.target.value)}
                       disabled={linkToExisting}
@@ -1428,7 +1428,7 @@ export default function App() {
                       autoFocus={!linkToExisting}
                     />
                     <textarea
-                      placeholder="Descrição (opcional)"
+                      placeholder="DescriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o (opcional)"
                       value={newModelDescription}
                       onChange={(e) => setNewModelDescription(e.target.value)}
                       rows={3}
@@ -1526,9 +1526,9 @@ export default function App() {
                         {newModelParentId ? (
                           <span style={smallMuted}>
                             Selecionado: {models.find((m) => m.id === newModelParentId)?.title ?? 'modelo'}
-                            {' · pasta: '}
+                            {' Ãƒâ€šÃ‚Â· pasta: '}
                             {folderName(models.find((m) => m.id === newModelParentId)?.folderId)}.
-                            Não é permitido repetir o mesmo tipo de diagrama.
+                            NÃƒÆ’Ã‚Â£o ÃƒÆ’Ã‚Â© permitido repetir o mesmo tipo de diagrama.
                           </span>
                         ) : (
                           <span style={smallMuted}>Digite o nome para filtrar e clique em um modelo da lista.</span>
@@ -1554,7 +1554,7 @@ export default function App() {
                         checked={openDrawioAfterCreate}
                         onChange={(e) => setOpenDrawioAfterCreate(e.target.checked)}
                       />
-                      Abrir draw.io após criar
+                      Abrir draw.io apÃƒÆ’Ã‚Â³s criar
                     </label>
                     {createModelError && (
                       <div style={{ color: '#f87171', fontSize: 13 }}>{createModelError}</div>
@@ -1595,12 +1595,12 @@ export default function App() {
                             {statusLabel[item.status]}
                           </span>
                         </div>
-                        <div style={smallMuted}>{item.description || 'Sem descrição'}</div>
+                        <div style={smallMuted}>{item.description || 'Sem descriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o'}</div>
                         <div style={smallMuted}>
                           {C4_TYPE_LABEL[item.c4Type] ?? item.c4Type}
-                          {item.c4Scope ? ` · ${item.c4Scope}` : ''}
-                          {item.parentId ? ` · vinculado a ${models.find((m) => m.id === item.parentId)?.title ?? 'modelo'}` : ''}
-                          {' · '}{folderName(item.folderId)} · clique para visualizar o draw.io
+                          {item.c4Scope ? ` Ãƒâ€šÃ‚Â· ${item.c4Scope}` : ''}
+                          {item.parentId ? ` Ãƒâ€šÃ‚Â· vinculado a ${models.find((m) => m.id === item.parentId)?.title ?? 'modelo'}` : ''}
+                          {' Ãƒâ€šÃ‚Â· '}{folderName(item.folderId)} Ãƒâ€šÃ‚Â· clique para visualizar o draw.io
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -1834,8 +1834,8 @@ export default function App() {
                                 <div style={{ fontWeight: 600 }}>{'\u{1F4C4}'} {item.title}</div>
                                 <div style={smallMuted}>
                                   {C4_TYPE_LABEL[item.c4Type] ?? item.c4Type}
-                                  {item.c4Scope ? ` · ${item.c4Scope}` : ''}
-                                  {' · '}{statusLabel[item.status]}
+                                  {item.c4Scope ? ` Ãƒâ€šÃ‚Â· ${item.c4Scope}` : ''}
+                                  {' Ãƒâ€šÃ‚Â· '}{statusLabel[item.status]}
                                 </div>
                               </div>
                               <div style={{ display: 'flex', gap: 6 }}>
@@ -1891,10 +1891,10 @@ export default function App() {
           {mode === 'apps' && (
             <div style={{ padding: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <h2 style={{ margin: 0 }}>Aplicações</h2>
+                <h2 style={{ margin: 0 }}>AplicaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes</h2>
                 {isWriter && (
                   <button onClick={() => openCreateAsset('app')} style={primaryButtonStyle}>
-                    + Nova aplicação
+                    + Nova aplicaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o
                   </button>
                 )}
                 <button
@@ -1912,15 +1912,15 @@ export default function App() {
                 </button>
               </div>
               <p style={smallMuted}>
-                Apps são containers C4 reutilizáveis: ao inserir na biblioteca do draw.io, o objeto
-                fica vinculado ao catálogo e acompanha as edições.
+                Apps sÃƒÆ’Ã‚Â£o containers C4 reutilizÃƒÆ’Ã‚Â¡veis: ao inserir na biblioteca do draw.io, o objeto
+                fica vinculado ao catÃƒÆ’Ã‚Â¡logo e acompanha as ediÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes.
               </p>
               <div style={{ display: 'grid', gap: 8 }}>
                 {apps.map((item) => (
                   <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                     <div>
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
-                      <div style={smallMuted}>{item.description || 'Sem descrição'}</div>
+                      <div style={smallMuted}>{item.description || 'Sem descriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o'}</div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                       <button onClick={() => openDependencies('app', item)} style={buttonStyle}>
@@ -1933,7 +1933,7 @@ export default function App() {
                           </button>
                           <button
                             onClick={async () => {
-                              if (!window.confirm('Excluir a aplicação "' + item.name + '"?')) return;
+                              if (!window.confirm('Excluir a aplicaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o "' + item.name + '"?')) return;
                               try {
                                 await deleteApp(item.id);
                                 setApps(await listApps(orgId));
@@ -1950,7 +1950,7 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-                {apps.length === 0 && <div style={{ color: '#7b8290' }}>Nenhuma aplicação.</div>}
+                {apps.length === 0 && <div style={{ color: '#7b8290' }}>Nenhuma aplicaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o.</div>}
               </div>
             </div>
           )}
@@ -1958,16 +1958,16 @@ export default function App() {
           {mode === 'services' && (
             <div style={{ padding: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <h2 style={{ margin: 0 }}>Serviços</h2>
+                <h2 style={{ margin: 0 }}>ServiÃƒÆ’Ã‚Â§os</h2>
                 {isWriter && (
                   <button onClick={() => openCreateAsset('service')} style={primaryButtonStyle}>
-                    + Novo serviço
+                    + Novo serviÃƒÆ’Ã‚Â§o
                   </button>
                 )}
               </div>
               <p style={smallMuted}>
-                Serviços são containers C4 reutilizáveis no draw.io. Protocolo, porta e descrição
-                são propagados para todos os modelos que usam o serviço.
+                ServiÃƒÆ’Ã‚Â§os sÃƒÆ’Ã‚Â£o containers C4 reutilizÃƒÆ’Ã‚Â¡veis no draw.io. Protocolo, porta e descriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o
+                sÃƒÆ’Ã‚Â£o propagados para todos os modelos que usam o serviÃƒÆ’Ã‚Â§o.
               </p>
               <div style={{ display: 'grid', gap: 8 }}>
                 {services.map((item) => (
@@ -1975,7 +1975,7 @@ export default function App() {
                     <div>
                       <div style={{ fontWeight: 600 }}>{item.name}</div>
                       <div style={smallMuted}>
-                        {item.protocol}{item.port ? `:${item.port}` : ''} — {item.description || 'Sem descrição'}
+                        {item.protocol}{item.port ? `:${item.port}` : ''} ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {item.description || 'Sem descriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o'}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -1989,7 +1989,7 @@ export default function App() {
                           </button>
                           <button
                             onClick={async () => {
-                              if (!window.confirm('Excluir o serviço "' + item.name + '"?')) return;
+                              if (!window.confirm('Excluir o serviÃƒÆ’Ã‚Â§o "' + item.name + '"?')) return;
                               try {
                                 await deleteService(item.id);
                                 setServices(await listServices(orgId));
@@ -2006,7 +2006,7 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-                {services.length === 0 && <div style={{ color: '#7b8290' }}>Nenhum serviço.</div>}
+                {services.length === 0 && <div style={{ color: '#7b8290' }}>Nenhum serviÃƒÆ’Ã‚Â§o.</div>}
               </div>
             </div>
           )}
@@ -2099,7 +2099,7 @@ export default function App() {
               <div style={{ flex: 1 }}>
                 <h3 style={{ margin: 0 }}>Importar modelos</h3>
                 <div style={smallMuted}>
-                  Importe um ou vários arquivos <code>.drawio</code>/<code>.xml</code> de pasta
+                  Importe um ou vÃƒÆ’Ã‚Â¡rios arquivos <code>.drawio</code>/<code>.xml</code> de pasta
                   local, Google Drive ou outra URL. Cada arquivo vira um modelo com DAS gerado
                   automaticamente.
                 </div>
@@ -2176,7 +2176,7 @@ export default function App() {
                 <div style={smallMuted}>
                   {importFiles.length > 0
                     ? `${importFiles.length} arquivo(s) selecionado(s).`
-                    : 'Selecione um ou vários arquivos. Formatos: .drawio, .xml.'}
+                    : 'Selecione um ou vÃƒÆ’Ã‚Â¡rios arquivos. Formatos: .drawio, .xml.'}
                 </div>
               </div>
             )}
@@ -2200,8 +2200,8 @@ export default function App() {
                 />
                 <div style={smallMuted}>
                   {importSource === 'drive'
-                    ? 'A importação lê arquivos individuais do Drive via link público. Pastas do Drive devem ser sincronizadas localmente e importadas pela aba "Pasta local".'
-                    : 'O servidor baixa cada URL e valida se o conteúdo é XML draw.io.'}
+                    ? 'A importaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o lÃƒÆ’Ã‚Âª arquivos individuais do Drive via link pÃƒÆ’Ã‚Âºblico. Pastas do Drive devem ser sincronizadas localmente e importadas pela aba "Pasta local".'
+                    : 'O servidor baixa cada URL e valida se o conteÃƒÆ’Ã‚Âºdo ÃƒÆ’Ã‚Â© XML draw.io.'}
                 </div>
               </div>
             )}
@@ -2259,8 +2259,8 @@ export default function App() {
                     key={`${result.name}-${index}`}
                     style={{ color: result.ok ? '#86efac' : '#fca5a5' }}
                   >
-                    {result.ok ? '✓' : '✗'} {result.name}
-                    {result.error ? ` — ${result.error}` : ''}
+                    {result.ok ? 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“' : 'ÃƒÂ¢Ã…â€œÃ¢â‚¬â€'} {result.name}
+                    {result.error ? ` ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â ${result.error}` : ''}
                   </div>
                 ))}
               </div>
@@ -2298,8 +2298,8 @@ export default function App() {
                 <h3 style={{ margin: 0 }}>{previewModel.title}</h3>
                 <div style={smallMuted}>
                   {C4_TYPE_LABEL[previewDiagramType] ?? previewDiagramType}
-                  {previewModel.c4Scope ? ` · ${previewModel.c4Scope}` : ''}
-                  {' · '}Preview draw.io (somente leitura)
+                  {previewModel.c4Scope ? ` Ãƒâ€šÃ‚Â· ${previewModel.c4Scope}` : ''}
+                  {' Ãƒâ€šÃ‚Â· '}Preview draw.io (somente leitura)
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -2348,7 +2348,7 @@ export default function App() {
                   )}
                   {!modelDiagramTypes(previewModel).includes('code') && modelDiagramTypes(previewModel).includes('component') && (
                     <button onClick={() => evolveDiagram(previewModel, 'code')} style={{ ...primaryButtonStyle, background: '#7c3aed' }}>
-                      Evoluir para Código
+                      Evoluir para CÃƒÆ’Ã‚Â³digo
                     </button>
                   )}
                 </>
@@ -2393,7 +2393,7 @@ export default function App() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <h3 style={{ margin: 0 }}>DAS — {dasModel.title}</h3>
+              <h3 style={{ margin: 0 }}>DAS ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {dasModel.title}</h3>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
                 <button
                   onClick={async () => {
@@ -2471,138 +2471,91 @@ export default function App() {
               {dasLoading ? (
                 <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
               ) : dasViewMode === 'edit' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0 }}>
-                  {(() => {
-                    const parsed = parseDasSections(dasContent);
-                    const fields: { label: string; description: string; value: string; onChange: (value: string) => void }[] = [];
-                    fields.push({
-                      label: 'Cabecalho',
-                      description: 'Titulo e metadados iniciais do documento (markdown).',
-                      value: parsed.preamble,
-                      onChange: (value) => setDasContent(buildDasFromSections(value, parsed.sections)),
-                    });
-                    parsed.sections.forEach((section, index) => {
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', minHeight: 0, maxWidth: 960, margin: '0 auto', width: '100%' }}>
+                    {(() => {
+                      const parsed = parseDasSections(dasContent);
+                      const fields: { label: string; description: string; value: string; onChange: (value: string) => void }[] = [];
                       fields.push({
-                        label: section.heading,
-                        description: 'Conteudo da secao "' + section.heading + '" do DAS.',
-                        value: section.body,
-                        onChange: (value) => {
-                          const nextSections = parsed.sections.map((item, itemIndex) =>
-                            itemIndex === index ? { ...item, body: value } : item
-                          );
-                          setDasContent(buildDasFromSections(parsed.preamble, nextSections));
-                        },
+                        label: 'Cabecalho',
+                        description: 'Titulo e metadados iniciais do documento (markdown).',
+                        value: parsed.preamble,
+                        onChange: (value) => setDasContent(buildDasFromSections(value, parsed.sections)),
                       });
-                    });
+                      parsed.sections.forEach((section, index) => {
+                        fields.push({
+                          label: section.heading,
+                          description: 'Conteudo da secao "' + section.heading + '" do DAS.',
+                          value: section.body,
+                          onChange: (value) => {
+                            const nextSections = parsed.sections.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, body: value } : item
+                            );
+                            setDasContent(buildDasFromSections(parsed.preamble, nextSections));
+                          },
+                        });
+                      });
 
-                    const totalSteps = fields.length;
-                    const currentStep = Math.min(Math.max(dasStep, 0), Math.max(totalSteps - 1, 0));
-                    const field = fields[currentStep];
-
-                    return (
-                      <div style={{ display: 'flex', gap: 16, height: '100%', minHeight: 0 }}>
-                        <aside
-                          style={{
-                            width: '30%',
-                            minWidth: 200,
-                            borderRight: '1px solid #2a2f3a',
-                            paddingRight: 12,
-                            overflow: 'auto',
+                      return (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (!dasModel) return;
+                            (async () => {
+                              setDasSaving(true);
+                              try {
+                                await updateModelDAS(dasModel.id, dasContent);
+                                setDasBaselineContent(dasContent);
+                                setError(null);
+                              } catch (err) {
+                                setError(err instanceof Error ? err.message : String(err));
+                              } finally {
+                                setDasSaving(false);
+                              }
+                            })();
                           }}
+                          style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
                         >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8, borderBottom: '1px solid #2a2f3a' }}>
                             <h4 style={{ margin: 0 }}>Editor do DAS</h4>
-                            <span style={smallMuted}>Formulario por secoes</span>
-                            <span style={smallMuted}>Passo {currentStep + 1} de {totalSteps}</span>
+                            <span style={smallMuted}>Formulario por secoes - preencha os campos e salve ao final.</span>
+                            <span style={smallMuted}>{fields.length} secoes identificadas</span>
                           </div>
-                          <nav style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                            {fields.map((item, index) => (
-                              <button
-                                key={index}
-                                type="button"
-                                onClick={() => setDasStep(index)}
-                                style={{
-                                  ...buttonStyle,
-                                  textAlign: 'left',
-                                  justifyContent: 'flex-start',
-                                  background: index === currentStep ? '#2a2f3a' : 'transparent',
-                                }}
-                              >
-                                <span style={{ color: '#93c5fd', marginRight: 6 }}>{index + 1}.</span> {item.label}
-                              </button>
-                            ))}
-                          </nav>
-                        </aside>
-                        <div style={{ flex: 1, overflow: 'auto', paddingRight: 4, maxWidth: 800, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                          {field && (
+
+                          {fields.map((field, index) => (
                             <div
+                              key={index}
                               style={{
                                 display: 'flex',
                                 flexDirection: 'column',
                                 gap: 6,
-                                padding: 12,
+                                padding: 14,
                                 background: '#0f1115',
                                 border: '1px solid #2a2f3a',
                                 borderRadius: 8,
                               }}
                             >
                               <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ color: '#93c5fd' }}>{currentStep + 1}.</span> {field.label}
+                                <span style={{ color: '#93c5fd' }}>{index + 1}.</span> {field.label}
                               </label>
                               <span style={smallMuted}>{field.description}</span>
                               <textarea
                                 value={field.value}
                                 onChange={(e) => field.onChange(e.target.value)}
                                 placeholder={'Descreva ' + field.label.toLowerCase() + '...'}
-                                style={{ width: '100%', minHeight: 220, background: '#0b0d12', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
+                                style={{ width: '100%', minHeight: 180, background: '#0b0d12', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
                               />
                             </div>
-                          )}
-                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
-                            <button
-                              type="button"
-                              onClick={() => setDasStep((step) => Math.max(step - 1, 0))}
-                              style={buttonStyle}
-                              disabled={currentStep === 0}
-                            >
-                              Voltar
+                          ))}
+
+                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8, borderTop: '1px solid #2a2f3a' }}>
+                            <button type="submit" style={primaryButtonStyle} disabled={dasSaving}>
+                              {dasSaving ? 'Salvando...' : 'Salvar DAS'}
                             </button>
-                            {currentStep < totalSteps - 1 ? (
-                              <button
-                                type="button"
-                                onClick={() => setDasStep((step) => Math.min(step + 1, totalSteps - 1))}
-                                style={primaryButtonStyle}
-                              >
-                                Avancar
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  if (!dasModel) return;
-                                  setDasSaving(true);
-                                  try {
-                                    await updateModelDAS(dasModel.id, dasContent);
-                                    setDasBaselineContent(dasContent);
-                                    setError(null);
-                                  } catch (err) {
-                                    setError(err instanceof Error ? err.message : String(err));
-                                  } finally {
-                                    setDasSaving(false);
-                                  }
-                                }}
-                                style={primaryButtonStyle}
-                                disabled={dasSaving}
-                              >
-                                {dasSaving ? 'Salvando...' : 'Salvar'}
-                              </button>
-                            )}
                           </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
+                        </form>
+                      );
+                    })()}
+                  </div>
               ) : (
                 <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}>
                   <div
@@ -2631,18 +2584,18 @@ export default function App() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050 }}>
           <form onSubmit={saveAsset} style={{ background: '#1a1d27', padding: 20, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12, width: 440 }}>
             <h3 style={{ margin: 0 }}>
-              {assetDraft.id ? 'Editar' : assetDraft.kind === 'app' ? 'Nova aplicação' : 'Novo serviço'}
+              {assetDraft.id ? 'Editar' : assetDraft.kind === 'app' ? 'Nova aplicaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o' : 'Novo serviÃƒÆ’Ã‚Â§o'}
             </h3>
             <input
               type="text"
-              placeholder={assetDraft.kind === 'app' ? 'Nome da aplicação' : 'Nome do serviço'}
+              placeholder={assetDraft.kind === 'app' ? 'Nome da aplicaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o' : 'Nome do serviÃƒÆ’Ã‚Â§o'}
               value={assetDraft.name}
               onChange={(e) => setAssetDraft({ ...assetDraft, name: e.target.value })}
               style={{ ...inputStyle, width: '100%' }}
               autoFocus
             />
             <textarea
-              placeholder="Descrição curta (aparece no objeto C4)"
+              placeholder="DescriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o curta (aparece no objeto C4)"
               value={assetDraft.description}
               onChange={(e) => setAssetDraft({ ...assetDraft, description: e.target.value })}
               rows={3}
@@ -2669,8 +2622,8 @@ export default function App() {
               </div>
             )}
             <p style={smallMuted}>
-              As alterações são propagadas para todos os modelos que usam este
-              {assetDraft.kind === 'app' ? ' app' : ' serviço'}.
+              As alteraÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes sÃƒÆ’Ã‚Â£o propagadas para todos os modelos que usam este
+              {assetDraft.kind === 'app' ? ' app' : ' serviÃƒÆ’Ã‚Â§o'}.
             </p>
             {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -2696,7 +2649,7 @@ export default function App() {
               <div>
                 <h3 style={{ margin: 0 }}>Modelos dependentes</h3>
                 <div style={smallMuted}>
-                  {dependencyTarget.kind === 'app' ? 'Aplicação' : 'Serviço'}: {dependencyTarget.name}
+                  {dependencyTarget.kind === 'app' ? 'AplicaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o' : 'ServiÃƒÆ’Ã‚Â§o'}: {dependencyTarget.name}
                 </div>
               </div>
               <button onClick={() => setDependencyTarget(null)} style={{ ...buttonStyle, marginLeft: 'auto' }}>
@@ -2710,8 +2663,8 @@ export default function App() {
               )}
               {!dependenciesLoading && !dependenciesError && dependencies.length === 0 && (
                 <div style={smallMuted}>
-                  Nenhum modelo usa este {dependencyTarget.kind === 'app' ? 'app' : 'serviço'} ainda.
-                  Insira o objeto pela biblioteca “Aplicações e Serviços” no draw.io.
+                  Nenhum modelo usa este {dependencyTarget.kind === 'app' ? 'app' : 'serviÃƒÆ’Ã‚Â§o'} ainda.
+                  Insira o objeto pela biblioteca ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œAplicaÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Âµes e ServiÃƒÆ’Ã‚Â§osÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no draw.io.
                 </div>
               )}
               {!dependenciesLoading && !dependenciesError && dependencies.map((dep) => (
@@ -2720,13 +2673,13 @@ export default function App() {
                     <div style={{ fontWeight: 600 }}>{dep.title}</div>
                     <div style={smallMuted}>
                       {C4_TYPE_LABEL[dep.c4Type] ?? dep.c4Type}
-                      {dep.c4Scope ? ` · ${dep.c4Scope}` : ''}
-                      {' · '}{dep.folderName || 'Sem pasta'}
+                      {dep.c4Scope ? ` Ãƒâ€šÃ‚Â· ${dep.c4Scope}` : ''}
+                      {' Ãƒâ€šÃ‚Â· '}{dep.folderName || 'Sem pasta'}
                     </div>
                     <div style={{ ...smallMuted, marginTop: 4 }}>
-                      {dep.occurrences} ocorrência(s)
-                      {dep.viaElements ? ' · vínculo REST' : ''}
-                      {dep.viaDrawio ? ' · objeto draw.io' : ''}
+                      {dep.occurrences} ocorrÃƒÆ’Ã‚Âªncia(s)
+                      {dep.viaElements ? ' Ãƒâ€šÃ‚Â· vÃƒÆ’Ã‚Â­nculo REST' : ''}
+                      {dep.viaDrawio ? ' Ãƒâ€šÃ‚Â· objeto draw.io' : ''}
                     </div>
                   </div>
                   <button
@@ -2764,14 +2717,14 @@ export default function App() {
             <h3 style={{ margin: 0 }}>Editar modelo</h3>
             <input
               type="text"
-              placeholder="Título do modelo"
+              placeholder="TÃƒÆ’Ã‚Â­tulo do modelo"
               value={editTitle}
               onChange={(e) => setEditTitle(e.target.value)}
               style={{ ...inputStyle, width: '100%' }}
               autoFocus
             />
             <textarea
-              placeholder="Descrição (opcional)"
+              placeholder="DescriÃƒÆ’Ã‚Â§ÃƒÆ’Ã‚Â£o (opcional)"
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
               rows={3}
