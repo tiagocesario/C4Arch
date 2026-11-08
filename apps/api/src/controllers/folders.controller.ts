@@ -1,12 +1,12 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getOrgResourceAccess, getOrgRole, isWriterRole } from '../auth/access.js';
+import { getOrgResourceAccess, getOrgRole, isValidUuid, isWriterRole } from '../auth/access.js';
 
 export class FolderController {
   static async list(req: AuthenticatedRequest, res: Response) {
     const { orgId } = req.query as { orgId?: string };
-    if (!orgId) return res.status(400).json({ error: 'orgId é obrigatório' });
+    if (!isValidUuid(orgId)) return res.status(400).json({ error: 'orgId inválido' });
 
     try {
       if (!(await getOrgRole(req.user!.id, orgId))) {
@@ -31,13 +31,13 @@ export class FolderController {
     };
     const cleanName = typeof name === 'string' ? name.trim() : '';
 
-    if (!orgId || !cleanName) {
+    if (!isValidUuid(orgId) || !cleanName) {
       return res.status(400).json({ error: 'orgId e name são obrigatórios' });
     }
     if (cleanName.length > 120) {
       return res.status(400).json({ error: 'name muito longo' });
     }
-    if (parentId !== undefined && parentId !== null && typeof parentId !== 'string') {
+    if (parentId !== undefined && parentId !== null && !isValidUuid(parentId)) {
       return res.status(400).json({ error: 'parentId inválido' });
     }
 
@@ -96,7 +96,7 @@ export class FolderController {
 
       if (parentId !== undefined) {
         if (parentId !== null) {
-          if (typeof parentId !== 'string' || parentId === id) {
+          if (!isValidUuid(parentId) || parentId === id) {
             return res.status(400).json({ error: 'parentId inválido' });
           }
           const parent = await pool.query(

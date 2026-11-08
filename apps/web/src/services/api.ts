@@ -43,8 +43,8 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     Object.assign(headers, options.headers as Record<string, string>);
   }
   const res = await fetch(API + path, {
-    headers,
     ...options,
+    headers,
   });
   if (!res.ok) {
     let msg = 'Requisição falhou: ' + res.status;

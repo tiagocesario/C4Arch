@@ -72,7 +72,9 @@ do modelo, manter cópias manuais desatualizadas contraria o objetivo de fonte
 
 - `apps/api/src/routes/models.routes.ts` (`POST /api/models/import`)
 - `apps/api/src/controllers/models.controller.ts` (`importModel`,
-  `downloadImportXml`, `resolveImportUrl`, `inferC4Type`)
+  `inferC4Type`)
+- `apps/api/src/security/url.ts` (`fetchPublicText`, `normalizeImportUrl`,
+  `assertPublicHttpUrl`, `readLimitedBody`)
 - `apps/api/src/c4/das.ts` (`generateDAS`, `regenerateModelDAS`,
   `regenerateAllDAS`, `parseDrawio`)
 - `apps/api/src/index.ts` (backfill no startup)

@@ -47,6 +47,18 @@ app.use(
 
 app.use(express.json({ limit: '100kb' }));
 
+// Rejeita corpos JSON que não sejam objetos antes que os controllers façam
+// destructuring (null/array quebrariam com TypeError e virariam HTTP 500).
+app.use((req, res, next) => {
+  if (
+    req.body !== undefined &&
+    (req.body === null || typeof req.body !== 'object' || Array.isArray(req.body))
+  ) {
+    return res.status(400).json({ error: 'Corpo da requisição deve ser um objeto JSON' });
+  }
+  return next();
+});
+
 // Healthcheck para Docker/Compose. Verifica também o banco.
 app.get('/healthz', async (_req, res) => {
   try {

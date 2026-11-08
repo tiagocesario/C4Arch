@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getModelAccess, isWriterRole } from '../auth/access.js';
+import { getModelAccess, isValidUuid, isWriterRole } from '../auth/access.js';
 
 const EDGE_TYPES = new Set(['call', 'http', 'message', 'depends']);
 
@@ -48,7 +48,7 @@ export class EdgeController {
       type?: string;
     };
 
-    if (typeof fromId !== 'string' || !fromId || typeof toId !== 'string' || !toId) {
+    if (typeof fromId !== 'string' || !isValidUuid(fromId) || typeof toId !== 'string' || !isValidUuid(toId)) {
       return res.status(400).json({ error: 'fromId e toId são obrigatórios' });
     }
     if (type !== undefined && (typeof type !== 'string' || !EDGE_TYPES.has(type))) {
@@ -86,6 +86,7 @@ export class EdgeController {
 
   static async get(req: AuthenticatedRequest, res: Response) {
     const { modelId, edgeId } = req.params;
+    if (!isValidUuid(edgeId)) return res.status(404).json({ error: 'Conexão não encontrada' });
 
     try {
       const model = await getModelAccess(req.user!.id, modelId);
@@ -111,6 +112,7 @@ export class EdgeController {
 
   static async update(req: AuthenticatedRequest, res: Response) {
     const { modelId, edgeId } = req.params;
+    if (!isValidUuid(edgeId)) return res.status(404).json({ error: 'Conexão não encontrada' });
     const { fromId, toId, label, type } = req.body as {
       fromId?: string;
       toId?: string;
@@ -118,10 +120,10 @@ export class EdgeController {
       type?: string;
     };
 
-    if (fromId !== undefined && (typeof fromId !== 'string' || !fromId)) {
+    if (fromId !== undefined && (typeof fromId !== 'string' || !isValidUuid(fromId))) {
       return res.status(400).json({ error: 'fromId inválido' });
     }
-    if (toId !== undefined && (typeof toId !== 'string' || !toId)) {
+    if (toId !== undefined && (typeof toId !== 'string' || !isValidUuid(toId))) {
       return res.status(400).json({ error: 'toId inválido' });
     }
     if (type !== undefined && (typeof type !== 'string' || !EDGE_TYPES.has(type))) {
@@ -189,6 +191,7 @@ export class EdgeController {
 
   static async remove(req: AuthenticatedRequest, res: Response) {
     const { modelId, edgeId } = req.params;
+    if (!isValidUuid(edgeId)) return res.status(404).json({ error: 'Conexão não encontrada' });
 
     try {
       const model = await getModelAccess(req.user!.id, modelId);

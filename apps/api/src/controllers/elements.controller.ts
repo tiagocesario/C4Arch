@@ -134,6 +134,7 @@ export class ElementController {
 
   static async get(req: AuthenticatedRequest, res: Response) {
     const { modelId, elementId } = req.params;
+    if (!isUuid(elementId)) return res.status(404).json({ error: 'Elemento não encontrado' });
 
     try {
       const model = await getModelAccess(req.user!.id, modelId);
@@ -155,6 +156,7 @@ export class ElementController {
 
   static async update(req: AuthenticatedRequest, res: Response) {
     const { modelId, elementId } = req.params;
+    if (!isUuid(elementId)) return res.status(404).json({ error: 'Elemento não encontrado' });
     const { title, type, description, metadata, positionX, positionY, order, appId, serviceId } = req.body as {
       title?: string;
       type?: string;
@@ -271,6 +273,7 @@ export class ElementController {
 
   static async remove(req: AuthenticatedRequest, res: Response) {
     const { modelId, elementId } = req.params;
+    if (!isUuid(elementId)) return res.status(404).json({ error: 'Elemento não encontrado' });
 
     try {
       const model = await getModelAccess(req.user!.id, modelId);

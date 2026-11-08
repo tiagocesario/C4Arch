@@ -7,9 +7,23 @@ dotenv.config();
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+const PLACEHOLDER_PASSWORDS = new Set([
+  'change-me',
+  'change-me-please',
+  'change-me-to-a-random-password',
+  'postgres',
+  'password',
+  'admin123',
+]);
+
 function readDbPassword(): string {
   const password = process.env.DB_PASSWORD ?? '';
-  if (password) return password;
+  if (password) {
+    if (isProduction && PLACEHOLDER_PASSWORDS.has(password.toLowerCase())) {
+      throw new Error('DB_PASSWORD usa um valor de exemplo/placeholder; defina uma senha forte em produção.');
+    }
+    return password;
+  }
   if (isProduction) {
     throw new Error('DB_PASSWORD é obrigatório em produção.');
   }

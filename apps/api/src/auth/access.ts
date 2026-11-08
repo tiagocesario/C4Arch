@@ -1,10 +1,21 @@
 import { pool } from '../db.js';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Evita enviar identificadores malformados ao Postgres (que responderia com
+ * erro de cast e transformaria um 400/404 em 500).
+ */
+export function isValidUuid(value: unknown): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
 export interface OrgMembership {
   role: string;
 }
 
 export async function getOrgRole(userId: string, orgId: string): Promise<string | null> {
+  if (!isValidUuid(userId) || !isValidUuid(orgId)) return null;
   const result = await pool.query<{ role: string }>(
     'SELECT role FROM memberships WHERE org_id = $1 AND user_id = $2',
     [orgId, userId]
@@ -25,6 +36,14 @@ export function isWriterRole(role: unknown): boolean {
 }
 
 /**
+ * Ações administrativas (gestão de grupos de acesso, membros e permissões) são
+ * exclusivas do `owner`. `editor` pode editar conteúdo, mas não conceder papéis.
+ */
+export function isOwnerRole(role: unknown): boolean {
+  return role === 'owner';
+}
+
+/**
  * Retorna o modelo somente quando o usuário pertence à organização dele.
  * O retorno nulo é usado como 404 para não revelar a existência do recurso.
  * `member_role` acompanha o registro para as checagens de escrita.
@@ -33,6 +52,7 @@ export async function getModelAccess(
   userId: string,
   modelId: string
 ): Promise<Record<string, unknown> | null> {
+  if (!isValidUuid(userId) || !isValidUuid(modelId)) return null;
   const result = await pool.query(
     `SELECT m.*, mem.role AS member_role
        FROM models m
@@ -56,6 +76,7 @@ export async function getOrgResourceAccess(
   userId: string,
   id: string
 ): Promise<Record<string, unknown> | null> {
+  if (!isValidUuid(userId) || !isValidUuid(id)) return null;
   // O nome da tabela vem de uma união fechada (não vem do usuário).
   const table = RESOURCE_TABLES[resource];
   const result = await pool.query(

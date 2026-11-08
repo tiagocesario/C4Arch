@@ -199,10 +199,8 @@ export class DrawioController {
       const xml = await buildLibraryXml(String(model.org_id));
       res.setHeader('Content-Type', 'application/xml; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
-      // O draw.io busca a biblioteca de outra origem, sem cookies.
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+      // A biblioteca é entregue sob demanda e exige token escopado; o CORS global
+      // (allowlist de origens do draw.io) aplica-se, sem wildcard nem Private Network.
       return res.send(xml || '<mxlibrary>[]</mxlibrary>');
     } catch (err) {
       console.error('[drawio] library error', err);

@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getOrgResourceAccess, getOrgRole, isOrgMember, isWriterRole } from '../auth/access.js';
+import { getOrgResourceAccess, getOrgRole, isOrgMember, isValidUuid, isWriterRole } from '../auth/access.js';
 import {
   detachAssetChange,
   listAssetDependencies,
@@ -12,7 +12,7 @@ import {
 export class AppController {
   static async list(req: AuthenticatedRequest, res: Response) {
     const { orgId } = req.query as { orgId?: string };
-    if (!orgId) return res.status(400).json({ error: 'orgId é obrigatório' });
+    if (!isValidUuid(orgId)) return res.status(400).json({ error: 'orgId inválido' });
 
     try {
       if (!(await isOrgMember(req.user!.id, orgId))) {
@@ -39,7 +39,7 @@ export class AppController {
     };
     const cleanName = typeof name === 'string' ? name.trim() : '';
 
-    if (!orgId || !cleanName) {
+    if (!isValidUuid(orgId) || !cleanName) {
       return res.status(400).json({ error: 'orgId e name são obrigatórios' });
     }
     if (cleanName.length > 120) {
@@ -157,7 +157,7 @@ export class AppController {
   /** Download do XML da biblioteca c4arch (apps + servicos) para importar no draw.io. */
   static async library(req: AuthenticatedRequest, res: Response) {
     const { orgId } = req.query as { orgId?: string };
-    if (!orgId) return res.status(400).json({ error: 'orgId é obrigatório' });
+    if (!isValidUuid(orgId)) return res.status(400).json({ error: 'orgId inválido' });
 
     try {
       if (!(await isOrgMember(req.user!.id, orgId))) {

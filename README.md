@@ -80,28 +80,37 @@ c4arch/
   draw.io.
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
   Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
-  `models.diagrams` e persistência de tela no F5) e `ADR-0019` (importação de
-  modelos por arquivo/Drive/URL e DAS automático).
+  `models.diagrams` e persistência de tela no F5), `ADR-0019` (importação de
+  modelos por arquivo/Drive/URL e DAS automático) e `ADR-0020` (hardening de
+  importação, grupos de acesso e exportação do DAS).
 
 ## Login de desenvolvimento
 
 Com `SEED_DEMO=true` (padrão fora de produção), o seed cria o usuário
 `admin@example.com` com a senha definida em `DEMO_ADMIN_PASSWORD` (`admin123`
 por padrão) quando o banco está vazio. **Não use essas credenciais em
-produção.** Em produção o seed é desabilitado por padrão (`SEED_DEMO=false`).
+produção.** Em produção o seed é desabilitado por padrão (`SEED_DEMO=false`) e,
+se for habilitado, a API exige `DEMO_ADMIN_PASSWORD` com 12+ caracteres e sem
+valores de exemplo.
 
 ## Segurança
 
 O stack aplica, por padrão:
 
 - JWT obrigatório com mínimo de 32 caracteres; a API recusa subir em produção
-  com segredo fraco ou ausente.
+  com segredo fraco, valor de exemplo/placeholder ou seed demo com senha padrão.
 - Autorização por organização em modelos, elementos, conexões, pastas,
   aplicações, serviços e draw.io (sem IDOR).
+- Grupos de acesso são administrados somente por `owner`; `editor` e `viewer`
+  não podem criar grupos nem conceder papéis (evita escalada de privilégio).
 - Token escopado de 5 minutos para abrir o draw.io, em vez do JWT de sessão na URL.
 - Helmet, CORS com allowlist, rate limit global e rate limit no login/registro.
 - WebSocket autenticado pelo token de sessão e autorizado por modelo.
-- Senhas com scrypt e comparação em tempo constante; mensagens de login genéricas.
+- Senhas com scrypt assíncrono e comparação em tempo constante; mensagens de
+  login genéricas.
+- Importação por URL com validação de protocolo/host, resolução DNS, bloqueio de
+  faixas privadas, redirecionamentos revalidados e limite de bytes (anti-SSRF).
+- Conteúdo do DAS escapado antes de ser injetado na janela de impressão (anti-XSS).
 - Containers non-root, `no-new-privileges`, `cap_drop: ALL`, healthchecks e
   portas publicadas apenas em `127.0.0.1` por padrão.
 
@@ -110,17 +119,26 @@ Detalhes, configuração e riscos residuais: `docs/SECURITY.md`.
 ## Validação e build
 
 ```bash
-# API, realtime e worker
-cd apps/api && npx tsc --noEmit && npm run build
-cd apps/realtime && npx tsc --noEmit && npm run build
-cd apps/worker && npx tsc --noEmit
+# Instalar dependências na raiz (workspaces)
+npm install
 
-# Frontend (typecheck real + build)
-cd apps/web && npm run typecheck && npm run build
+# Typecheck/build por app
+npm run build --workspace=apps/api
+npm run build --workspace=apps/realtime
+npm run build --workspace=apps/worker
+npm run build --workspace=apps/web
+
+# Testes automatizados (Node test runner + tsx)
+npm test --workspace=apps/api
+npm test --workspace=apps/realtime
+# ou tudo de uma vez
+npm test
 ```
 
 O build do frontend executa `tsc --noEmit` no código React antes do Vite;
-erros de tipo quebram o build.
+erros de tipo quebram o build. Os testes da API cobrem validação anti-SSRF,
+parsing do draw.io para o DAS e escopo dos tokens; os do realtime cobrem
+merge parcial, exclusão em cascata e hidratação do CRDT.
 
 ## Docker
 
@@ -154,7 +172,11 @@ npm audit --audit-level=low --workspace=@c4arch/api
 npm audit --audit-level=low --workspace=@c4arch/web
 npm audit --audit-level=low --workspace=@c4arch/realtime
 npm audit --audit-level=low --workspace=@c4arch/worker
+npm test
 ```
+
+Em 08/11/2026: 0 vulnerabilidades no `npm audit` e 26 testes automatizados
+aprovados (20 API + 6 realtime), além do build/typecheck dos quatro apps.
 
 Não há ferramentas SAST/DAST obrigatórias no repositório; consulte
 `docs/SECURITY.md` para o checklist manual e para os riscos residuais.

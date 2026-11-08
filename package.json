@@ -12,17 +12,14 @@
     "apps/api",
     "apps/web",
     "apps/realtime",
-    "apps/worker",
-    "packages/model",
-    "packages/realtime",
-    "packages/storage",
-    "packages/shared"
+    "apps/worker"
   ],
   "scripts": {
     "dev": "echo 'Use npm run dev --workspace=<name> (e.g. apps/api)'",
-    "build": "npm run build --workspaces",
-    "lint": "echo 'Implement lint config per workspace'",
-    "test": "npm run test --workspaces"
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   },
   "engines": {
     "node": ">=20.0.0"

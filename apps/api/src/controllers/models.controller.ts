@@ -9,6 +9,7 @@ import {
 } from '../c4/model-types.js';
 import { regenerateModelDAS } from '../c4/das.js';
 import { parseDiagrams } from '../c4/diagrams.js';
+import { fetchPublicText, UnsafeUrlError } from '../security/url.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_DRAWIO_XML_LENGTH = 100_000;
@@ -61,98 +62,10 @@ function inferC4Type(text: string): C4ModelType | null {
   return null;
 }
 
-function isPrivateHost(hostname: string): boolean {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (
-    host === 'localhost' ||
-    host === '0.0.0.0' ||
-    host === '::1' ||
-    host === 'metadata.google.internal' ||
-    host.endsWith('.local') ||
-    host.endsWith('.localhost')
-  ) {
-    return true;
-  }
-  const match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!match) return false;
-  const a = Number(match[1]);
-  const b = Number(match[2]);
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 169 && b === 254) ||
-    (a === 192 && b === 168) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 100 && b >= 64 && b <= 127)
-  );
-}
-
-/**
- * Normaliza links do Google Drive para download direto e aplica uma proteção
- * SSRF básica para importação por URL.
- */
-function resolveImportUrl(rawUrl: string): string {
-  let url: URL;
-  try {
-    url = new URL(rawUrl);
-  } catch {
-    throw new Error('URL inválida');
-  }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('Apenas URLs http(s) são suportadas');
-  }
-  if (isPrivateHost(url.hostname)) {
-    throw new Error('URL de rede interna não é permitida');
-  }
-
-  const host = url.hostname.toLowerCase().replace(/^www\./, '');
-  if (host === 'drive.google.com' || host === 'docs.google.com') {
-    if (/\/drive\/folders\//.test(url.pathname)) {
-      throw new Error(
-        'Links de pasta do Google Drive não permitem listar arquivos sem OAuth; informe os links dos arquivos individualmente.'
-      );
-    }
-    const fromPath = url.pathname.match(/\/file\/d\/([^/]+)/)?.[1];
-    const fileId = fromPath ?? url.searchParams.get('id');
-    if (fileId) {
-      return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
-    }
-  }
-  return url.toString();
-}
-
-async function downloadImportXml(rawUrl: string): Promise<string> {
-  const url = resolveImportUrl(rawUrl);
-  const response = await fetch(url, {
-    redirect: 'follow',
-    signal: AbortSignal.timeout(15_000),
-    headers: {
-      Accept: 'application/xml,text/xml,*/*',
-      'User-Agent': 'C4Arch-Importer/1.0',
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`A fonte retornou HTTP ${response.status}`);
-  }
-  if (isPrivateHost(new URL(response.url).hostname)) {
-    throw new Error('Redirecionamento para rede interna não é permitido');
-  }
-  const declaredSize = Number(response.headers.get('content-length') ?? 0);
-  if (declaredSize > MAX_IMPORT_SIZE) {
-    throw new Error('Arquivo remoto maior que o limite de 100 KB');
-  }
-  const text = await response.text();
-  if (text.length > MAX_IMPORT_SIZE) {
-    throw new Error('Arquivo remoto maior que o limite de 100 KB');
-  }
-  if (!text.trimStart().startsWith('<')) {
-    throw new Error(
-      'A fonte não retornou um XML draw.io. No Google Drive, compartilhe o arquivo como "Qualquer pessoa com o link".'
-    );
-  }
-  return text;
-}
+const IMPORT_HEADERS = {
+  Accept: 'application/xml,text/xml,*/*',
+  'User-Agent': 'C4Arch-Importer/1.0',
+};
 
 export class ModelController {
   static async list(req: AuthenticatedRequest, res: Response) {
@@ -340,7 +253,13 @@ export class ModelController {
         }
       }
 
-      const content = typeof xml === 'string' ? xml : await downloadImportXml(url as string);
+      const content =
+        typeof xml === 'string'
+          ? xml
+          : await fetchPublicText(url as string, {
+              maxBytes: MAX_IMPORT_SIZE,
+              headers: IMPORT_HEADERS,
+            });
       if (content.length > MAX_IMPORT_SIZE) {
         return res.status(413).json({ error: 'XML muito grande' });
       }
@@ -372,16 +291,8 @@ export class ModelController {
       created.das_content = await regenerateModelDAS(created.id);
       return res.status(201).json({ ...created, diagrams: [] });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (
-        message.includes('URL inválida') ||
-        message.includes('http(s)') ||
-        message.includes('rede interna') ||
-        message.includes('Google Drive') ||
-        message.includes('XML draw.io') ||
-        message.includes('limite de 100 KB')
-      ) {
-        return res.status(400).json({ error: message });
+      if (err instanceof UnsafeUrlError) {
+        return res.status(400).json({ error: err.message });
       }
       console.error('[models] importModel error', err);
       return res.status(500).json({ error: 'Erro ao importar modelo' });

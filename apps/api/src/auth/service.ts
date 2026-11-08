@@ -22,8 +22,13 @@ function validateCredentials(email: string, password: string) {
   }
 }
 
-function hashPassword(password: string, salt: string): string {
-  return crypto.scryptSync(password, salt, 64).toString('hex');
+function hashPassword(password: string, salt: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (err, derivedKey) => {
+      if (err) reject(err);
+      else resolve(derivedKey.toString('hex'));
+    });
+  });
 }
 
 // Hash descartável para manter o custo do login parecido quando o usuário
@@ -48,14 +53,22 @@ export class AuthService {
     }
 
     const salt = crypto.randomBytes(16).toString('hex');
-    const passwordHash = `${salt}${hashPassword(password, salt)}`;
+    const passwordHash = `${salt}${await hashPassword(password, salt)}`;
 
-    const result = await pool.query(
-      `INSERT INTO users (email, name, password_hash)
-       VALUES ($1, $2, $3) RETURNING id, email, name`,
-      [normalizedEmail, cleanName, passwordHash]
-    );
-    return result.rows[0];
+    try {
+      const result = await pool.query(
+        `INSERT INTO users (email, name, password_hash)
+         VALUES ($1, $2, $3) RETURNING id, email, name`,
+        [normalizedEmail, cleanName, passwordHash]
+      );
+      return result.rows[0];
+    } catch (err) {
+      // Corrida entre a checagem acima e o INSERT: o índice único decide.
+      if ((err as { code?: string }).code === '23505') {
+        throw new Error('Email já cadastrado');
+      }
+      throw err;
+    }
   }
 
   static async login(email: string, password: string) {
@@ -73,14 +86,14 @@ export class AuthService {
 
     if (!user) {
       // Executa o mesmo custo de KDF de um login real.
-      crypto.scryptSync(password, DUMMY_SALT, 64);
+      await hashPassword(password, DUMMY_SALT);
       throw new Error('Email ou senha inválidos');
     }
 
     const passwordHash = user.password_hash as string;
     const salt = passwordHash.slice(0, 32);
     const expected = passwordHash.slice(32);
-    const actual = hashPassword(password, salt);
+    const actual = await hashPassword(password, salt);
 
     const actualBuffer = Buffer.from(actual, 'hex');
     const expectedBuffer = Buffer.from(expected, 'hex');

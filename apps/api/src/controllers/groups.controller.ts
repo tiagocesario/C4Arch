@@ -1,7 +1,7 @@
 import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
-import { getOrgRole, isOrgMember, isWriterRole } from '../auth/access.js';
+import { getOrgRole, isOrgMember, isOwnerRole } from '../auth/access.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROLES = ['owner', 'editor', 'viewer'] as const;
@@ -53,7 +53,7 @@ export class GroupController {
 
     try {
       const role = await getOrgRole(req.user!.id, orgId);
-      if (!isWriterRole(role)) return res.status(403).json({ error: 'Sem permissão para criar grupos' });
+      if (!isOwnerRole(role)) return res.status(403).json({ error: 'Somente o proprietário pode criar grupos' });
 
       const result = await pool.query(
         `INSERT INTO access_groups (org_id, name, description, base_role)
@@ -83,7 +83,7 @@ export class GroupController {
       if (group.rows.length === 0) return res.status(404).json({ error: 'Grupo não encontrado' });
       const g = group.rows[0];
       const requesterRole = await getOrgRole(req.user!.id, g.org_id);
-      if (!isWriterRole(requesterRole)) return res.status(403).json({ error: 'Sem permissão para editar grupos' });
+      if (!isOwnerRole(requesterRole)) return res.status(403).json({ error: 'Somente o proprietário pode editar grupos' });
 
       const sets: string[] = [];
       const values: unknown[] = [];
@@ -128,7 +128,7 @@ export class GroupController {
       if (group.rows.length === 0) return res.status(404).json({ error: 'Grupo não encontrado' });
       const g = group.rows[0];
       const requesterRole = await getOrgRole(req.user!.id, g.org_id);
-      if (!isWriterRole(requesterRole)) return res.status(403).json({ error: 'Sem permissão para excluir grupos' });
+      if (!isOwnerRole(requesterRole)) return res.status(403).json({ error: 'Somente o proprietário pode excluir grupos' });
 
       await pool.query('DELETE FROM access_groups WHERE id = $1', [id]);
       return res.json({ ok: true });
@@ -176,9 +176,7 @@ export class GroupController {
       if (group.rows.length === 0) return res.status(404).json({ error: 'Grupo não encontrado' });
       const g = group.rows[0];
       const requesterRole = await getOrgRole(req.user!.id, g.org_id);
-      if (!isWriterRole(requesterRole)) return res.status(403).json({ error: 'Sem permissão' });
-
-      // usuário deve ser membro da organização
+      if (!isOwnerRole(requesterRole)) return res.status(403).json({ error: 'Somente o proprietário pode gerenciar membros' });
       const mem = await pool.query('SELECT role FROM memberships WHERE org_id = $1 AND user_id = $2', [g.org_id, userId]);
       if (mem.rows.length === 0) return res.status(400).json({ error: 'Usuário não é membro da organização' });
 
@@ -210,7 +208,7 @@ export class GroupController {
       if (group.rows.length === 0) return res.status(404).json({ error: 'Grupo não encontrado' });
       const g = group.rows[0];
       const requesterRole = await getOrgRole(req.user!.id, g.org_id);
-      if (!isWriterRole(requesterRole)) return res.status(403).json({ error: 'Sem permissão' });
+      if (!isOwnerRole(requesterRole)) return res.status(403).json({ error: 'Somente o proprietário pode gerenciar membros' });
 
       await pool.query('DELETE FROM access_group_members WHERE group_id = $1 AND user_id = $2', [id, userId]);
       return res.json({ ok: true });

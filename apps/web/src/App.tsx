@@ -58,7 +58,9 @@ function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /** Formatação inline mínima usada pelo DAS (negrito e código). */
@@ -2426,9 +2428,9 @@ export default function App() {
                     const w = window.open('', '_blank');
                     if (!w) return;
                     const imgTag = dasPreviewUrl
-                      ? `<div style="margin-bottom:16px;"><iframe src="${dasPreviewUrl.replace(/&/g, '&amp;')}" title="Diagrama draw.io" style="width:100%;height:380px;border:1px solid #ccc;"></iframe></div>`
+                      ? `<div style="margin-bottom:16px;"><iframe src="${escapeHtml(dasPreviewUrl)}" title="Diagrama draw.io" style="width:100%;height:380px;border:1px solid #ccc;"></iframe></div>`
                       : '';
-                    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${dasModel?.title ?? 'DAS'}</title><style>body{font-family:system-ui,sans-serif;margin:24px;color:#111;line-height:1.5;}h1{font-size:22px;}h1,h2,h3{color:#1f2937;line-height:1.25;}h2{font-size:17px;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;}h3{font-size:14px;margin:16px 0 6px;}p{margin:8px 0;}table{border-collapse:collapse;width:100%;margin:10px 0 16px;}th,td{border:1px solid #d1d5db;padding:6px 8px;font-size:11px;line-height:1.35;text-align:left;vertical-align:top;}th{background:#f3f4f6;}tr:nth-child(even) td{background:#fafafa;}blockquote{margin:0 0 16px;padding:8px 12px;border-left:4px solid #93c5fd;background:#eff6ff;}ul{margin:8px 0;padding-left:22px;}li{margin:2px 0;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}hr{border:none;border-top:1px solid #d1d5db;margin:16px 0;}@media print{body{margin:12px;}h2,h3{break-after:avoid;}table{break-inside:auto;}tr{break-inside:avoid;}}</style></head><body>${imgTag}${markdownToHtml(dasContent)}</body></html>`;
+                    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(dasModel?.title ?? 'DAS')}</title><style>body{font-family:system-ui,sans-serif;margin:24px;color:#111;line-height:1.5;}h1{font-size:22px;}h1,h2,h3{color:#1f2937;line-height:1.25;}h2{font-size:17px;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;}h3{font-size:14px;margin:16px 0 6px;}p{margin:8px 0;}table{border-collapse:collapse;width:100%;margin:10px 0 16px;}th,td{border:1px solid #d1d5db;padding:6px 8px;font-size:11px;line-height:1.35;text-align:left;vertical-align:top;}th{background:#f3f4f6;}tr:nth-child(even) td{background:#fafafa;}blockquote{margin:0 0 16px;padding:8px 12px;border-left:4px solid #93c5fd;background:#eff6ff;}ul{margin:8px 0;padding-left:22px;}li{margin:2px 0;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}hr{border:none;border-top:1px solid #d1d5db;margin:16px 0;}@media print{body{margin:12px;}h2,h3{break-after:avoid;}table{break-inside:auto;}tr{break-inside:avoid;}}</style></head><body>${imgTag}${markdownToHtml(dasContent)}</body></html>`;
                     w.document.write(html);
                     w.document.close();
                     w.focus();
