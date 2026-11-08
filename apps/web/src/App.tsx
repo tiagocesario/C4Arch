@@ -52,7 +52,7 @@ import type { UserRole } from './types/user';
 import UserManagement from './pages/UserManagement';
 import GroupManagement from './pages/GroupManagement';
 
-type Mode = 'list' | 'edit' | 'users' | 'groups' | 'folders' | 'apps' | 'services';
+type Mode = 'list' | 'edit' | 'users' | 'groups' | 'folders' | 'apps' | 'services' | 'domains';
 
 function escapeHtml(value: string): string {
   return value
@@ -326,6 +326,9 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [model, setModel] = useState<ModelDetail | null>(null);
   const [dasModel, setDasModel] = useState<Model | null>(null);
+  const [domainRules, setDomainRules] = useState<Array<{ id: string; domain: string; role: string; enabled: boolean }>>([]);
+  const [newDomain, setNewDomain] = useState('');
+  const [newDomainRole, setNewDomainRole] = useState('viewer');
   const [dasContent, setDasContent] = useState<string>('');
   const [dasBaselineContent, setDasBaselineContent] = useState<string>('');
   const [dasLoading, setDasLoading] = useState(false);
@@ -525,6 +528,15 @@ export default function App() {
   }
 
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    if (urlToken) {
+      localStorage.setItem('c4arch_token', urlToken);
+      urlParams.delete('token');
+      const next = urlParams.toString();
+      window.history.replaceState({}, '', window.location.pathname + (next ? '?' + next : ''));
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -662,6 +674,17 @@ export default function App() {
       setMode('list');
     }
   }, [loggedIn, mode, currentRole]);
+
+  useEffect(() => {
+    if (!loggedIn || mode !== 'domains' || !orgId) return;
+    const token = localStorage.getItem('c4arch_token');
+    fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains?orgId=' + encodeURIComponent(orgId), {
+      headers: { Authorization: 'Bearer ' + (token ?? '') },
+    })
+      .then((r) => r.json())
+      .then((data) => setDomainRules(Array.isArray(data) ? data : []))
+      .catch(() => setDomainRules([]));
+  }, [loggedIn, mode, orgId]);
 
   function clearSession() {
     localStorage.removeItem('c4arch_token');
@@ -1344,6 +1367,9 @@ export default function App() {
               <button type="submit" style={{ ...buttonStyle, background: '#3b82f6', color: '#fff' }}>
                 Entrar
               </button>
+              <button type="button" onClick={() => { window.location.href = (import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/google'; }} style={{ ...buttonStyle, background: '#fff', color: '#1f2937' }}>
+                Entrar com Google
+              </button>
             </form>
           </div>
         </div>
@@ -1360,6 +1386,9 @@ export default function App() {
             {currentRole === 'owner' && (
               <button onClick={() => setMode('groups')} style={{ ...buttonStyle, background: mode === 'groups' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Perfis/Grupos</button>
             )}
+            {currentRole === 'owner' && (
+              <button onClick={() => setMode('domains')} style={{ ...buttonStyle, background: mode === 'domains' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Domínios SSO</button>
+            )}
           </nav>
           <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
 
@@ -1367,6 +1396,45 @@ export default function App() {
             <div style={{ padding: '8px 16px', color: '#f87171', borderBottom: '1px solid #2a2f3a' }}>
               {error}
               <button onClick={() => setError(null)} style={{ ...buttonStyle, marginLeft: 8, color: '#93c5fd', background: 'transparent' }}>OK</button>
+            </div>
+          )}
+
+          {mode === 'domains' && currentRole === 'owner' && (
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 720 }}>
+              <h3 style={{ margin: 0 }}>Domínios SSO (Google)</h3>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input value={newDomain} onChange={(e) => setNewDomain(e.target.value)} placeholder="dominio.com" style={{ ...inputStyle, flex: 1 }} />
+                <select value={newDomainRole} onChange={(e) => setNewDomainRole(e.target.value)} style={inputStyle}>
+                  <option value="viewer">viewer</option>
+                  <option value="editor">editor</option>
+                  <option value="owner">owner</option>
+                </select>
+                <button type="button" style={primaryButtonStyle} onClick={async () => {
+                  if (!newDomain.trim() || !orgId) return;
+                  const token = localStorage.getItem('c4arch_token');
+                  await fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (token ?? '') },
+                    body: JSON.stringify({ orgId, domain: newDomain.trim(), role: newDomainRole }),
+                  });
+                  setNewDomain('');
+                  const r = await fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains?orgId=' + encodeURIComponent(orgId), { headers: { Authorization: 'Bearer ' + (token ?? '') } });
+                  setDomainRules(await r.json());
+                }}>Adicionar</button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {domainRules.map((rule) => (
+                  <div key={rule.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, border: '1px solid #2a2f3a', borderRadius: 6 }}>
+                    <span>{rule.domain} - {rule.role}</span>
+                    <button type="button" style={buttonStyle} onClick={async () => {
+                      const token = localStorage.getItem('c4arch_token');
+                      await fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains/' + rule.id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + (token ?? '') } });
+                      setDomainRules(domainRules.filter((r) => r.id !== rule.id));
+                    }}>Remover</button>
+                  </div>
+                ))}
+                {domainRules.length === 0 && <span style={smallMuted}>Nenhum domínio configurado.</span>}
+              </div>
             </div>
           )}
 

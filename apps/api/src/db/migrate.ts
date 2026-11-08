@@ -179,6 +179,15 @@ export async function runMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       PRIMARY KEY (group_id, user_id)
     )`,
+    `CREATE TABLE IF NOT EXISTS login_domain_rules (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id     UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      domain     TEXT NOT NULL,
+      role       TEXT NOT NULL CHECK (role IN ('viewer','editor','owner')) DEFAULT 'viewer',
+      enabled    BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (org_id, domain)
+    )`,
   ];
 
   for (const q of queries) {

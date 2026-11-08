@@ -91,4 +91,8 @@ export const config = {
   seedDemo,
   demoAdminPassword: readDemoAdminPassword(seedDemo),
   trustProxy: readBoolean('TRUST_PROXY', false),
+  googleClientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? '',
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() ?? '',
+  googleCallbackUrl: process.env.GOOGLE_CALLBACK_URL?.trim() ?? 'http://localhost:4000/api/auth/google/callback',
+  frontendUrl: (process.env.FRONTEND_URL ?? process.env.PUBLIC_API_URL ?? 'http://localhost:3000').replace(/\/$/, ''),
 };
