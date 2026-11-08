@@ -1,0 +1,52 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "c4arch.fullname" . }}-postgres
+  labels:
+    {{- include "c4arch.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "c4arch.name" . }}-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "c4arch.name" . }}-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image }}
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "c4arch.fullname" . }}-secret
+                  key: DB_PASSWORD
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "c4arch.fullname" . }}-postgres
+  labels:
+    {{- include "c4arch.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "c4arch.name" . }}-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+{{- end }}

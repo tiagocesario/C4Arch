@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "c4arch.fullname" . }}-web
+  labels:
+    {{- include "c4arch.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "c4arch.name" . }}-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "c4arch.name" . }}-web
+    spec:
+      containers:
+        - name: web
+          image: "{{ .Values.image.repository }}-web:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.web.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "c4arch.fullname" . }}-web
+  labels:
+    {{- include "c4arch.labels" . | nindent 4 }}
+spec:
+  selector:
+    app.kubernetes.io/name: {{ include "c4arch.name" . }}-web
+  ports:
+    - port: 80
+      targetPort: {{ .Values.web.port }}

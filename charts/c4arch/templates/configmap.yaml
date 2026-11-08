@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "c4arch.fullname" . }}-config
+  labels:
+    {{- include "c4arch.labels" . | nindent 4 }}
+data:
+  NODE_ENV: {{ .Values.api.env.NODE_ENV | quote }}
+  DB_HOST: {{ include "c4arch.fullname" . }}-postgres
+  DB_PORT: "5432"
+  DB_NAME: {{ .Values.postgres.database | quote }}
+  DB_USER: {{ .Values.postgres.user | quote }}
+  CORS_ORIGIN: {{ .Values.api.env.CORS_ORIGIN | quote }}
+  ALLOW_REGISTRATION: {{ .Values.api.env.ALLOW_REGISTRATION | quote }}
+  SEED_DEMO: {{ .Values.api.env.SEED_DEMO | quote }}

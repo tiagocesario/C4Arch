@@ -1,0 +1,41 @@
+replicaCount: 1
+image:
+  repository: c4arch
+  tag: latest
+  pullPolicy: IfNotPresent
+
+api:
+  port: 4000
+  env:
+    NODE_ENV: production
+    JWT_SECRET: change-me
+    CORS_ORIGIN: http://localhost:3000
+    ALLOW_REGISTRATION: "false"
+    SEED_DEMO: "false"
+
+web:
+  port: 3000
+
+realtime:
+  port: 4001
+
+worker:
+  port: 4002
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  user: c4arch
+  password: change-me
+  database: c4arch
+  storage: 5Gi
+
+ingress:
+  enabled: false
+  className: nginx
+  host: c4arch.local
+
+resources: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: c4arch
+description: Helm chart for C4Arch collaborative C4 architecture platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - c4
+  - architecture
+  - drawio
+maintainers:
+  - name: C4Arch
+dependencies: []
