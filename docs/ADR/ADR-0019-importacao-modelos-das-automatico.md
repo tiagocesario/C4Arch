@@ -65,8 +65,8 @@ do modelo, manter cópias manuais desatualizadas contraria o objetivo de fonte
   regeneração sobrescreve o conteúdo.
 - - O backfill no startup percorre todos os modelos; em bases muito grandes ele
   deve migrar para job assíncrono.
-- - O limite de 100 kB por XML é adequado ao MVP, mas pode exigir streaming ou
-  armazenamento externo para diagramas maiores.
+- - Diagramas acima do limite de 5 MB por XML ainda exigem streaming ou
+  armazenamento externo.
 
 ## Referências
 

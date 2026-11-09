@@ -45,6 +45,24 @@ app.use(
   })
 );
 
+// Importação de arquivos draw.io e autosave do editor podem enviar XML de
+// vários megabytes. Essas rotas recebem um parser próprio, com limite maior,
+// antes do parser global. O body-parser marca o corpo como já lido, então o
+// parser global de 100 kB não tenta processá-lo novamente.
+const LARGE_XML_JSON_LIMIT = '8mb';
+const largeXmlJson = express.json({ limit: LARGE_XML_JSON_LIMIT });
+
+app.use((req, res, next) => {
+  const isLargeXmlRoute =
+    req.method === 'POST' &&
+    (req.path === '/api/models/import' ||
+      /^\/api\/models\/[^/]+\/drawio\/import\/?$/.test(req.path));
+  if (isLargeXmlRoute) {
+    return largeXmlJson(req, res, next);
+  }
+  return next();
+});
+
 app.use(express.json({ limit: '100kb' }));
 
 // Rejeita corpos JSON que não sejam objetos antes que os controllers façam

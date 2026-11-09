@@ -15,7 +15,9 @@ import {
   type AssetLike,
 } from '../c4/assets.js';
 
-const MAX_XML_LENGTH = 100_000;
+// O autosave do editor envia o XML completo; acompanha o limite da rota de
+// importação (corpo JSON de até 8 MB, conteúdo XML de até 5 MB).
+const MAX_XML_LENGTH = 5_000_000;
 const PAGE_TOKEN_TTL = '8h';
 
 const APP_STYLE =

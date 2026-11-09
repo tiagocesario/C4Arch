@@ -12,8 +12,11 @@ import { parseDiagrams } from '../c4/diagrams.js';
 import { fetchPublicText, UnsafeUrlError } from '../security/url.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_DRAWIO_XML_LENGTH = 100_000;
-const MAX_IMPORT_SIZE = 100_000;
+// Diagramas C4 reais podem passar de algumas centenas de kB. O limite do corpo
+// JSON dessas rotas é de 8 MB (ver server.ts); aqui aplicamos o teto lógico do
+// conteúdo XML em 5 MB.
+const MAX_DRAWIO_XML_LENGTH = 5_000_000;
+const MAX_IMPORT_SIZE = 5_000_000;
 
 function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);

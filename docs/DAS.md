@@ -348,8 +348,9 @@ autorização por organização em todas as rotas (RBAC owner/editor/viewer),
 tokens escopados de 5 min para draw.io, Helmet, CORS com allowlist, rate limit,
 WebSocket autenticado e autorizado por modelo, containers não-root com
 `cap_drop: ALL`. A importação por URL (`POST /api/models/import`) baixa o
-conteúdo no servidor com timeout de 15 s, limite de 100 kB, validação de XML e
-bloqueio de hosts internos/loopback (SSRF), inclusive após redirecionamentos.
+conteúdo no servidor com timeout de 15 s, limite de 5 MB por XML, validação de
+XML e bloqueio de hosts internos/loopback (SSRF), inclusive após
+redirecionamentos.
 Links de pasta do Google Drive são rejeitados (exigiriam OAuth); apenas links
 públicos de arquivo são aceitos. Detalhes, configuração e riscos residuais em
 `docs/SECURITY.md`.
