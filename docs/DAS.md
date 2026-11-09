@@ -339,6 +339,13 @@ destino, rótulo, tecnologia e diagramas de origem). A pré-visualização e o P
 renderizam o mesmo Markdown (títulos, tabelas, listas, citação) e exibem o
 desenho draw.io em um iframe.
 
+O editor do DAS no app apresenta uma navegação por seções (cabeçalho + blocos
+`##`), formulário central com Markdown e painel lateral de status/validações.
+O salvamento é explícito (`Salvar DAS` ou `Ctrl+S`) e fechar/regenerar com
+alterações pendentes pede confirmação. Como qualquer regeneração substitui o
+conteúdo, o modelo C4 continua sendo a fonte de verdade. Detalhes de UX em
+`docs/UX-DAS-EDITOR.md`.
+
 ---
 
 ## 10. Segurança

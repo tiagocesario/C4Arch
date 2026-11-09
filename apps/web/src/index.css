@@ -91,3 +91,307 @@ body {
   padding: 1px 4px;
   border-radius: 3px;
 }
+
+/* Editor do DAS: navegação por seções + formulário + painel lateral. */
+.das-editor-grid {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr) 280px;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+}
+
+.das-editor-sidebar,
+.das-editor-main,
+.das-editor-drawer {
+  min-height: 0;
+  background: #0f1115;
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+}
+
+.das-editor-sidebar {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.das-editor-sidebar-head {
+  padding: 12px;
+  border-bottom: 1px solid #2a2f3a;
+  font-size: 12px;
+}
+
+.das-editor-sidebar-meta {
+  display: block;
+  margin-top: 3px;
+  color: #7b8290;
+  font-size: 11px;
+}
+
+.das-editor-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  overflow: auto;
+}
+
+.das-section-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #c7cbd4;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.das-section-item:hover {
+  background: #1a1d27;
+}
+
+.das-section-item.is-active {
+  background: #1e2538;
+  border-color: #3b4a75;
+  color: #ffffff;
+}
+
+.das-section-index {
+  flex: 0 0 auto;
+  color: #7b8290;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+}
+
+.das-section-item.is-active .das-section-index {
+  color: #93c5fd;
+}
+
+.das-section-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.das-section-dot {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+
+.das-section-dot.is-filled {
+  background: #10b981;
+}
+
+.das-editor-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  overflow: auto;
+}
+
+.das-editor-section-head h4 {
+  margin: 2px 0 4px;
+  color: #e8eaed;
+  font-size: 16px;
+}
+
+.das-editor-section-head p {
+  margin: 0;
+  color: #8a90a0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.das-editor-eyebrow {
+  color: #93c5fd;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.das-editor-alert {
+  padding: 8px 10px;
+  border: 1px solid #7c5a12;
+  border-radius: 6px;
+  background: #3a2b0c;
+  color: #fbbf24;
+  font-size: 12px;
+}
+
+.das-editor-textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 260px;
+  padding: 12px;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  background: #0b0d12;
+  color: #e8eaed;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  resize: vertical;
+}
+
+.das-editor-textarea:focus {
+  border-color: #4f46e5;
+  outline: 2px solid #4f46e5;
+  outline-offset: 0;
+}
+
+.das-editor-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #7b8290;
+  font-size: 11px;
+}
+
+.das-status-dirty {
+  color: #fbbf24;
+}
+
+.das-status-saved {
+  color: #34d399;
+}
+
+.das-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #2a2f3a;
+}
+
+.das-editor-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  overflow: auto;
+}
+
+.das-editor-drawer h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.das-drawer-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #222634;
+  font-size: 12px;
+}
+
+.das-drawer-label {
+  color: #7b8290;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.das-drawer-tip {
+  padding: 10px;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  background: #111827;
+  color: #aab0bf;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.das-drawer-tip strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #e8eaed;
+}
+
+.das-drawer-tip ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.das-drawer-tip li {
+  margin: 3px 0;
+}
+
+.das-drawer-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: #7b8290;
+  font-size: 11px;
+}
+
+.das-drawer-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.das-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid #2a2f3a;
+  border-radius: 999px;
+  background: #111827;
+  color: #aab0bf;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.das-badge-ok {
+  border-color: #14532d;
+  background: #052e1a;
+  color: #34d399;
+}
+
+.das-badge-warn {
+  border-color: #78350f;
+  background: #3a2b0c;
+  color: #fbbf24;
+}
+
+@media (max-width: 1080px) {
+  .das-editor-grid {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .das-editor-drawer {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .das-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .das-editor-sidebar {
+    max-height: 180px;
+  }
+
+  .das-editor-main {
+    min-height: 320px;
+  }
+}

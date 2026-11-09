@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import {
   listModels,
@@ -216,6 +216,43 @@ function firstDiagramXml(model: {
   return model.diagrams?.find((diagram) => diagram.drawioXml)?.drawioXml ?? null;
 }
 
+interface DasSection {
+  heading: string;
+  body: string;
+}
+
+/**
+ * Separa o cabeçalho (metadados antes do primeiro `##`) das seções de nível 2.
+ * O DAS gerado pela API usa `##` para cada seção do documento.
+ */
+function parseDasSections(content: string): { preamble: string; sections: DasSection[] } {
+  const lines = content.split('\n');
+  const sections: DasSection[] = [];
+  const preamble: string[] = [];
+  let current: DasSection | null = null;
+  for (const line of lines) {
+    if (line.startsWith('## ')) {
+      if (current) sections.push(current);
+      current = { heading: line.slice(3).trim(), body: '' };
+    } else if (current) {
+      current.body += (current.body ? '\n' : '') + line;
+    } else {
+      preamble.push(line);
+    }
+  }
+  if (current) sections.push(current);
+  return { preamble: preamble.join('\n'), sections };
+}
+
+function buildDasFromSections(preamble: string, sections: DasSection[]): string {
+  const parts: string[] = [];
+  if (preamble.trim()) parts.push(preamble);
+  for (const section of sections) {
+    parts.push(`## ${section.heading}\n\n${section.body}`);
+  }
+  return parts.join('\n\n');
+}
+
 function nameFromImportUrl(raw: string): string {
   try {
     const url = new URL(raw);
@@ -334,7 +371,8 @@ export default function App() {
   const [dasLoading, setDasLoading] = useState(false);
   const [dasSaving, setDasSaving] = useState(false);
   const [dasViewMode, setDasViewMode] = useState<'edit' | 'preview'>('edit');
-  const [dasStep, setDasStep] = useState(0);  const [dasPreviewUrl, setDasPreviewUrl] = useState<string | null>(null);
+  const [dasActiveSection, setDasActiveSection] = useState(0);
+  const [dasPreviewUrl, setDasPreviewUrl] = useState<string | null>(null);
 
   const [email, setEmail] = useState('admin@example.com');
   const [password, setPassword] = useState('');
@@ -1259,6 +1297,29 @@ export default function App() {
 
   const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
+  const dasParsed = useMemo(() => parseDasSections(dasContent), [dasContent]);
+  const dasSectionItems = useMemo(
+    () => [
+      {
+        key: 'preamble',
+        label: 'Informações do documento',
+        description: 'Título, versão, status e metadados iniciais do DAS.',
+        body: dasParsed.preamble,
+      },
+      ...dasParsed.sections.map((section) => ({
+        key: `section-${section.heading}`,
+        label: section.heading,
+        description: `Conteúdo da seção "${section.heading}".`,
+        body: section.body,
+      })),
+    ],
+    [dasParsed]
+  );
+  const dasEmptySections = dasSectionItems.filter((item) => !item.body.trim()).length;
+  const dasActiveIndex = Math.min(dasActiveSection, Math.max(dasSectionItems.length - 1, 0));
+  const dasActiveItem = dasSectionItems[dasActiveIndex] ?? dasSectionItems[0];
+  const dasDirty = dasContent !== dasBaselineContent;
+
   if (booting) {
     return (
       <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0f1115', color: '#7b8290' }}>
@@ -1267,33 +1328,57 @@ export default function App() {
     );
   }
 
-  const parseDasSections = (content: string): { preamble: string; sections: { heading: string; body: string }[] } => {
-    const lines = content.split('\\n');
-    const sections: { heading: string; body: string }[] = [];
-    const preamble: string[] = [];
-    let current: { heading: string; body: string } | null = null;
-    for (const line of lines) {
-      if (line.startsWith('## ')) {
-        if (current) sections.push(current);
-        current = { heading: line.slice(3).trim(), body: '' };
-      } else if (current) {
-        current.body += (current.body ? '\\n' : '') + line;
-      } else {
-        preamble.push(line);
-      }
+  async function saveDas() {
+    if (!dasModel || dasSaving) return;
+    setDasSaving(true);
+    try {
+      await updateModelDAS(dasModel.id, dasContent);
+      setDasBaselineContent(dasContent);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDasSaving(false);
     }
-    if (current) sections.push(current);
-    return { preamble: preamble.join('\\n').trim(), sections };
-  };
+  }
 
-  const buildDasFromSections = (preamble: string, sections: { heading: string; body: string }[]): string => {
-    const parts: string[] = [];
-    if (preamble.trim()) parts.push(preamble.trim());
-    for (const section of sections) {
-      parts.push(`## ${section.heading}\\n\\n${section.body.trim()}`);
+  function closeDasEditor() {
+    if (dasDirty && !window.confirm('Existem alterações não salvas no DAS. Deseja fechar mesmo assim?')) {
+      return;
     }
-    return parts.join('\\n\\n');
-  };
+    setDasModel(null);
+  }
+
+  async function regenerateDas() {
+    if (!dasModel) return;
+    if (dasDirty && !window.confirm('Existem alterações não salvas no DAS. Regenerar irá substituí-las pelo documento gerado. Deseja continuar?')) {
+      return;
+    }
+    setDasLoading(true);
+    try {
+      const [content, detail] = await Promise.all([getModelDAS(dasModel.id), getModel(dasModel.id)]);
+      setDasContent(content);
+      setDasBaselineContent(content);
+      setDasActiveSection(0);
+      if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDasLoading(false);
+    }
+  }
+
+  function updateDasSection(value: string) {
+    if (dasActiveIndex === 0) {
+      setDasContent(buildDasFromSections(value, dasParsed.sections));
+      return;
+    }
+    const nextSections = dasParsed.sections.map((section, index) =>
+      index === dasActiveIndex - 1 ? { ...section, body: value } : section
+    );
+    setDasContent(buildDasFromSections(dasParsed.preamble, nextSections));
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f1115', color: '#e8eaed' }}>
@@ -1689,7 +1774,7 @@ export default function App() {
                             setDasBaselineContent('');
                             setDasPreviewUrl(null);
                             setDasViewMode('edit');
-                            setDasStep(0);
+                            setDasActiveSection(0);
                             setDasLoading(true);
                             try {
                               const [content, detail] = await Promise.all([
@@ -1928,7 +2013,7 @@ export default function App() {
                                     setDasBaselineContent('');
                                     setDasPreviewUrl(null);
                                     setDasViewMode('edit');
-                                    setDasStep(0);
+                                    setDasActiveSection(0);
                                     setDasLoading(true);
                                     Promise.all([getModelDAS(item.id), getModel(item.id)])
                                       .then(([content, detail]) => {
@@ -2453,42 +2538,35 @@ export default function App() {
 
       {dasModel && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 16 }}
-          onClick={() => setDasModel(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 16 }}
+          onClick={closeDasEditor}
         >
           <div
-            style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 10, width: 'min(900px, 96vw)', height: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 10, width: 'min(1280px, 97vw)', height: 'min(88vh, 920px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                void saveDas();
+              }
+            }}
+            tabIndex={-1}
           >
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', alignItems: 'center', gap: 12 }}>
-              <h3 style={{ margin: 0 }}>DAS — {dasModel.title}</h3>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <button
-                  onClick={async () => {
-                    if (!dasModel) return;
-                    if (dasContent !== dasBaselineContent) {
-                      const ok = window.confirm(
-                        'Existem alteracoes nao salvas no DAS. Regenerar ira substitui-las pelo documento gerado. Deseja continuar?'
-                      );
-                      if (!ok) return;
-                    }
-                    setDasLoading(true);
-                    try {
-                      const [content, detail] = await Promise.all([
-                        getModelDAS(dasModel.id),
-                        getModel(dasModel.id),
-                      ]);
-                      setDasContent(content);
-                      setDasBaselineContent(content);
-                      if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : String(err));
-                    } finally {
-                      setDasLoading(false);
-                    }
-                  }}
-                  style={buttonStyle}
-                >
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+                <h3 style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>DAS — {dasModel.title}</h3>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span className={'das-badge ' + (dasDirty ? 'das-badge-warn' : 'das-badge-ok')}>
+                    {dasSaving ? 'Salvando...' : dasDirty ? 'Alterações não salvas' : 'Salvo'}
+                  </span>
+                  <span className="das-badge">{dasSectionItems.length} seções</span>
+                  {dasEmptySections > 0 && (
+                    <span className="das-badge das-badge-warn">{dasEmptySections} sem conteúdo</span>
+                  )}
+                </div>
+              </div>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <button onClick={() => void regenerateDas()} style={buttonStyle} disabled={dasLoading || dasSaving}>
                   Regenerar
                 </button>
                 <button
@@ -2509,121 +2587,149 @@ export default function App() {
                 >
                   Exportar PDF
                 </button>
-                <button
-                  onClick={async () => {
-                    if (!dasModel) return;
-                    setDasSaving(true);
-                    try {
-                      await updateModelDAS(dasModel.id, dasContent);
-                      setDasBaselineContent(dasContent);
-                      setError(null);
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : String(err));
-                    } finally {
-                      setDasSaving(false);
-                    }
-                  }}
-                  style={primaryButtonStyle}
-                  disabled={dasSaving}
-                >
+                <button onClick={() => void saveDas()} style={primaryButtonStyle} disabled={dasSaving || !dasDirty}>
                   {dasSaving ? 'Salvando...' : 'Salvar'}
                 </button>
-                <button onClick={() => setDasModel(null)} style={buttonStyle}>Fechar</button>
+                <button onClick={closeDasEditor} style={buttonStyle}>Fechar</button>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: '1px solid #2a2f3a' }}>
+            <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: '1px solid #2a2f3a', alignItems: 'center' }}>
               <button onClick={() => setDasViewMode('preview')} style={{ ...buttonStyle, background: dasViewMode === 'preview' ? '#2a2f3a' : 'transparent' }}>Visualizar</button>
               <button onClick={() => setDasViewMode('edit')} style={{ ...buttonStyle, background: dasViewMode === 'edit' ? '#2a2f3a' : 'transparent' }}>Editar</button>
+              <span style={{ ...smallMuted, marginLeft: 'auto' }}>Ctrl+S salva · Markdown nas seções · alterações em memória</span>
             </div>
             <div style={{ flex: 1, minHeight: 0, padding: 12, overflow: 'auto' }}>
               {dasLoading ? (
                 <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
               ) : dasViewMode === 'edit' ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%', minHeight: 0, maxWidth: 960, margin: '0 auto', width: '100%' }}>
-                    {(() => {
-                      const parsed = parseDasSections(dasContent);
-                      const fields: { label: string; description: string; value: string; onChange: (value: string) => void }[] = [];
-                      fields.push({
-                        label: 'Cabeçalho',
-                        description: 'Título e metadados iniciais do documento (markdown).',
-                        value: parsed.preamble,
-                        onChange: (value) => setDasContent(buildDasFromSections(value, parsed.sections)),
-                      });
-                      parsed.sections.forEach((section, index) => {
-                        fields.push({
-                          label: section.heading,
-                          description: 'Conteúdo da seção "' + section.heading + '" do DAS.',
-                          value: section.body,
-                          onChange: (value) => {
-                            const nextSections = parsed.sections.map((item, itemIndex) =>
-                              itemIndex === index ? { ...item, body: value } : item
-                            );
-                            setDasContent(buildDasFromSections(parsed.preamble, nextSections));
-                          },
-                        });
-                      });
+                <div className="das-editor-grid">
+                  <aside className="das-editor-sidebar" aria-label="Seções do DAS">
+                    <div className="das-editor-sidebar-head">
+                      <strong>Seções do documento</strong>
+                      <span className="das-editor-sidebar-meta">
+                        {dasSectionItems.length} seções
+                        {dasEmptySections > 0 ? ` · ${dasEmptySections} pendentes` : ' · completo'}
+                      </span>
+                    </div>
+                    <nav className="das-editor-section-list">
+                      {dasSectionItems.map((item, index) => {
+                        const filled = item.body.trim().length > 0;
+                        return (
+                          <button
+                            key={item.key}
+                            type="button"
+                            className={'das-section-item' + (index === dasActiveIndex ? ' is-active' : '')}
+                            onClick={() => setDasActiveSection(index)}
+                            title={item.label}
+                          >
+                            <span className="das-section-index">{String(index + 1).padStart(2, '0')}</span>
+                            <span className="das-section-label">{item.label}</span>
+                            <span
+                              className={'das-section-dot' + (filled ? ' is-filled' : '')}
+                              title={filled ? 'Seção preenchida' : 'Seção sem conteúdo'}
+                            />
+                          </button>
+                        );
+                      })}
+                    </nav>
+                  </aside>
 
-                      return (
-                        <form
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            if (!dasModel) return;
-                            (async () => {
-                              setDasSaving(true);
-                              try {
-                                await updateModelDAS(dasModel.id, dasContent);
-                                setDasBaselineContent(dasContent);
-                                setError(null);
-                              } catch (err) {
-                                setError(err instanceof Error ? err.message : String(err));
-                              } finally {
-                                setDasSaving(false);
-                              }
-                            })();
-                          }}
-                          style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
-                        >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8, borderBottom: '1px solid #2a2f3a' }}>
-                            <h4 style={{ margin: 0 }}>Editor do DAS</h4>
-                            <span style={smallMuted}>Formulário por seções - preencha os campos e salve ao final.</span>
-                            <span style={smallMuted}>{fields.length} seções identificadas</span>
-                          </div>
+                  <form
+                    className="das-editor-main"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void saveDas();
+                    }}
+                  >
+                    <div className="das-editor-section-head">
+                      <span className="das-editor-eyebrow">
+                        Seção {dasActiveIndex + 1} de {dasSectionItems.length}
+                      </span>
+                      <h4>{dasActiveItem.label}</h4>
+                      <p>{dasActiveItem.description} Aceita Markdown (tabelas, listas, negrito e código).</p>
+                    </div>
 
-                          {fields.map((field, index) => (
-                            <div
-                              key={index}
-                              style={{
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: 6,
-                                padding: 14,
-                                background: '#0f1115',
-                                border: '1px solid #2a2f3a',
-                                borderRadius: 8,
-                              }}
-                            >
-                              <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <span style={{ color: '#93c5fd' }}>{index + 1}.</span> {field.label}
-                              </label>
-                              <span style={smallMuted}>{field.description}</span>
-                              <textarea
-                                value={field.value}
-                                onChange={(e) => field.onChange(e.target.value)}
-                                placeholder={'Descreva ' + field.label.toLowerCase() + '...'}
-                                style={{ width: '100%', minHeight: 180, background: '#0b0d12', color: '#e8eaed', border: '1px solid #2a2f3a', borderRadius: 6, padding: 10, fontFamily: 'monospace', fontSize: 12, resize: 'vertical' }}
-                              />
-                            </div>
-                          ))}
+                    {!dasActiveItem.body.trim() && (
+                      <div className="das-editor-alert">
+                        Esta seção está sem conteúdo. Você ainda pode salvar, mas o documento ficará incompleto.
+                      </div>
+                    )}
 
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 8, borderTop: '1px solid #2a2f3a' }}>
-                            <button type="submit" style={primaryButtonStyle} disabled={dasSaving}>
-                              {dasSaving ? 'Salvando...' : 'Salvar DAS'}
-                            </button>
-                          </div>
-                        </form>
-                      );
-                    })()}
-                  </div>
+                    <textarea
+                      className="das-editor-textarea"
+                      value={dasActiveItem.body}
+                      onChange={(e) => updateDasSection(e.target.value)}
+                      placeholder={`Descreva ${dasActiveItem.label.toLowerCase()}...`}
+                      spellCheck
+                    />
+
+                    <div className="das-editor-meta">
+                      <span>{dasActiveItem.body.length} caracteres</span>
+                      <span>
+                        {dasActiveItem.body.trim()
+                          ? dasActiveItem.body.trim().split(/\s+/).length
+                          : 0}{' '}
+                        palavras
+                      </span>
+                      <span>{dasActiveItem.body ? dasActiveItem.body.split('\n').length : 0} linhas</span>
+                      <span className={dasDirty ? 'das-status-dirty' : 'das-status-saved'}>
+                        {dasSaving ? 'Salvando...' : dasDirty ? 'Alterações não salvas' : 'Salvo'}
+                      </span>
+                    </div>
+
+                    <div className="das-editor-actions">
+                      <button
+                        type="button"
+                        style={buttonStyle}
+                        onClick={() => setDasContent(dasBaselineContent)}
+                        disabled={!dasDirty || dasSaving}
+                      >
+                        Descartar alterações
+                      </button>
+                      <button type="submit" style={primaryButtonStyle} disabled={dasSaving || !dasDirty}>
+                        {dasSaving ? 'Salvando...' : 'Salvar DAS'}
+                      </button>
+                    </div>
+                  </form>
+
+                  <aside className="das-editor-drawer" aria-label="Painel da seção">
+                    <h4>Painel da seção</h4>
+                    <div className="das-drawer-block">
+                      <span className="das-drawer-label">Identificação</span>
+                      <strong>{dasActiveItem.label}</strong>
+                    </div>
+                    <div className="das-drawer-block">
+                      <span className="das-drawer-label">Status da seção</span>
+                      <span className={'das-badge ' + (dasActiveItem.body.trim() ? 'das-badge-ok' : 'das-badge-warn')}>
+                        {dasActiveItem.body.trim() ? 'Preenchida' : 'Pendente'}
+                      </span>
+                    </div>
+                    <div className="das-drawer-block">
+                      <span className="das-drawer-label">Documento</span>
+                      <span className={'das-badge ' + (dasDirty ? 'das-badge-warn' : 'das-badge-ok')}>
+                        {dasDirty ? 'Alterações não salvas' : 'Salvo'}
+                      </span>
+                    </div>
+                    <div className="das-drawer-block">
+                      <span className="das-drawer-label">Seções pendentes</span>
+                      <span>{dasEmptySections} de {dasSectionItems.length}</span>
+                    </div>
+
+                    <div className="das-drawer-tip">
+                      <strong>Orientações</strong>
+                      <ul>
+                        <li>Edite uma seção por vez; o texto é mantido em memória até salvar.</li>
+                        <li>Use Markdown para tabelas, listas, negrito e blocos de código.</li>
+                        <li>Seções vazias são sinalizadas, mas não bloqueiam o salvamento.</li>
+                        <li>Fechar com alterações pendentes pede confirmação.</li>
+                      </ul>
+                    </div>
+                    <div className="das-drawer-legend">
+                      <span><i className="das-section-dot is-filled" /> preenchida</span>
+                      <span><i className="das-section-dot" /> pendente</span>
+                    </div>
+                  </aside>
+                </div>
               ) : (
                 <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}>
                   <div
