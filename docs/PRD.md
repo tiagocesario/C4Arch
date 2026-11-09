@@ -154,7 +154,7 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 
 ### 5.7 Importar modelos
 
-1. Em **Modelos**, o usuário clica em **Importar**.
+1. Em **Arquivos**, o usuário clica em **Importar**.
 2. Escolhe a fonte: **Arquivos**, **Pasta local**, **Google Drive** ou
    **Outras URLs**.
 3. Para arquivos/pastas locais, o navegador lê o conteúdo `.drawio`/`.xml` e

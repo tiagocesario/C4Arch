@@ -23,7 +23,7 @@ do modelo, manter cópias manuais desatualizadas contraria o objetivo de fonte
 1. Criar `POST /api/models/import` para importar **um** modelo por chamada,
    aceitando exatamente uma fonte: `xml` (conteúdo lido no navegador de arquivo
    ou pasta local) ou `url` (Google Drive ou outra fonte).
-2. O frontend (`Modelos → Importar`) oferece as abas **Arquivos**, **Pasta
+2. O frontend (`Arquivos → Importar`) oferece as abas **Arquivos**, **Pasta
    local**, **Google Drive** e **Outras URLs**, lê arquivos locais no browser e
    chama a API uma vez por item, exibindo progresso e resultado individual.
    Isso permite lotes de até 100 itens sem que uma falha interrompa os demais.

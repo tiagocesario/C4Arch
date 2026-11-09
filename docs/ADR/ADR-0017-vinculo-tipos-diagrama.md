@@ -20,7 +20,7 @@ nada impedia a criação de dois diagramas do mesmo tipo para o mesmo sistema.
 1. Adicionar `models.parent_id` (auto-referência, `ON DELETE CASCADE`) para
    vincular um novo modelo a um modelo existente como um **novo tipo de
    diagrama** do mesmo sistema.
-2. No cadastro (**Modelos → + Novo modelo**), oferecer a opção
+2. No cadastro (**Arquivos → + Novo modelo**), oferecer a opção
    "Vincular a um modelo existente (novo tipo de diagrama)", com filtro por
    título para localizar o modelo pai.
 3. Impedir duplicidade de tipo no grupo por meio do índice único

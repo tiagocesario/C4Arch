@@ -18,14 +18,13 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
 - **Multi-diagrama por modelo:** contexto, container, componente e código no
   mesmo modelo, com abas de navegação no preview e evolução guiada entre níveis
   (contexto → container → componente → código).
-- **Pastas hierárquicas:** árvore real com indentação, movimentação entre pai e
-  raiz, contagem de modelos e filtro por nome (ignora acentos) mantendo
-  ancestrais e descendentes visíveis.
+- **Pastas e modelos unificados:** tela única **Arquivos** com árvore hierárquica de pastas, modelos vinculados e modelos sem pasta, criação categorizada (Pasta ou Modelo) e importação em lote.
+- **Catálogo unificado:** tela única **Catálogo** para aplicações e serviços, com etiqueta de tipo, filtro por tipo e criação categorizada (Aplicação ou Serviço).
 - **Continuidade de sessão:** ao pressionar F5, o C4Arch restaura a tela atual
-  (lista, pastas, editor ou preview do modelo e o tipo de diagrama aberto).
+  (arquivos, editor ou preview do modelo e o tipo de diagrama aberto).
 - **Draw.io integrado por tipo de diagrama:** o editor, o preview e o
   import/export aceitam `?type=<c4Type>` para abrir o diagrama correto.
-- **Importação em lote de modelos:** em **Modelos → Importar**, carregue um ou
+- **Importação em lote de modelos:** em **Arquivos → Importar**, carregue um ou
   vários arquivos `.drawio`/`.xml` de arquivo, pasta local, Google Drive (link
   público de arquivo) ou outra URL. O tipo C4 é detectado pelo nome e o
   resultado é reportado por item.
