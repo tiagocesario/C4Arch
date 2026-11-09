@@ -1565,24 +1565,6 @@ export default function App() {
           {mode === 'files' && (
             <>
               <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Pesquisar modelo ou pasta..."
-                  style={{ ...inputStyle, minWidth: 220 }}
-                />
-                <select
-                  value={folderFilter}
-                  onChange={(e) => setFolderFilter(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="all">Todas as pastas</option>
-                  {folderTree.map((folder) => (
-                    <option key={folder.id} value={folder.id}>
-                      {'\u00a0'.repeat(folderDepth(folder) * 2)}{folder.name}
-                    </option>
-                  ))}
-                </select>
                 {isWriter && (
                   <select
                     value={fileCreateType}
@@ -1776,98 +1758,6 @@ export default function App() {
                 </div>
               )}
 
-              <div style={{ padding: '0 16px 16px', display: 'grid', gap: 8, gridTemplateColumns: '1fr' }}>
-                {filteredModels.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => openPreview(item)}
-                    style={{
-                      background: '#1a1d27',
-                      border: '1px solid #2a2f3a',
-                      borderRadius: 8,
-                      padding: 12,
-                      cursor: 'pointer',
-                      borderLeft: selectedId === item.id ? '4px solid #3b82f6' : '4px solid transparent',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                      <div>
-                        <div style={{ fontWeight: 600 }}>
-                          {item.title}{' '}
-                          <span style={{ fontSize: 11, color: '#93c5fd', border: '1px solid #1d4ed8', borderRadius: 999, padding: '1px 6px' }}>
-                            {statusLabel[item.status]}
-                          </span>
-                        </div>
-                        <div style={smallMuted}>{item.description || 'Sem descrição'}</div>
-                        <div style={smallMuted}>
-                          {C4_TYPE_LABEL[item.c4Type] ?? item.c4Type}
-                          {item.c4Scope ? ` · ${item.c4Scope}` : ''}
-                          {item.parentId ? ` · vinculado a ${models.find((m) => m.id === item.parentId)?.title ?? 'modelo'}` : ''}
-                          {' · '}{folderName(item.folderId)} · clique para visualizar o draw.io
-                        </div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        {isWriter && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openDrawio(item.id); }}
-                            style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
-                            title="Abrir o editor draw.io em uma nova aba"
-                          >
-                            draw.io
-                          </button>
-                        )}
-                        <button
-                          onClick={async (e) => {
-                            e.stopPropagation();
-                            setDasModel(item);
-                            setDasContent('');
-                            setDasBaselineContent('');
-                            setDasPreviewUrl(null);
-                            setDasViewMode('edit');
-                            setDasActiveSection(0);
-                            setDasLoading(true);
-                            try {
-                              const [content, detail] = await Promise.all([
-                                getModelDAS(item.id),
-                                getModel(item.id),
-                              ]);
-                              setDasContent(content);
-                              setDasBaselineContent(content);
-                              if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
-                            } catch (err) {
-                              setError(err instanceof Error ? err.message : String(err));
-                            } finally {
-                              setDasLoading(false);
-                            }
-                          }}
-                          style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
-                          title="Visualizar/editar o DAS do modelo"
-                        >
-                          DAS
-                        </button>
-                        {isWriter && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openEditModel(item); }}
-                            style={buttonStyle}
-                          >
-                            Editar
-                          </button>
-                        )}
-                        {isWriter && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onDeleteModel(item); }}
-                            style={dangerButtonStyle}
-                            title="Excluir este modelo"
-                          >
-                            Excluir
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {filteredModels.length === 0 && <div style={{ color: '#7b8290' }}>Sem modelos. Clique em "+ Novo modelo".</div>}
-              </div>
             </>
           )}
 
