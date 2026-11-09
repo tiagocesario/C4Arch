@@ -47,6 +47,8 @@ export interface ParsedElement {
   description: string;
   assetId?: string;
   assetKind?: string;
+  /** Natureza declarada no rótulo: "Aplicação" ou "Serviço". */
+  nature?: 'app' | 'service';
 }
 
 export interface ParsedEdge {
@@ -128,7 +130,10 @@ function expandPlaceholders(value: string, attributes: Record<string, string>): 
   return value
     .replace(/%c4Description%/gi, attributes.c4Description ?? '')
     .replace(/%c4Technology%/gi, attributes.c4Technology ?? '')
-    .replace(/%c4Name%/gi, attributes.c4archAssetName ?? '')
+    .replace(
+      /%c4Name%/gi,
+      attributes.c4archAssetName ?? attributes.c4Name ?? attributes.name ?? ''
+    )
     .replace(/%c4Type%/gi, attributes.c4Type ?? '')
     .replace(/%c4[A-Za-z]+%/g, '');
 }
@@ -179,6 +184,7 @@ interface ShapeInfo {
   c4Kind: string;
   technology: string;
   description: string;
+  nature?: 'app' | 'service';
 }
 
 /**
@@ -205,17 +211,29 @@ function parseShapeLabel(label: string, attributes: Record<string, string>): Sha
   if (bracket) {
     c4Kind = bracket[1].trim() || c4Kind;
     name = bracket[2].trim();
+  } else {
+    // Templates genéricos colocam nome e tipo na mesma linha
+    // ("Site / App [Software System]"); remove o sufixo de tipo do nome.
+    const trailingType = name.match(/^(.*\S)\s*\[[^\]]*\]\s*$/);
+    if (trailingType) name = trailingType[1].trim();
   }
 
   let technology = '';
   let description = '';
+  let nature: 'app' | 'service' | undefined;
 
-  const first = rest[0]?.match(/^(Aplicação|Serviço)\b\s*(.*)$/i);
-  if (first) {
-    const nature = first[1];
-    const endpoint = (first[2] ?? '').trim();
-    if (/^Servi/i.test(nature) && endpoint) technology = endpoint;
-    rest = rest.slice(1);
+  // A linha de natureza pode vir depois do tipo (ex.: nome, [tipo],
+  // "Serviço http:8080"), então procura em todo o restante do rótulo.
+  const natureIndex = rest.findIndex((line) => /^(Aplicação|Serviço)\b/i.test(line));
+  if (natureIndex >= 0) {
+    const match = rest[natureIndex].match(/^(Aplicação|Serviço)\b\s*(.*)$/i);
+    if (match) {
+      const line = match[1];
+      const endpoint = (match[2] ?? '').trim();
+      nature = /^Servi/i.test(line) ? 'service' : 'app';
+      if (nature === 'service' && endpoint) technology = endpoint;
+      rest = rest.filter((_, index) => index !== natureIndex);
+    }
   }
 
   if (rest.length > 0) {
@@ -234,6 +252,7 @@ function parseShapeLabel(label: string, attributes: Record<string, string>): Sha
     c4Kind: c4Kind || 'Elemento',
     technology,
     description,
+    nature,
   };
 }
 
@@ -253,6 +272,7 @@ function applyAsset(
       description: asset.description ?? info.description,
       assetId,
       assetKind: asset.kind,
+      nature: asset.kind,
     };
   }
 
@@ -264,6 +284,7 @@ function applyAsset(
     description: info.description,
     assetId: assetId || undefined,
     assetKind: cleanText(attributes.c4archAssetKind) || undefined,
+    nature: info.nature,
   };
 }
 

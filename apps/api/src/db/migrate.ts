@@ -209,6 +209,7 @@ export async function runMigrations() {
     `ALTER TABLE elements ADD COLUMN IF NOT EXISTS service_id UUID REFERENCES services(id) ON DELETE SET NULL`,
     `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'folders_org_name_key') THEN ALTER TABLE folders ADD CONSTRAINT folders_org_name_key UNIQUE (org_id, name); END IF; END $$`,
     `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'apps_org_name_key') THEN ALTER TABLE apps ADD CONSTRAINT apps_org_name_key UNIQUE (org_id, name); END IF; END $$`,
+    `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'services_org_name_key') AND NOT EXISTS (SELECT 1 FROM services GROUP BY org_id, name HAVING count(*) > 1) THEN ALTER TABLE services ADD CONSTRAINT services_org_name_key UNIQUE (org_id, name); END IF; END $$`,
   ];
 
   for (const q of alters) {

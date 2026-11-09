@@ -8,6 +8,7 @@ import {
   type C4ModelType,
 } from '../c4/model-types.js';
 import { regenerateModelDAS } from '../c4/das.js';
+import { importCatalogAssets } from '../c4/catalog-import.js';
 import { parseDiagrams } from '../c4/diagrams.js';
 import { fetchPublicText, UnsafeUrlError } from '../security/url.js';
 
@@ -281,6 +282,10 @@ export class ModelController {
         cleanOptionalText(description, 5000) ??
         (source ? `Importado de ${source}`.slice(0, 5000) : null);
 
+      // Antes de criar o modelo, cadastra no catálogo os componentes do XML
+      // que ainda não existem como app/serviço. A operação é idempotente.
+      const catalog = await importCatalogAssets(orgId, content);
+
       const result = await pool.query(
         `INSERT INTO models
            (org_id, title, description, status, folder_id, c4_type, drawio_xml)
@@ -292,7 +297,7 @@ export class ModelController {
 
       // O DAS já nasce preenchido com o diagrama importado.
       created.das_content = await regenerateModelDAS(created.id);
-      return res.status(201).json({ ...created, diagrams: [] });
+      return res.status(201).json({ ...created, diagrams: [], catalog });
     } catch (err) {
       if (err instanceof UnsafeUrlError) {
         return res.status(400).json({ error: err.message });

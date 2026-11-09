@@ -48,3 +48,36 @@ test('parseDrawio lê objetos com metadados c4 e decodifica entidades', () => {
   assert.equal(parsed.elements[0].technology, 'Node.js');
   assert.equal(parsed.elements[0].description, 'Processa pagamentos');
 });
+
+test('parseDrawio resolve %c4Name% a partir do atributo c4Name e mantém a natureza', () => {
+  const xml = `<mxGraphModel><root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <object id="svc" label="%c4Name%&lt;br&gt;[%c4Type%]&lt;br&gt;Serviço http:8080&lt;br&gt;%c4Technology% — %c4Description%" c4Name="PayHub" c4Type="Container" c4Technology="Node.js" c4Description="Processa pagamentos">
+      <mxCell vertex="1" parent="1" />
+    </object>
+  </root></mxGraphModel>`;
+
+  const parsed = parseDrawio(xml);
+  assert.equal(parsed.elements.length, 1);
+  assert.equal(parsed.elements[0].name, 'PayHub');
+  assert.equal(parsed.elements[0].c4Kind, 'Container');
+  assert.equal(parsed.elements[0].nature, 'service');
+  assert.equal(parsed.elements[0].technology, 'http:8080');
+});
+
+test('parseDrawio remove o tipo entre colchetes do nome do elemento', () => {
+  const xml = `<mxGraphModel><root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <object id="sys" label="Site / App [Software System]&lt;br&gt;%c4Description%" c4Type="Software System" c4Description="E-commerce">
+      <mxCell vertex="1" parent="1" />
+    </object>
+  </root></mxGraphModel>`;
+
+  const parsed = parseDrawio(xml);
+  assert.equal(parsed.elements.length, 1);
+  assert.equal(parsed.elements[0].name, 'Site / App');
+  assert.equal(parsed.elements[0].c4Kind, 'Software System');
+  assert.equal(parsed.elements[0].description, 'E-commerce');
+});

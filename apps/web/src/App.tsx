@@ -1018,6 +1018,17 @@ export default function App() {
       } catch {
         // mantém a lista otimista
       }
+      // Os componentes do XML recém-importado podem ter entrado no catálogo.
+      try {
+        setApps(await listApps(orgId));
+      } catch {
+        // mantém a lista atual
+      }
+      try {
+        setServices(await listServices(orgId));
+      } catch {
+        // mantém a lista atual
+      }
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {

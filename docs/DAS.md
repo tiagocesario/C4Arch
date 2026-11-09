@@ -339,6 +339,18 @@ destino, rótulo, tecnologia e diagramas de origem). A pré-visualização e o P
 renderizam o mesmo Markdown (títulos, tabelas, listas, citação) e exibem o
 desenho draw.io em um iframe.
 
+Na importação de um modelo (`POST /api/models/import`), os elementos do XML
+também alimentam o catálogo da organização. Elementos com marcadores
+`c4archAssetId`/`c4archAssetKind` que já existem no catálogo são preservados.
+Os demais são classificados como **app** ou **serviço** nesta ordem: marcador
+`c4archAssetKind`, natureza do rótulo (`Aplicação`/`Serviço`), tipo C4
+explícito de serviço (`Service`, `Queue`, `Pub/Sub` etc.) e, por padrão, app.
+Atores (`Person`), boundaries e rótulos não resolvidos são ignorados. A
+importação é idempotente: nomes já presentes em `apps` ou `services` não são
+recriados, e o mesmo elemento repetido em vários diagramas do arquivo gera um
+único registro. A resposta inclui o resumo em `catalog`
+(`candidates`, `created.apps`, `created.services`, `skipped`).
+
 O editor do DAS no app apresenta uma navegação por seções (cabeçalho + blocos
 `##`), formulário central com Markdown e painel lateral de status/validações.
 O salvamento é explícito (`Salvar DAS` ou `Ctrl+S`) e fechar/regenerar com
