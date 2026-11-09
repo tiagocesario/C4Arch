@@ -294,9 +294,40 @@ export class DrawioController {
         buildLibraryEntries(String(model.org_id)),
       ]);
 
+      // Configuração enviada ao embed via postMessage. Usar `data` com as
+      // entradas em memória evita depender de CORS, de conteúdo misto ou de o
+      // draw.io conseguir buscar uma data URL.
+      const libraryConfig = {
+        libraries: [
+          {
+            title: { main: 'c4arch' },
+            entries: [
+              {
+                id: 'c4arch',
+                title: { main: 'c4arch' },
+                desc: { main: 'Aplicações e serviços C4 (biblioteca c4arch)' },
+                libs: [
+                  {
+                    title: { main: 'c4arch' },
+                    data: libraryEntries,
+                    expand: true,
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        // `defaultLibraries` é o que abre as entradas declaradas em `libraries`
+        // no painel esquerdo (as bibliotecas nativas continuam disponíveis).
+        defaultLibraries: 'general;uml;er;bpmn;flowchart;basic;arrows2;c4arch',
+        enableCustomLibraries: true,
+        expandLibraries: true,
+      };
+
       const embedUrl = new URL('https://embed.diagrams.net/');
       embedUrl.searchParams.set('embed', '1');
       embedUrl.searchParams.set('proto', 'json');
+      embedUrl.searchParams.set('configure', '1');
       embedUrl.searchParams.set('spin', '1');
       embedUrl.searchParams.set('libraries', '1');
       embedUrl.searchParams.set('nav', '1');
@@ -306,17 +337,10 @@ export class DrawioController {
       embedUrl.searchParams.set('lang', 'pt-br');
       embedUrl.searchParams.set('title', title);
 
-      if (libraryXml) {
-        // URLSearchParams faz a codificação uma única vez. O draw.io decodifica
-        // o parâmetro e depois o próprio valor `U...`; a data URL não contém
-        // `%`, então a segunda decodificação é inofensiva.
-        embedUrl.searchParams.set('clibs', 'U' + libraryDataUrl(libraryXml));
-        // Permite que o embed carregue a biblioteca data: sem passar pelo proxy.
-        embedUrl.searchParams.set('cors', '^data:');
-      }
-
       const officialUrl = new URL('https://app.diagrams.net/');
       if (libraryXml) {
+        // Fora do embed não há handshake de configure; a biblioteca é vinculada
+        // pela URL no parâmetro clibs. A data URL evita CORS/conteúdo misto.
         officialUrl.searchParams.set('clibs', 'U' + libraryDataUrl(libraryXml));
         officialUrl.searchParams.set('cors', '^data:');
       }
@@ -369,7 +393,7 @@ export class DrawioController {
 
       var XML = ${scriptJson(xml)};
       var TITLE = ${scriptJson(title)};
-      var LIBRARY_ENTRIES = ${scriptJson(libraryEntries)};
+      var LIBRARY_CONFIG = ${scriptJson(libraryConfig)};
       var IMPORT_URL = ${scriptJson(importUrl)};
       var statusEl = document.getElementById('status');
       var frame = document.getElementById('drawio');
@@ -442,6 +466,10 @@ export class DrawioController {
         }, 1200);
       }
 
+      function sendConfigure() {
+        post({ action: 'configure', config: LIBRARY_CONFIG });
+      }
+
       window.addEventListener('message', function (event) {
         if (event.source !== frame.contentWindow) return;
         if (event.origin !== 'https://embed.diagrams.net') return;
@@ -453,55 +481,10 @@ export class DrawioController {
         if (!message || typeof message !== 'object') return;
 
         if (message.event === 'configure') {
-          post({
-            action: 'configure',
-            config: {
-              libraries: [
-                {
-                  title: { main: 'c4arch' },
-                  entries: [
-                    {
-                      id: 'c4arch',
-                      title: { main: 'c4arch' },
-                      desc: { main: 'Apps e servicos C4 (biblioteca c4arch)' },
-                      libs: [
-                        {
-                          title: { main: 'c4arch' },
-                          data: LIBRARY_ENTRIES,
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-              defaultCustomLibraries: ['c4arch'],
-            },
-          });
+          // O embed só espera o configure quando a URL inclui configure=1.
+          // A biblioteca c4arch entra aqui como dado inline.
+          sendConfigure();
         } else if (message.event === 'init' || message.event === 'ready') {
-          post({
-            action: 'configure',
-            config: {
-              libraries: [
-                {
-                  title: { main: 'c4arch' },
-                  entries: [
-                    {
-                      id: 'c4arch',
-                      title: { main: 'c4arch' },
-                      desc: { main: 'Apps e servicos C4 (biblioteca c4arch)' },
-                      libs: [
-                        {
-                          title: { main: 'c4arch' },
-                          data: LIBRARY_ENTRIES,
-                        },
-                      ],
-                    },
-                  ],
-                },
-              ],
-              defaultCustomLibraries: ['c4arch'],
-            },
-          });
           loadDiagram();
         } else if (message.event === 'autosave' && typeof message.xml === 'string') {
           scheduleSave(message.xml);

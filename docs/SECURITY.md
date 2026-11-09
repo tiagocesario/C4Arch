@@ -95,9 +95,11 @@ Ameaças tratadas nesta revisão:
   `POST /api/models/:id/drawio/import`.
 - A página gera um token próprio, também escopado no modelo, para o autosave
   continuar funcionando após os 5 minutos do token da URL.
-- A biblioteca de shapes é montada a partir do catálogo de aplicações e serviços
-  e entregue como data URL (`clibs`), evitando CORS e conteúdo misto entre o
-  draw.io HTTPS e uma API local em HTTP.
+- A biblioteca de shapes é montada a partir do catálogo de aplicações e serviços.
+  No editor embutido ela é enviada inline no handshake `configure`
+  (`configure=1` + `{action:"configure"}`), sem fetch externo nem CORS. No link
+  do draw.io oficial, é passada como data URL no parâmetro `clibs`, evitando
+  CORS e conteúdo misto entre o draw.io HTTPS e uma API local em HTTP.
 - O endpoint auxiliar `GET /api/models/:id/drawio/library` mantém
   `Access-Control-Allow-Origin: *` (somente leitura e token escopado), mas não
   habilita `Access-Control-Allow-Private-Network`, evitando que uma página pública
