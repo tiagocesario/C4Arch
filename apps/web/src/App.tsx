@@ -655,6 +655,14 @@ export default function App() {
     listServices(orgId).then(setServices).catch(() => setServices([]));
   }, [loggedIn, orgId]);
 
+  // Mantém o catálogo atualizado ao abrir as telas, inclusive após um
+  // backfill/importação feita em outra sessão.
+  useEffect(() => {
+    if (!loggedIn || !orgId) return;
+    if (mode === 'apps') listApps(orgId).then(setApps).catch(() => undefined);
+    if (mode === 'services') listServices(orgId).then(setServices).catch(() => undefined);
+  }, [mode, loggedIn, orgId]);
+
   useEffect(() => {
     ws.setOnUpdate((id, elements, edges) => {
       setModel((previous) => {

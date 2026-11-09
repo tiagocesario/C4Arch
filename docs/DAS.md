@@ -351,6 +351,11 @@ recriados, e o mesmo elemento repetido em vários diagramas do arquivo gera um
 único registro. A resposta inclui o resumo em `catalog`
 (`candidates`, `created.apps`, `created.services`, `skipped`).
 
+No startup da API, `backfillCatalogFromModels` percorre o XML primário e os
+diagramas extras de todos os modelos existentes e aplica a mesma rotina de
+catálogo. Assim, modelos importados antes desta funcionalidade também passam a
+aparecer em **Apps** e **Serviços**, sem duplicar itens já cadastrados.
+
 O editor do DAS no app apresenta uma navegação por seções (cabeçalho + blocos
 `##`), formulário central com Markdown e painel lateral de status/validações.
 O salvamento é explícito (`Salvar DAS` ou `Ctrl+S`) e fechar/regenerar com

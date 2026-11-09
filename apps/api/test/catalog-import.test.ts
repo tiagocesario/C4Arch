@@ -47,6 +47,10 @@ test('classifyCatalogElement ignora atores, boundaries e nomes não resolvidos',
     null
   );
   assert.equal(classifyCatalogElement(element({ name: 'HTTPS', c4Kind: 'Elemento' })), null);
+  assert.equal(
+    classifyCatalogElement(element({ name: 'Container name', c4Kind: 'Container' })),
+    null
+  );
   assert.equal(classifyCatalogElement(element({ name: '[Software System]', c4Kind: 'Software System' })), null);
   assert.equal(classifyCatalogElement(element({ name: '%c4Name%', c4Kind: 'Software System' })), null);
 });

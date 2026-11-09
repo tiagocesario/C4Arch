@@ -1,5 +1,6 @@
 import { pool } from '../db.js';
 import { parseDrawio, type DasAsset, type ParsedElement } from './das.js';
+import { parseDiagrams } from './diagrams.js';
 
 export type CatalogAssetKind = 'app' | 'service';
 
@@ -18,6 +19,18 @@ export interface CatalogImportSummary {
 }
 
 const MAX_NAME_LENGTH = 120;
+
+// Nomes genéricos usados pelos templates draw.io (não são componentes reais).
+const PLACEHOLDER_NAMES = new Set([
+  'container name',
+  'system name',
+  'component name',
+  'element name',
+  'nome do container',
+  'nome do sistema',
+  'nome do componente',
+  'nome do elemento',
+]);
 
 // Elementos de agrupamento e atores não são apps/serviços do catálogo.
 const IGNORED_KIND_RE = /(boundary|scope|person|actor|ator|legenda|legend)/i;
@@ -55,6 +68,7 @@ export function classifyCatalogElement(element: ParsedElement): CatalogAssetKind
   if (/%c4[A-Za-z]+%/.test(name)) return null;
   // Rótulo não resolvido, por exemplo "[Software System]".
   if (/^\[[^\]]+\]$/.test(name)) return null;
+  if (PLACEHOLDER_NAMES.has(name.replace(/\s+/g, ' ').trim().toLowerCase())) return null;
 
   const marker = (element.assetKind ?? '').trim().toLowerCase();
   if (marker === 'app' || marker === 'service') return marker;
@@ -168,18 +182,22 @@ async function loadKnownAssets(orgId: string): Promise<KnownAssets> {
 }
 
 /**
- * Extrai os componentes de um XML draw.io e cadastra os que ainda não existem
- * em `apps` (kind = 'app') ou `services`. É idempotente: reimportar o mesmo
- * arquivo não cria duplicatas, e nomes já presentes em qualquer um dos dois
- * catálogos são preservados.
+ * Extrai os componentes de um ou mais documentos draw.io e cadastra os que
+ * ainda não existem em `apps` (kind = 'app') ou `services`. É idempotente:
+ * reimportar o mesmo arquivo não cria duplicatas, e nomes já presentes em
+ * qualquer um dos dois catálogos são preservados.
  */
-export async function importCatalogAssets(
+async function importCatalogDocuments(
   orgId: string,
-  xml: string
+  documents: string[]
 ): Promise<CatalogImportSummary> {
   const known = await loadKnownAssets(orgId);
-  const parsed = parseDrawio(xml, known.map);
-  const candidates = collectCatalogCandidates(parsed.elements, known.ids);
+  const elements: ParsedElement[] = [];
+  for (const document of documents) {
+    if (!document || !document.trim()) continue;
+    elements.push(...parseDrawio(document, known.map).elements);
+  }
+  const candidates = collectCatalogCandidates(elements, known.ids);
 
   const summary: CatalogImportSummary = {
     candidates: candidates.length,
@@ -254,4 +272,63 @@ export async function importCatalogAssets(
   } finally {
     client.release();
   }
+}
+
+/** Importa os componentes de um único XML de modelo. */
+export async function importCatalogAssets(
+  orgId: string,
+  xml: string
+): Promise<CatalogImportSummary> {
+  return importCatalogDocuments(orgId, [xml]);
+}
+
+export interface CatalogBackfillSummary {
+  organizations: number;
+  models: number;
+  created: { apps: number; services: number };
+  skipped: number;
+}
+
+/**
+ * Popula o catálogo a partir dos modelos já existentes. Roda no startup para
+ * que modelos importados antes da criação do catálogo automático também
+ * apareçam em Apps/Serviços. A operação é idempotente.
+ */
+export async function backfillCatalogFromModels(): Promise<CatalogBackfillSummary> {
+  const rows = await pool.query(
+    'SELECT org_id, drawio_xml, diagrams FROM models ORDER BY created_at ASC'
+  );
+  const documentsByOrg = new Map<string, string[]>();
+
+  for (const row of rows.rows as {
+    org_id: string;
+    drawio_xml: string | null;
+    diagrams: unknown;
+  }[]) {
+    const documents: string[] = [];
+    if (row.drawio_xml && row.drawio_xml.trim()) documents.push(row.drawio_xml);
+    for (const diagram of parseDiagrams(row.diagrams)) {
+      if (diagram.drawioXml && diagram.drawioXml.trim()) documents.push(diagram.drawioXml);
+    }
+    if (documents.length === 0) continue;
+    const current = documentsByOrg.get(row.org_id) ?? [];
+    current.push(...documents);
+    documentsByOrg.set(row.org_id, current);
+  }
+
+  const summary: CatalogBackfillSummary = {
+    organizations: documentsByOrg.size,
+    models: rows.rows.length,
+    created: { apps: 0, services: 0 },
+    skipped: 0,
+  };
+
+  for (const [orgId, documents] of documentsByOrg) {
+    const result = await importCatalogDocuments(orgId, documents);
+    summary.created.apps += result.created.apps;
+    summary.created.services += result.created.services;
+    summary.skipped += result.skipped;
+  }
+
+  return summary;
 }

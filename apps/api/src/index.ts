@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { connectDb, seedDemo } from './db.js';
 import { runMigrations } from './db/migrate.js';
 import { regenerateAllDAS } from './c4/das.js';
+import { backfillCatalogFromModels } from './c4/catalog-import.js';
 import { config } from './config.js';
 
 const start = async () => {
@@ -21,6 +22,20 @@ const start = async () => {
     }
   } catch (err) {
     console.error('[api] Falha ao regenerar DAS dos modelos existentes', err);
+  }
+
+  // Modelos importados antes da criação do catálogo automático passam a
+  // aparecer em Apps/Serviços. A operação é idempotente.
+  try {
+    const catalog = await backfillCatalogFromModels();
+    if (catalog.created.apps > 0 || catalog.created.services > 0) {
+      console.log(
+        `[api] Catálogo preenchido a partir de ${catalog.models} modelo(s): ` +
+          `${catalog.created.apps} app(s), ${catalog.created.services} serviço(s)`
+      );
+    }
+  } catch (err) {
+    console.error('[api] Falha ao preencher o catálogo a partir dos modelos', err);
   }
 
   const server = createServer(app);
