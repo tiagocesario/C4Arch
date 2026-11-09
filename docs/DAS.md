@@ -354,7 +354,9 @@ recriados, e o mesmo elemento repetido em vários diagramas do arquivo gera um
 No startup da API, `backfillCatalogFromModels` percorre o XML primário e os
 diagramas extras de todos os modelos existentes e aplica a mesma rotina de
 catálogo. Assim, modelos importados antes desta funcionalidade também passam a
-aparecer em **Apps** e **Serviços**, sem duplicar itens já cadastrados.
+aparecer no **Catálogo** (tela única de aplicações e serviços), sem duplicar
+itens já cadastrados. O tipo de cada item é escolhido no momento da criação e
+exibido como etiqueta na listagem.
 
 O editor do DAS no app apresenta uma navegação por seções (cabeçalho + blocos
 `##`), formulário central com Markdown e painel lateral de status/validações.

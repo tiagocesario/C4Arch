@@ -116,8 +116,8 @@ Boas práticas no C4Arch:
 - Escreva o rótulo da aresta com intenção + protocolo quando aplicável.
 - O C4Arch não tem tipo próprio para deployment node; se precisar representar
   infraestrutura, use a descrição/metadados e não a confunda com containers.
-- No editor draw.io, Apps e Serviços cadastrados ficam disponíveis na biblioteca
-  "Aplicações e Serviços" para reutilização.
+- No editor draw.io, itens do Catálogo (aplicações e serviços) ficam disponíveis
+  na biblioteca "Aplicações e Serviços" para reutilização.
 
 ## Referências
 

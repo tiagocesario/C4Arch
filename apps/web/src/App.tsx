@@ -52,7 +52,7 @@ import type { UserRole } from './types/user';
 import UserManagement from './pages/UserManagement';
 import GroupManagement from './pages/GroupManagement';
 
-type Mode = 'list' | 'edit' | 'users' | 'groups' | 'folders' | 'apps' | 'services' | 'domains';
+type Mode = 'list' | 'edit' | 'users' | 'groups' | 'folders' | 'catalog' | 'domains';
 
 function escapeHtml(value: string): string {
   return value
@@ -424,6 +424,7 @@ export default function App() {
   const [savingModel, setSavingModel] = useState(false);
 
   const [assetDraft, setAssetDraft] = useState<AssetDraft | null>(null);
+  const [catalogFilter, setCatalogFilter] = useState<'all' | 'app' | 'service'>('all');
   const [savingAsset, setSavingAsset] = useState(false);
 
   const [dependencyTarget, setDependencyTarget] = useState<DependencyTarget | null>(null);
@@ -588,7 +589,9 @@ export default function App() {
       // dispara assim que `loggedIn` vira true e, sem isso, sobrescreveria o
       // estado salvo com `list`/`null` antes da restauração.
       let savedView: {
-        mode?: Mode;
+        // Aceita os modos antigos 'apps'/'services' para migrar a visão salva
+        // para a tela unificada de catálogo.
+        mode?: Mode | 'apps' | 'services';
         selectedId?: string | null;
         previewModelId?: string | null;
         previewDiagramType?: C4ModelType | null;
@@ -631,7 +634,11 @@ export default function App() {
           savedView.mode !== 'list' &&
           savedView.mode !== 'edit'
         ) {
-          setMode(savedView.mode);
+          setMode(
+            savedView.mode === 'apps' || savedView.mode === 'services'
+              ? 'catalog'
+              : savedView.mode
+          );
         }
       } catch {
         if (cancelled) return;
@@ -659,8 +666,10 @@ export default function App() {
   // backfill/importação feita em outra sessão.
   useEffect(() => {
     if (!loggedIn || !orgId) return;
-    if (mode === 'apps') listApps(orgId).then(setApps).catch(() => undefined);
-    if (mode === 'services') listServices(orgId).then(setServices).catch(() => undefined);
+    if (mode === 'catalog') {
+      listApps(orgId).then(setApps).catch(() => undefined);
+      listServices(orgId).then(setServices).catch(() => undefined);
+    }
   }, [mode, loggedIn, orgId]);
 
   useEffect(() => {
@@ -1307,6 +1316,15 @@ export default function App() {
     return matchesSearch && matchesFolder;
   });
 
+  // Lista única de aplicações e serviços. O tipo é exibido como etiqueta e
+  // usado nas ações de edição/exclusão/dependências.
+  const catalogItems = [
+    ...apps.map((item) => ({ kind: 'app' as const, item })),
+    ...services.map((item) => ({ kind: 'service' as const, item })),
+  ]
+    .filter(({ kind }) => catalogFilter === 'all' || catalogFilter === kind)
+    .sort((a, b) => a.item.name.localeCompare(b.item.name, 'pt-BR', { sensitivity: 'base' }));
+
   // Candidatos para vincular como modelo pai: busca por título, sem depender
   // de abrir o <select> nativo.
   const parentCandidates = models.filter((m) => {
@@ -1482,8 +1500,7 @@ export default function App() {
           <nav style={{ width: 180, padding: '12px 8px', borderRight: '1px solid #2a2f3a', display: 'flex', flexDirection: 'column', gap: '6px', background: '#111318' }}>
             <button onClick={() => setMode('list')} style={{ ...buttonStyle, background: mode === 'list' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Modelos</button>
             <button onClick={() => setMode('folders')} style={{ ...buttonStyle, background: mode === 'folders' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Pastas</button>
-            <button onClick={() => setMode('apps')} style={{ ...buttonStyle, background: mode === 'apps' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Apps</button>
-            <button onClick={() => setMode('services')} style={{ ...buttonStyle, background: mode === 'services' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Serviços</button>
+            <button onClick={() => setMode('catalog')} style={{ ...buttonStyle, background: mode === 'catalog' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Catálogo</button>
             {currentRole === 'owner' && (
               <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Usuários</button>
             )}
@@ -2060,13 +2077,16 @@ export default function App() {
             </div>
           )}
 
-          {mode === 'apps' && (
+          {mode === 'catalog' && (
             <div style={{ padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <h2 style={{ margin: 0 }}>Aplicações</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
+                <h2 style={{ margin: 0 }}>Catálogo</h2>
                 {isWriter && (
-                  <button onClick={() => openCreateAsset('app')} style={primaryButtonStyle}>
-                    + Nova aplicação
+                  <button
+                    onClick={() => openCreateAsset(catalogFilter === 'service' ? 'service' : 'app')}
+                    style={primaryButtonStyle}
+                  >
+                    + Novo item
                   </button>
                 )}
                 <button
@@ -2082,89 +2102,77 @@ export default function App() {
                 >
                   Baixar biblioteca c4arch
                 </button>
+                <div style={{ display: 'flex', gap: 6, marginLeft: 'auto' }}>
+                  {[
+                    ['all', 'Todos'],
+                    ['app', 'Aplicações'],
+                    ['service', 'Serviços'],
+                  ].map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setCatalogFilter(value as 'all' | 'app' | 'service')}
+                      style={{
+                        ...buttonStyle,
+                        background: catalogFilter === value ? '#2a2f3a' : 'transparent',
+                        border: '1px solid #2a2f3a',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <p style={smallMuted}>
-                Apps são containers C4 reutilizáveis: ao inserir na biblioteca do draw.io, o objeto
-                fica vinculado ao catálogo e acompanha as edições.
+                Aplicações e serviços são containers C4 reutilizáveis. O tipo é escolhido no
+                momento da criação e as alterações são propagadas para todos os modelos que usam o item.
               </p>
               <div style={{ display: 'grid', gap: 8 }}>
-                {apps.map((item) => (
-                  <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                {catalogItems.map(({ kind, item }) => (
+                  <div key={kind + ':' + item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                     <div>
-                      <div style={{ fontWeight: 600 }}>{item.name}</div>
-                      <div style={smallMuted}>{item.description || 'Sem descrição'}</div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <button onClick={() => openDependencies('app', item)} style={buttonStyle}>
-                        Modelos dependentes
-                      </button>
-                      {isWriter && (
-                        <>
-                          <button onClick={() => openEditAsset('app', item)} style={buttonStyle}>
-                            Editar
-                          </button>
-                          <button
-                            onClick={async () => {
-                              if (!window.confirm('Excluir a aplicação "' + item.name + '"?')) return;
-                              try {
-                                await deleteApp(item.id);
-                                setApps(await listApps(orgId));
-                              } catch (err) {
-                                setError(err instanceof Error ? err.message : String(err));
-                              }
-                            }}
-                            style={dangerButtonStyle}
-                          >
-                            Excluir
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {apps.length === 0 && <div style={{ color: '#7b8290' }}>Nenhuma aplicação.</div>}
-              </div>
-            </div>
-          )}
-
-          {mode === 'services' && (
-            <div style={{ padding: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                <h2 style={{ margin: 0 }}>Serviços</h2>
-                {isWriter && (
-                  <button onClick={() => openCreateAsset('service')} style={primaryButtonStyle}>
-                    + Novo serviço
-                  </button>
-                )}
-              </div>
-              <p style={smallMuted}>
-                Serviços são containers C4 reutilizáveis no draw.io. Protocolo, porta e descrição
-                são propagados para todos os modelos que usam o serviço.
-              </p>
-              <div style={{ display: 'grid', gap: 8 }}>
-                {services.map((item) => (
-                  <div key={item.id} style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{item.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span
+                          style={{
+                            background: kind === 'app' ? '#1d4ed8' : '#065f46',
+                            color: '#fff',
+                            borderRadius: 999,
+                            padding: '1px 8px',
+                            fontSize: 11,
+                            fontWeight: 600,
+                          }}
+                        >
+                          {kind === 'app' ? 'Aplicação' : 'Serviço'}
+                        </span>
+                        <span style={{ fontWeight: 600 }}>{item.name}</span>
+                      </div>
                       <div style={smallMuted}>
-                        {item.protocol}{item.port ? `:${item.port}` : ''} — {item.description || 'Sem descrição'}
+                        {kind === 'service'
+                          ? `${(item as ServiceObject).protocol}${(item as ServiceObject).port ? ':' + (item as ServiceObject).port : ''} — ${item.description || 'Sem descrição'}`
+                          : item.description || 'Sem descrição'}
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      <button onClick={() => openDependencies('service', item)} style={buttonStyle}>
+                      <button onClick={() => openDependencies(kind, item)} style={buttonStyle}>
                         Modelos dependentes
                       </button>
                       {isWriter && (
                         <>
-                          <button onClick={() => openEditAsset('service', item)} style={buttonStyle}>
+                          <button onClick={() => openEditAsset(kind, item)} style={buttonStyle}>
                             Editar
                           </button>
                           <button
                             onClick={async () => {
-                              if (!window.confirm('Excluir o serviço "' + item.name + '"?')) return;
+                              const label = kind === 'app' ? 'a aplicação' : 'o serviço';
+                              if (!window.confirm('Excluir ' + label + ' "' + item.name + '"?')) return;
                               try {
-                                await deleteService(item.id);
-                                setServices(await listServices(orgId));
+                                if (kind === 'app') {
+                                  await deleteApp(item.id);
+                                  setApps(await listApps(orgId));
+                                } else {
+                                  await deleteService(item.id);
+                                  setServices(await listServices(orgId));
+                                }
                               } catch (err) {
                                 setError(err instanceof Error ? err.message : String(err));
                               }
@@ -2178,7 +2186,15 @@ export default function App() {
                     </div>
                   </div>
                 ))}
-                {services.length === 0 && <div style={{ color: '#7b8290' }}>Nenhum serviço.</div>}
+                {catalogItems.length === 0 && (
+                  <div style={{ color: '#7b8290' }}>
+                    {catalogFilter === 'app'
+                      ? 'Nenhuma aplicação.'
+                      : catalogFilter === 'service'
+                        ? 'Nenhum serviço.'
+                        : 'Nenhum item no catálogo.'}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2777,8 +2793,23 @@ export default function App() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1050 }}>
           <form onSubmit={saveAsset} style={{ background: '#1a1d27', padding: 20, borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12, width: 440 }}>
             <h3 style={{ margin: 0 }}>
-              {assetDraft.id ? 'Editar' : assetDraft.kind === 'app' ? 'Nova aplicação' : 'Novo serviço'}
+              {assetDraft.id
+                ? assetDraft.kind === 'app' ? 'Editar aplicação' : 'Editar serviço'
+                : 'Novo item do catálogo'}
             </h3>
+            {!assetDraft.id && (
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#9ca3af' }}>
+                Tipo
+                <select
+                  value={assetDraft.kind}
+                  onChange={(e) => setAssetDraft({ ...assetDraft, kind: e.target.value as 'app' | 'service' })}
+                  style={{ ...inputStyle, width: '100%' }}
+                >
+                  <option value="app">Aplicação</option>
+                  <option value="service">Serviço</option>
+                </select>
+              </label>
+            )}
             <input
               type="text"
               placeholder={assetDraft.kind === 'app' ? 'Nome da aplicação' : 'Nome do serviço'}
