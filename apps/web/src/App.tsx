@@ -52,7 +52,7 @@ import type { UserRole } from './types/user';
 import UserManagement from './pages/UserManagement';
 import GroupManagement from './pages/GroupManagement';
 
-type Mode = 'list' | 'edit' | 'users' | 'groups' | 'folders' | 'catalog' | 'domains';
+type Mode = 'files' | 'edit' | 'users' | 'groups' | 'catalog' | 'domains';
 
 function escapeHtml(value: string): string {
   return value
@@ -358,7 +358,7 @@ interface DependencyTarget {
 }
 
 export default function App() {
-  const [mode, setMode] = useState<Mode>('list');
+  const [mode, setMode] = useState<Mode>('files');
   const [models, setModels] = useState<Model[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [model, setModel] = useState<ModelDetail | null>(null);
@@ -391,6 +391,7 @@ export default function App() {
   const [services, setServices] = useState<ServiceObject[]>([]);
 
   const [showCreateModel, setShowCreateModel] = useState(false);
+  const [fileCreateType, setFileCreateType] = useState<'folder' | 'model'>('folder');
   const [creatingModel, setCreatingModel] = useState(false);
   const [createModelError, setCreateModelError] = useState<string | null>(null);
   const [newModelTitle, setNewModelTitle] = useState('');
@@ -591,7 +592,7 @@ export default function App() {
       let savedView: {
         // Aceita os modos antigos 'apps'/'services' para migrar a visão salva
         // para a tela unificada de catálogo.
-        mode?: Mode | 'apps' | 'services';
+        mode?: Mode | 'list' | 'folders' | 'apps' | 'services';
         selectedId?: string | null;
         previewModelId?: string | null;
         previewDiagramType?: C4ModelType | null;
@@ -631,13 +632,16 @@ export default function App() {
           await openModel(savedView.selectedId);
         } else if (
           savedView.mode &&
-          savedView.mode !== 'list' &&
+          savedView.mode !== 'files' &&
           savedView.mode !== 'edit'
         ) {
+          const restored = savedView.mode;
           setMode(
-            savedView.mode === 'apps' || savedView.mode === 'services'
-              ? 'catalog'
-              : savedView.mode
+            restored === 'list' || restored === 'folders'
+              ? 'files'
+              : restored === 'apps' || restored === 'services'
+                ? 'catalog'
+                : restored
           );
         }
       } catch {
@@ -726,7 +730,7 @@ export default function App() {
   // tela de gestão deixa de ser acessível imediatamente na UI.
   useEffect(() => {
     if (loggedIn && mode === 'users' && currentRole !== 'owner') {
-      setMode('list');
+      setMode('files');
     }
   }, [loggedIn, mode, currentRole]);
 
@@ -754,7 +758,7 @@ export default function App() {
     setModels([]);
     setSelectedId(null);
     setModel(null);
-    setMode('list');
+    setMode('files');
     setError(null);
   }
 
@@ -897,7 +901,7 @@ export default function App() {
       setShowCreateModel(false);
       setError(null);
       // O botão "Editor C4" foi ocultado; o fluxo abre apenas o draw.io.
-      setMode('list');
+      setMode('files');
       setSelectedId(null);
       setModel(null);
 
@@ -1178,7 +1182,7 @@ export default function App() {
       if (selectedId === target.id) {
         setSelectedId(null);
         setModel(null);
-        setMode('list');
+        setMode('files');
       }
       if (previewModel?.id === target.id) {
         closePreview();
@@ -1498,8 +1502,7 @@ export default function App() {
       ) : (
         <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <nav style={{ width: 180, padding: '12px 8px', borderRight: '1px solid #2a2f3a', display: 'flex', flexDirection: 'column', gap: '6px', background: '#111318' }}>
-            <button onClick={() => setMode('list')} style={{ ...buttonStyle, background: mode === 'list' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Modelos</button>
-            <button onClick={() => setMode('folders')} style={{ ...buttonStyle, background: mode === 'folders' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Pastas</button>
+            <button onClick={() => setMode('files')} style={{ ...buttonStyle, background: mode === 'files' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Arquivos</button>
             <button onClick={() => setMode('catalog')} style={{ ...buttonStyle, background: mode === 'catalog' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Catálogo</button>
             {currentRole === 'owner' && (
               <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Usuários</button>
@@ -1559,7 +1562,7 @@ export default function App() {
             </div>
           )}
 
-          {mode === 'list' && (
+          {mode === 'files' && (
             <>
               <div style={{ padding: '12px 16px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <input
@@ -1581,6 +1584,17 @@ export default function App() {
                   ))}
                 </select>
                 {isWriter && (
+                  <select
+                    value={fileCreateType}
+                    onChange={(e) => setFileCreateType(e.target.value as 'folder' | 'model')}
+                    style={inputStyle}
+                    title="Tipo de item a criar"
+                  >
+                    <option value="folder">Pasta</option>
+                    <option value="model">Modelo</option>
+                  </select>
+                )}
+                {isWriter && fileCreateType === 'model' && (
                   <button onClick={openCreateModel} style={primaryButtonStyle}>+ Novo modelo</button>
                 )}
                 {isWriter && (
@@ -1879,7 +1893,7 @@ export default function App() {
             </div>
           )}
 
-          {mode === 'folders' && (
+          {mode === 'files' && (
             <div style={{ padding: '16px' }}>
               <h2 style={{ marginTop: 0 }}>Pastas</h2>
               <input
@@ -1889,7 +1903,7 @@ export default function App() {
                 onChange={(e) => setFolderSearch(e.target.value)}
                 style={{ ...inputStyle, width: '100%', maxWidth: 320, marginBottom: 12 }}
               />
-              {isWriter && (
+              {isWriter && fileCreateType === 'folder' && (
                 <div style={{ display: 'flex', gap: '8px', marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
                   <input id="folder-name" placeholder="Nome da pasta" style={inputStyle} />
                   <select id="folder-parent" style={inputStyle}>
@@ -2219,7 +2233,7 @@ export default function App() {
               readOnly={!isWriter}
             />
             <footer style={{ padding: '8px 12px', borderTop: '1px solid #2a2f3a', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#0f1115' }}>
-              <button onClick={() => { setMode('list'); setSelectedId(null); setModel(null); }} style={buttonStyle}>Voltar</button>
+              <button onClick={() => { setMode('files'); setSelectedId(null); setModel(null); }} style={buttonStyle}>Voltar</button>
               {!isWriter && <span style={{ ...smallMuted, alignSelf: 'center' }}>Somente leitura</span>}
               {isWriter && (
                 <>
