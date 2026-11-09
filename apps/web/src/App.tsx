@@ -1946,7 +1946,23 @@ export default function App() {
                                     draw.io
                                   </button>
                                 )}
-                                <button
+                                                       {isWriter && (
+                         <button
+                           onClick={() => openEditModel(item)}
+                           style={buttonStyle}
+                         >
+                           Editar
+                         </button>
+                       )}
+                       {isWriter && (
+                         <button
+                           onClick={() => onDeleteModel(item)}
+                           style={dangerButtonStyle}
+                         >
+                           Excluir
+                         </button>
+                       )}
+<button
                                   onClick={() => {
                                     setDasModel(item);
                                     setDasContent('');
@@ -1976,6 +1992,54 @@ export default function App() {
                     </div>
                   );
                 })}
+              {models.filter((m) => !m.folderId && (folderSearch.trim() === '' || normalizeText(m.title).includes(normalizeText(folderSearch)))).length > 0 && (
+                <div style={{ marginTop: 16 }}>
+                  <h3 style={{ margin: '0 0 8px' }}>Modelos sem pasta</h3>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {models
+                      .filter((m) => !m.folderId && (folderSearch.trim() === '' || normalizeText(m.title).includes(normalizeText(folderSearch))))
+                      .map((item) => (
+                        <div
+                          key={item.id}
+                          style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 8, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}
+                        >
+                          <div>
+                            <div style={{ fontWeight: 600 }}>
+                              {item.title}{' '}
+                              <span style={{ fontSize: 11, color: '#93c5fd', border: '1px solid #1d4ed8', borderRadius: 999, padding: '1px 6px' }}>
+                                {statusLabel[item.status]}
+                              </span>
+                            </div>
+                            <div style={smallMuted}>
+                              {C4_TYPE_LABEL[item.c4Type] ?? item.c4Type}
+                              {item.c4Scope ? ' · ' + item.c4Scope : ''}
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button onClick={() => openPreview(item)} style={buttonStyle}>
+                              Visualizar
+                            </button>
+                            {isWriter && (
+                              <button onClick={() => openDrawio(item.id)} style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}>
+                                draw.io
+                              </button>
+                            )}
+                            {isWriter && (
+                              <button onClick={() => openEditModel(item)} style={buttonStyle}>
+                                Editar
+                              </button>
+                            )}
+                            {isWriter && (
+                              <button onClick={() => onDeleteModel(item)} style={dangerButtonStyle}>
+                                Excluir
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
                 {folders.length === 0 && <div style={{ color: '#7b8290' }}>Nenhuma pasta.</div>}
               </div>
             </div>
