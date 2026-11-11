@@ -56,17 +56,30 @@ Executado **duas vezes** para validar idempotência. Nas duas execuções:
 ```
 
 O CI também ganhou o job `Schema canônico (M1)`, que sobe um Postgres 16
-efêmero, aplica as migrações duas vezes e verifica a existência das seis
-tabelas novas.
+efêmero e executa `npm run test:schema --workspace=@c4arch/api` com
+`RUN_SCHEMA_TESTS=true`.
+
+### 2.1 Testes automatizados
+
+- `apps/api/test/migration-sql.test.ts` — sem banco, valida a presença das
+  tabelas, colunas e índices do M1 e que todas as instruções usam
+  `IF NOT EXISTS`.
+- `apps/api/test/schema.integration.test.ts` — executa a migração duas vezes em
+  um Postgres descartável e valida tabelas, colunas, índices, o tipo `BYTEA` de
+  `model_state.state` e as restrições de unicidade e de auto-relacionamento.
+
+Comandos:
+
+```text
+npm test                                              → 43 testes aprovados
+RUN_SCHEMA_TESTS=true npm run test:schema --workspace=@c4arch/api → 1 teste de integração aprovado
+```
 
 Validação local do job de CI:
 
 ```text
 actionlint .github/workflows/ci.yml  → OK
-Postgres 16 efêmero + imagem c4arch-api:
-  node dist/db/migrate.js (1ª vez)   → [db] ✓ Migrations aplicadas
-  node dist/db/migrate.js (2ª vez)   → [db] ✓ Migrations aplicadas
-  verificação das 6 tabelas          → OK
+Postgres 16 efêmero + test:schema    → migração aplicada 2x, schema e restrições OK
 ```
 
 A API em execução **não foi reiniciada**; ela continua no código anterior. O
@@ -140,7 +153,9 @@ Script: `scripts/rollback-m1.sql`.
 
 ## 6. Arquivos alterados
 
-- `apps/api/src/db/migrate.ts` (DDL do M1)
+- `apps/api/src/db/migrate.ts` (DDL do M1 e exportação das instruções)
+- `apps/api/test/migration-sql.test.ts` (teste unitário do DDL)
+- `apps/api/test/schema.integration.test.ts` (teste de integração)
 - `scripts/rollback-m1.sql` (rollback)
 - `.github/workflows/ci.yml` (job de schema no Postgres efêmero)
 - `docs/M1-CHECKLIST.md` (este arquivo)
@@ -154,6 +169,7 @@ Script: `scripts/rollback-m1.sql`.
 - [x] Schema canônico criado.
 - [x] Migração idempotente (duas execuções).
 - [x] Estrutura verificada no banco.
+- [x] Testes unitários e de integração do schema.
 - [x] Rollback documentado e testável.
 - [x] Backup pré-M1 validado.
 - [ ] Estratégia de backfill revisada (mapeamento da seção 4 do plano).

@@ -1,7 +1,6 @@
 import { pool } from '../db.js';
 
-export async function runMigrations() {
-  const queries = [
+export const schemaQueries = [
     `CREATE TABLE IF NOT EXISTS users (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       email         TEXT NOT NULL UNIQUE,
@@ -302,13 +301,9 @@ export async function runMigrations() {
        WHERE object_key IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_model_das_overrides_model
        ON model_das_overrides(model_id)`,
-  ];
+];
 
-  for (const q of queries) {
-    await pool.query(q);
-  }
-
-  const alters = [
+export const schemaAlters = [
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES folders(id) ON DELETE SET NULL`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS drawio_xml TEXT`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS c4_type TEXT NOT NULL DEFAULT 'container'`,
@@ -339,9 +334,14 @@ export async function runMigrations() {
        WHERE content_hash IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_model_versions_model_created
        ON model_versions(model_id, created_at DESC)`,
-  ];
+];
 
-  for (const q of alters) {
+export async function runMigrations() {
+  for (const q of schemaQueries) {
+    await pool.query(q);
+  }
+
+  for (const q of schemaAlters) {
     try {
       await pool.query(q);
     } catch (err) {
