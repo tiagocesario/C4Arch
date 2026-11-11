@@ -3,7 +3,7 @@
 - **Status:** M1 concluído em 11/11/2026
 - **Plano:** `docs/PLANO-MIGRACAO-ONDA-1.md`
 - **Pré-requisito:** `docs/M0-CHECKLIST.md` (backup validado)
-- **Próxima fase:** M2 (backfill e leitura em sombra), não iniciada
+- **Próxima fase:** M2 concluído em `docs/M2-CHECKLIST.md`; M3 não iniciado
 
 ## 1. Escopo executado
 
@@ -172,8 +172,10 @@ Script: `scripts/rollback-m1.sql`.
 - [x] Testes unitários e de integração do schema.
 - [x] Rollback documentado e testável.
 - [x] Backup pré-M1 validado.
-- [ ] Estratégia de backfill revisada (mapeamento da seção 4 do plano).
-- [ ] Feature flag `CANONICAL_MODEL=shadow` pronta para ser ligada.
+- [x] Estratégia de backfill revisada (mapeamento da seção 4 do plano) e
+      implementada em `apps/api/src/c4/backfill.ts`.
+- [x] Feature flag `CANONICAL_MODEL=shadow` pronta para ser ligada
+      (`apps/api/src/c4/shadow.ts` e `ModelController.get`).
 
 ## 8. Observações
 

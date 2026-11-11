@@ -13,6 +13,9 @@ const duration = { count: 0, sumMs: 0, maxMs: 0 };
 let httpErrorsTotal = 0;
 let modelsTotal = 0;
 let projectionErrorsTotal = 0;
+let shadowComparisonsTotal = 0;
+let shadowDivergentModelsTotal = 0;
+const shadowDivergences = new Map<string, number>();
 const startedAt = Date.now();
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
@@ -62,6 +65,14 @@ export function recordProjectionError(): void {
   projectionErrorsTotal += 1;
 }
 
+export function recordShadowComparison(divergent: boolean, kinds: string[] = []): void {
+  shadowComparisonsTotal += 1;
+  if (divergent) shadowDivergentModelsTotal += 1;
+  for (const kind of kinds) {
+    shadowDivergences.set(kind, (shadowDivergences.get(kind) ?? 0) + 1);
+  }
+}
+
 export function renderMetrics(): string {
   const lines: string[] = [
     '# HELP c4arch_http_requests_total Total de requisições HTTP por método, rota e status.',
@@ -87,6 +98,17 @@ export function renderMetrics(): string {
     '# HELP c4arch_projection_errors_total Falhas ao projetar o estado colaborativo no modelo canônico.',
     '# TYPE c4arch_projection_errors_total counter',
     `c4arch_projection_errors_total ${projectionErrorsTotal}`,
+    '# HELP c4arch_shadow_comparisons_total Comparações legado × canônico executadas em modo sombra.',
+    '# TYPE c4arch_shadow_comparisons_total counter',
+    `c4arch_shadow_comparisons_total ${shadowComparisonsTotal}`,
+    '# HELP c4arch_shadow_divergent_models_total Comparações em sombra com pelo menos uma divergência.',
+    '# TYPE c4arch_shadow_divergent_models_total counter',
+    `c4arch_shadow_divergent_models_total ${shadowDivergentModelsTotal}`,
+    '# HELP c4arch_shadow_divergences_total Divergências de sombra por tipo.',
+    '# TYPE c4arch_shadow_divergences_total counter',
+    ...([...shadowDivergences.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([kind, value]) => `c4arch_shadow_divergences_total{kind="${escapeLabel(kind)}"} ${value}`)),
     '# HELP c4arch_uptime_seconds Tempo desde o startup da API.',
     '# TYPE c4arch_uptime_seconds gauge',
     `c4arch_uptime_seconds ${((Date.now() - startedAt) / 1000).toFixed(0)}`

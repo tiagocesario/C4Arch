@@ -70,6 +70,7 @@ c4arch/
     ├── PLANO-MIGRACAO-ONDA-1.md
     ├── M0-CHECKLIST.md
     ├── M1-CHECKLIST.md
+    ├── M2-CHECKLIST.md
     └── ADR/
 ```
 
@@ -89,6 +90,8 @@ c4arch/
   telemetria, CI e higiene do Git).
 - `docs/M1-CHECKLIST.md` — checklist e evidências do schema canônico (DDL,
   verificação e rollback).
+- `docs/M2-CHECKLIST.md` — checklist e evidências do backfill e da leitura em
+  sombra (mapeamento, CLIs, testes e rollback).
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
   Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
   `models.diagrams` e persistência de tela no F5), `ADR-0019` (importação de

@@ -10,6 +10,8 @@ import {
 import { regenerateModelDAS } from '../c4/das.js';
 import { importCatalogAssets } from '../c4/catalog-import.js';
 import { parseDiagrams } from '../c4/diagrams.js';
+import { runShadowCheck } from '../c4/shadow.js';
+import { flags } from '../flags.js';
 import { fetchPublicText, UnsafeUrlError } from '../security/url.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -329,7 +331,15 @@ export class ModelController {
           WHERE e.model_id = $1`,
         [id]
       );
-      return res.json({ ...model, elements: elements.rows, edges: edges.rows });
+      res.json({ ...model, elements: elements.rows, edges: edges.rows });
+
+      // M2: a resposta acima continua vindo do legado. Em modo sombra, o
+      // canônico é comparado em paralelo, depois do envio, sem alterar payload
+      // nem status. Falhas são registradas e nunca derrubam a requisição.
+      if (flags.canonicalModel === 'shadow') {
+        void runShadowCheck(id);
+      }
+      return;
     } catch (err) {
       console.error('[models] get error', err);
       return res.status(500).json({ error: 'Erro ao carregar modelo' });

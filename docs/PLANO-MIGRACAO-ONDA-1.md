@@ -2,7 +2,7 @@
 
 - **Versão:** 1.0.0
 - **Data:** 11/11/2026
-- **Status:** Aprovado; M0 e M1 concluídos, M2 não iniciado
+- **Status:** Aprovado; M0, M1 e M2 concluídos, M3 não iniciado
 - **Escopo:** schema, endpoints, UI, rollout, testes, critérios de aceite, riscos
   e rollback da Onda 1 definida em `docs/ANALISE-STRUCTURIZR.md`
 - **Acompanhamento do M0:** `docs/M0-CHECKLIST.md`
@@ -552,6 +552,10 @@ Regras:
 **Saída:** schema criado, migração idempotente, rollback por `DROP` documentado.
 
 ### M2 — Backfill e leitura em sombra (5–8 dias)
+
+> **Concluído em 11/11/2026.** Backfill aditivo, leitura em sombra atrás de
+> `CANONICAL_MODEL=shadow`, CLIs e testes; rollback em `scripts/rollback-m2.sql`;
+> evidências em `docs/M2-CHECKLIST.md`.
 
 - Script de backfill:
   1. copiar `elements` → `model_elements`;

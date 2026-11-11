@@ -96,7 +96,7 @@ function decodeXmlEntities(value: string): string {
     .replace(/&amp;/g, '&');
 }
 
-function parseAttributes(raw: string): Record<string, string> {
+export function parseAttributes(raw: string): Record<string, string> {
   const attributes: Record<string, string> = {};
   const regex = /([A-Za-z_:][\w:.-]*)\s*=\s*("([^"]*)"|'([^']*)')/g;
   let match: RegExpExecArray | null;
@@ -152,7 +152,7 @@ function humanizePlaceholder(value: string): string {
  * + encodeURIComponent). Expande o conteúdo para que o DAS consiga enxergar
  * shapes e conexões também nesses arquivos.
  */
-function expandCompressedDiagrams(xml: string): string {
+export function expandCompressedDiagrams(xml: string): string {
   if (/<mxCell\b|<mxGraphModel\b/i.test(xml)) return xml;
   return xml.replace(
     /(<diagram\b[^>]*>)([\s\S]*?)(<\/diagram>)/gi,
@@ -808,26 +808,15 @@ function metadataTechnology(metadata: unknown): string {
 }
 
 /**
- * Regenera o DAS de um modelo a partir do estado atual do Postgres, incluindo
- * todos os tipos de diagrama (primário + `models.diagrams`).
+ * Carrega apps e serviços da organização no formato usado pelo gerador de DAS.
+ * Compartilhado entre `regenerateModelDAS` e o backfill do M2.
  */
-export async function regenerateModelDAS(modelId: string): Promise<string | null> {
-  const modelRow = await pool.query('SELECT * FROM models WHERE id = $1', [modelId]);
-  const model = modelRow.rows[0];
-  if (!model) return null;
-
-  const [elements, edges, folder, apps, services] = await Promise.all([
-    pool.query('SELECT * FROM elements WHERE model_id = $1 ORDER BY "order"', [modelId]),
-    pool.query('SELECT * FROM edges WHERE model_id = $1', [modelId]),
-    model.folder_id
-      ? pool.query('SELECT name FROM folders WHERE id = $1', [model.folder_id])
-      : Promise.resolve({ rows: [] as { name?: string }[] }),
-    pool.query('SELECT id, name, description, metadata FROM apps WHERE org_id = $1', [
-      model.org_id,
-    ]),
+export async function loadDasAssets(orgId: string): Promise<Map<string, DasAsset>> {
+  const [apps, services] = await Promise.all([
+    pool.query('SELECT id, name, description, metadata FROM apps WHERE org_id = $1', [orgId]),
     pool.query(
       'SELECT id, name, description, protocol, port, metadata FROM services WHERE org_id = $1',
-      [model.org_id]
+      [orgId]
     ),
   ]);
 
@@ -866,6 +855,27 @@ export async function regenerateModelDAS(modelId: string): Promise<string | null
       technology,
     });
   }
+
+  return assets;
+}
+
+/**
+ * Regenera o DAS de um modelo a partir do estado atual do Postgres, incluindo
+ * todos os tipos de diagrama (primário + `models.diagrams`).
+ */
+export async function regenerateModelDAS(modelId: string): Promise<string | null> {
+  const modelRow = await pool.query('SELECT * FROM models WHERE id = $1', [modelId]);
+  const model = modelRow.rows[0];
+  if (!model) return null;
+
+  const [elements, edges, folder, assets] = await Promise.all([
+    pool.query('SELECT * FROM elements WHERE model_id = $1 ORDER BY "order"', [modelId]),
+    pool.query('SELECT * FROM edges WHERE model_id = $1', [modelId]),
+    model.folder_id
+      ? pool.query('SELECT name FROM folders WHERE id = $1', [model.folder_id])
+      : Promise.resolve({ rows: [] as { name?: string }[] }),
+    loadDasAssets(model.org_id),
+  ]);
 
   const das = generateDAS(
     {

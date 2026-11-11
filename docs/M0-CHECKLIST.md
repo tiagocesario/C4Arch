@@ -3,7 +3,7 @@
 - **Status:** M0 concluído em 11/11/2026
 - **Plano:** `docs/PLANO-MIGRACAO-ONDA-1.md`
 - **ADRs:** `docs/ADR/ADR-0021` a `docs/ADR/ADR-0024` (Adotadas)
-- **Próxima fase:** M2 (backfill), após o M1 concluído em `docs/M1-CHECKLIST.md`
+- **Próxima fase:** M3 (escrita canônica), após M1 e M2 concluídos em `docs/M1-CHECKLIST.md` e `docs/M2-CHECKLIST.md`
 
 ## 1. Decisões aprovadas
 
