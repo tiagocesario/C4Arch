@@ -314,7 +314,8 @@ async function syncSnapshots() {
 
 (async () => {
   console.log('[worker] flags da Onda 1:', JSON.stringify(describeFlags()));
-  await runMigrations();
+  // M6: o schema (model_versions, model_version_counters) é criado pela API.
+  // O worker não executa mais migrações.
 
   const runCycle = async () => {
     if (flags.versionHash === 'on') {
