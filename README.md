@@ -72,6 +72,7 @@ c4arch/
     ├── M1-CHECKLIST.md
     ├── M2-CHECKLIST.md
     ├── M3-CHECKLIST.md
+    ├── M5-CHECKLIST.md
     └── ADR/
 ```
 
@@ -95,6 +96,8 @@ c4arch/
   sombra (mapeamento, CLIs, testes e rollback).
 - `docs/M3-CHECKLIST.md` — checklist e evidências da escrita canônica, do DAS
   com overrides, do projetor, das versões por hash e do restore.
+- `docs/M5-CHECKLIST.md` — checklist e evidências do cutover (leitura canônica,
+  dual-write e reconciliação diária).
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
   Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
   `models.diagrams` e persistência de tela no F5), `ADR-0019` (importação de

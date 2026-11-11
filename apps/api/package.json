@@ -17,7 +17,8 @@
     "test:m2": "node --import tsx --test test/canonical.test.ts test/diagram-layout.test.ts test/backfill.test.ts test/shadow.test.ts test/m2.integration.test.ts",
     "test:m3": "node --import tsx --test test/state.test.ts test/das-overrides.test.ts test/m3.integration.test.ts",
     "backfill:canonical": "tsx src/scripts/backfill-canonical.ts",
-    "shadow:canonical": "tsx src/scripts/shadow-canonical.ts"
+    "shadow:canonical": "tsx src/scripts/shadow-canonical.ts",
+    "reconcile:canonical": "tsx src/scripts/reconcile-canonical.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

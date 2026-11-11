@@ -14,6 +14,7 @@ import { importCatalogAssets } from '../c4/catalog-import.js';
 import { parseDiagrams } from '../c4/diagrams.js';
 import { runShadowCheck } from '../c4/shadow.js';
 import { flags } from '../flags.js';
+import { canonicalModelHasData, loadCanonicalElements, loadCanonicalEdges } from '../c4/canonical-access.js';
 import { fetchPublicText, UnsafeUrlError } from '../security/url.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -321,19 +322,30 @@ export class ModelController {
       const model = await getModelAccess(req.user!.id, id);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
 
-      const elements = await pool.query(
-        'SELECT * FROM elements WHERE model_id = $1 ORDER BY "order"',
-        [id]
-      );
-      const edges = await pool.query(
-        `SELECT e.*, from_elem.title AS source_title, to_elem.title AS target_title
-           FROM edges e
-           JOIN elements from_elem ON from_elem.id = e.from_id
-           JOIN elements to_elem ON to_elem.id = e.to_id
-          WHERE e.model_id = $1`,
-        [id]
-      );
-      res.json({ ...model, elements: elements.rows, edges: edges.rows });
+      let elements: unknown[] = [];
+      let edges: unknown[] = [];
+
+      if (flags.canonicalModel === 'on' && (await canonicalModelHasData(id))) {
+        elements = await loadCanonicalElements(id);
+        edges = await loadCanonicalEdges(id);
+      } else {
+        const legacyElements = await pool.query(
+          'SELECT * FROM elements WHERE model_id = $1 ORDER BY "order"',
+          [id]
+        );
+        const legacyEdges = await pool.query(
+          `SELECT e.*, from_elem.title AS source_title, to_elem.title AS target_title
+             FROM edges e
+             JOIN elements from_elem ON from_elem.id = e.from_id
+             JOIN elements to_elem ON to_elem.id = e.to_id
+            WHERE e.model_id = $1`,
+          [id]
+        );
+        elements = legacyElements.rows;
+        edges = legacyEdges.rows;
+      }
+
+      res.json({ ...model, elements, edges });
 
       // M2: a resposta acima continua vindo do legado. Em modo sombra, o
       // canônico é comparado em paralelo, depois do envio, sem alterar payload

@@ -2,6 +2,13 @@ import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, isWriterRole } from '../auth/access.js';
+import { flags } from '../flags.js';
+import {
+  canonicalModelHasData,
+  loadCanonicalElements,
+  syncCanonicalElement,
+  removeCanonicalElement,
+} from '../c4/canonical-access.js';
 
 const ELEMENT_TYPES = new Set(['actor', 'system', 'container', 'component']);
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -52,6 +59,10 @@ export class ElementController {
     try {
       const model = await getModelAccess(req.user!.id, modelId);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+
+      if (flags.canonicalModel === 'on' && (await canonicalModelHasData(modelId))) {
+        return res.json(await loadCanonicalElements(modelId));
+      }
 
       const result = await pool.query(
         'SELECT * FROM elements WHERE model_id = $1 ORDER BY "order"',
@@ -125,6 +136,22 @@ export class ElementController {
           order ?? 0,
         ]
       );
+      if (flags.canonicalModel === 'on') {
+        const row = element.rows[0];
+        await syncCanonicalElement({
+          id: row.id,
+          model_id: row.model_id,
+          app_id: row.app_id,
+          service_id: row.service_id,
+          type: row.type,
+          title: row.title,
+          description: row.description,
+          metadata: row.metadata,
+          position_x: row.position_x,
+          position_y: row.position_y,
+          order: row.order,
+        });
+      }
       return res.status(201).json(element.rows[0]);
     } catch (err) {
       console.error('[elements] create error', err);
@@ -264,6 +291,22 @@ export class ElementController {
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Elemento não encontrado' });
       }
+      if (flags.canonicalModel === 'on') {
+        const row = result.rows[0];
+        await syncCanonicalElement({
+          id: row.id,
+          model_id: row.model_id,
+          app_id: row.app_id,
+          service_id: row.service_id,
+          type: row.type,
+          title: row.title,
+          description: row.description,
+          metadata: row.metadata,
+          position_x: row.position_x,
+          position_y: row.position_y,
+          order: row.order,
+        });
+      }
       return res.json(result.rows[0]);
     } catch (err) {
       console.error('[elements] update error', err);
@@ -288,6 +331,9 @@ export class ElementController {
       );
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Elemento não encontrado' });
+      }
+      if (flags.canonicalModel === 'on') {
+        await removeCanonicalElement(elementId);
       }
       return res.json({ ok: true });
     } catch (err) {

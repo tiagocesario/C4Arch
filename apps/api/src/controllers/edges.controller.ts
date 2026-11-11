@@ -2,6 +2,13 @@ import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, isValidUuid, isWriterRole } from '../auth/access.js';
+import { flags } from '../flags.js';
+import {
+  canonicalModelHasData,
+  loadCanonicalEdges,
+  syncCanonicalEdge,
+  removeCanonicalEdge,
+} from '../c4/canonical-access.js';
 
 const EDGE_TYPES = new Set(['call', 'http', 'message', 'depends']);
 
@@ -22,6 +29,10 @@ export class EdgeController {
     try {
       const model = await getModelAccess(req.user!.id, modelId);
       if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+
+      if (flags.canonicalModel === 'on' && (await canonicalModelHasData(modelId))) {
+        return res.json(await loadCanonicalEdges(modelId));
+      }
 
       const result = await pool.query(
         `SELECT e.*, from_elem.title AS source_title, to_elem.title AS target_title
@@ -77,6 +88,17 @@ export class EdgeController {
          VALUES ($1, $2, $3, $4, $5) RETURNING *`,
         [modelId, fromId, toId, label ?? '', type ?? 'call']
       );
+      if (flags.canonicalModel === 'on') {
+        const row = edge.rows[0];
+        await syncCanonicalEdge({
+          id: row.id,
+          model_id: row.model_id,
+          from_id: row.from_id,
+          to_id: row.to_id,
+          label: row.label,
+          type: row.type,
+        });
+      }
       return res.status(201).json(edge.rows[0]);
     } catch (err) {
       console.error('[edges] create error', err);
@@ -182,6 +204,17 @@ export class EdgeController {
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Conexão não encontrada' });
       }
+      if (flags.canonicalModel === 'on') {
+        const row = result.rows[0];
+        await syncCanonicalEdge({
+          id: row.id,
+          model_id: row.model_id,
+          from_id: row.from_id,
+          to_id: row.to_id,
+          label: row.label,
+          type: row.type,
+        });
+      }
       return res.json(result.rows[0]);
     } catch (err) {
       console.error('[edges] update error', err);
@@ -206,6 +239,9 @@ export class EdgeController {
       );
       if (result.rows.length === 0) {
         return res.status(404).json({ error: 'Conexão não encontrada' });
+      }
+      if (flags.canonicalModel === 'on') {
+        await removeCanonicalEdge(edgeId);
       }
       return res.json({ ok: true });
     } catch (err) {

@@ -611,6 +611,9 @@ projetor sem divergências relevantes.
 
 ### M5 — Cutover (5–7 dias)
 
+> **Backend concluído em 11/11/2026.** Leitura canônica com fallback, dual-write
+> e reconciliação diária entregues; UI do M4 segue pendente. Evidências em
+> `docs/M5-CHECKLIST.md`.
 - `CANONICAL_MODEL=on`, `CANONICAL_VIEWS=on`, `PROJECTOR_SHADOW=off`,
   `REALTIME_PG_STATE=on` para todos.
 - Monitorar por 1 semana:
