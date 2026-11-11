@@ -96,6 +96,8 @@ c4arch/
   sombra (mapeamento, CLIs, testes e rollback).
 - `docs/M3-CHECKLIST.md` — checklist e evidências da escrita canônica, do DAS
   com overrides, do projetor, das versões por hash e do restore.
+- `docs/M4-CHECKLIST.md` — checklist e evidências da UI (painel de versões e
+  ativação de flags).
 - `docs/M5-CHECKLIST.md` — checklist e evidências do cutover (leitura canônica,
   dual-write e reconciliação diária).
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).

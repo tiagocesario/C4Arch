@@ -71,9 +71,9 @@ services:
       args:
         VITE_API_URL: ${PUBLIC_API_URL:?PUBLIC_API_URL é obrigatório em produção}
         VITE_WS_URL: ${PUBLIC_WS_URL:?PUBLIC_WS_URL é obrigatório em produção}
-        VITE_CANONICAL_VIEWS: ${VITE_CANONICAL_VIEWS:-off}
-        VITE_DAS_OVERRIDES: ${VITE_DAS_OVERRIDES:-off}
-        VITE_VERSION_HASH: ${VITE_VERSION_HASH:-off}
+        VITE_CANONICAL_VIEWS: ${VITE_CANONICAL_VIEWS:-on}
+        VITE_DAS_OVERRIDES: ${VITE_DAS_OVERRIDES:-on}
+        VITE_VERSION_HASH: ${VITE_VERSION_HASH:-on}
     environment:
       - NODE_ENV=production
     # Mapeia a porta de provedor (80/443). Em produção, use um reverse proxy

@@ -97,9 +97,9 @@ services:
       args:
         VITE_WS_URL: ${PUBLIC_WS_URL:-ws://localhost:4001}
         VITE_API_URL: ${PUBLIC_API_URL:-http://localhost:4000}
-        VITE_CANONICAL_VIEWS: ${VITE_CANONICAL_VIEWS:-off}
-        VITE_DAS_OVERRIDES: ${VITE_DAS_OVERRIDES:-off}
-        VITE_VERSION_HASH: ${VITE_VERSION_HASH:-off}
+        VITE_CANONICAL_VIEWS: ${VITE_CANONICAL_VIEWS:-on}
+        VITE_DAS_OVERRIDES: ${VITE_DAS_OVERRIDES:-on}
+        VITE_VERSION_HASH: ${VITE_VERSION_HASH:-on}
     restart: unless-stopped
     init: true
     security_opt:

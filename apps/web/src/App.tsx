@@ -34,6 +34,12 @@ import {
   importModel,
 } from './services/api';
 import { Canvas } from './components/Canvas';
+import {
+  listModelVersions,
+  getModelVersion,
+  restoreModelVersion,
+  type ModelVersion,
+} from './services/api';
 import * as ws from './services/ws';
 import type {
   Model,
@@ -363,6 +369,9 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [model, setModel] = useState<ModelDetail | null>(null);
   const [dasModel, setDasModel] = useState<Model | null>(null);
+  const [showVersions, setShowVersions] = useState(false);
+  const [versions, setVersions] = useState<ModelVersion[]>([]);
+  const [versionsLoading, setVersionsLoading] = useState(false);
   const [domainRules, setDomainRules] = useState<Array<{ id: string; domain: string; role: string; enabled: boolean }>>([]);
   const [newDomain, setNewDomain] = useState('');
   const [newDomainRole, setNewDomainRole] = useState('viewer');
@@ -2214,12 +2223,91 @@ export default function App() {
                   >
                     Abrir draw.io
                   </button>
+                  <button
+                    onClick={async () => {
+                      if (!selectedId) return;
+                      setShowVersions(true);
+                      setVersionsLoading(true);
+                      try {
+                        const res = await listModelVersions(selectedId);
+                        setVersions(res.versions);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : String(err));
+                      } finally {
+                        setVersionsLoading(false);
+                      }
+                    }}
+                    style={buttonStyle}
+                  >
+                    Versões
+                  </button>
                   <button onClick={onDelete} style={dangerButtonStyle}>Excluir</button>
                 </>
               )}
             </footer>
           </div>
         </ReactFlowProvider>
+      )}
+
+      {showVersions && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setShowVersions(false)}
+        >
+          <div
+            style={{ background: '#1a1d24', border: '1px solid #2a2f3a', borderRadius: 8, padding: 16, width: 'min(640px, 90vw)', maxHeight: '80vh', overflow: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0 }}>Versões do modelo</h3>
+            {versionsLoading && <p>Carregando...</p>}
+            {!versionsLoading && versions.length === 0 && <p>Nenhuma versão encontrada.</p>}
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+              {versions.map((version) => (
+                <li key={version.id} style={{ borderBottom: '1px solid #2a2f3a', padding: '8px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>v{version.version} — {version.kind}</div>
+                    <div style={{ fontSize: 12, color: '#9ca3af' }}>
+                      {new Date(version.created_at).toLocaleString('pt-BR')}
+                      {version.label ? ` · ${version.label}` : ''}
+                      {version.content_hash ? ` · ${version.content_hash.slice(0, 16)}…` : ''}
+                    </div>
+                  </div>
+                  {isWriter && (
+                    <button
+                      onClick={async () => {
+                        if (!selectedId) return;
+                        if (!window.confirm('Restaurar esta versão? O estado atual será substituído.')) return;
+                        try {
+                          await restoreModelVersion(selectedId, version.id);
+                          const detail = await getModel(selectedId);
+                          setModel(detail);
+                          setShowVersions(false);
+                          setError(null);
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : String(err));
+                        }
+                      }}
+                      style={buttonStyle}
+                    >
+                      Restaurar
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <div style={{ marginTop: 12, textAlign: 'right' }}>
+              <button onClick={() => setShowVersions(false)} style={buttonStyle}>Fechar</button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showImportModels && (

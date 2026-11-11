@@ -599,6 +599,9 @@ projetor sem divergências relevantes.
 
 ### M4 — UI (10–15 dias)
 
+> **Parcial em 11/11/2026.** Painel de versões + ativação de flags entregues;
+> abas por view, drill-down, badges e DAS por seção ficam para iterações
+> futuras. Evidências em `docs/M4-CHECKLIST.md`.
 - Split do frontend em features (seção 6.1), sem mudança de comportamento.
 - Abas por view, drill-down, badges de escopo.
 - DAS com badges, edição por seção, restaurar/ocultar, aviso de desatualizado.

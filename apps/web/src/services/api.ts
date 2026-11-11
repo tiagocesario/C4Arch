@@ -339,6 +339,32 @@ export const updateModelDAS = (id: string, content: string) =>
     body: JSON.stringify({ content }),
   });
 
+export interface ModelVersion {
+  id: string;
+  model_id: string;
+  version: number;
+  content_hash: string | null;
+  label: string | null;
+  description: string | null;
+  kind: 'auto' | 'manual' | 'restore' | 'import';
+  author_id: string | null;
+  author_email: string | null;
+  created_at: string;
+  size_bytes: number | null;
+}
+
+export const listModelVersions = (id: string, limit = 50) =>
+  req<{ versions: ModelVersion[] }>('/api/models/' + id + '/versions?limit=' + limit);
+
+export const getModelVersion = (id: string, versionId: string) =>
+  req<ModelVersion & { snapshot: unknown }>('/api/models/' + id + '/versions/' + versionId);
+
+export const restoreModelVersion = (id: string, versionId: string) =>
+  req<{ ok: boolean; version: number; contentHash: string; versionId: string }>(
+    '/api/models/' + id + '/versions/' + versionId + '/restore',
+    { method: 'POST' }
+  );
+
 // ---------------------------------------------------------------------------
 // Elementos e conexões
 // ---------------------------------------------------------------------------
