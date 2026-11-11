@@ -124,6 +124,21 @@ export const schemaQueries = [
       version  INTEGER NOT NULL DEFAULT 0
     )`,
 
+    `CREATE TABLE IF NOT EXISTS audit_log (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id      UUID REFERENCES organizations(id) ON DELETE CASCADE,
+      actor_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+      actor_email TEXT,
+      action      TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id   UUID,
+      metadata    JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+
+    `CREATE INDEX IF NOT EXISTS idx_audit_log_org_created
+      ON audit_log(org_id, created_at DESC)`,
+
     `CREATE TABLE IF NOT EXISTS integrations (
       id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       org_id     UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

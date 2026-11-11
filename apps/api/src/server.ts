@@ -139,6 +139,7 @@ import appsRouter from './routes/apps.routes.js';
 import servicesRouter from './routes/services.routes.js';
 import drawioRouter from './routes/drawio.routes.js';
 import groupsRouter from './routes/groups.routes.js';
+import auditRouter from './routes/audit.routes.js';
 import internalRouter from './routes/internal.routes.js';
 
 app.use('/api/auth', authRouter);
@@ -151,6 +152,7 @@ app.use('/api/apps', appsRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/models', drawioRouter);
 app.use('/api/groups', groupsRouter);
+app.use('/api/audit', auditRouter);
 
 // Rotas internas só existem quando há token de serviço configurado.
 if (config.internalToken) {

@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, isValidUuid, isWriterRole } from '../auth/access.js';
 import { flags } from '../flags.js';
+import { recordAudit } from '../c4/audit.js';
 import {
   canonicalModelHasData,
   loadCanonicalEdges,
@@ -99,6 +100,15 @@ export class EdgeController {
           type: row.type,
         });
       }
+      await recordAudit({
+        orgId: String(model.org_id),
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'edge.create',
+        entityType: 'edge',
+        entityId: edge.rows[0].id,
+        metadata: { modelId, fromId, toId },
+      });
       return res.status(201).json(edge.rows[0]);
     } catch (err) {
       console.error('[edges] create error', err);
@@ -215,6 +225,15 @@ export class EdgeController {
           type: row.type,
         });
       }
+      await recordAudit({
+        orgId: String(model.org_id),
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'edge.update',
+        entityType: 'edge',
+        entityId: edgeId,
+        metadata: { modelId, fields: Object.keys(req.body ?? {}) },
+      });
       return res.json(result.rows[0]);
     } catch (err) {
       console.error('[edges] update error', err);
@@ -243,6 +262,15 @@ export class EdgeController {
       if (flags.canonicalModel === 'on') {
         await removeCanonicalEdge(edgeId);
       }
+      await recordAudit({
+        orgId: String(model.org_id),
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'edge.delete',
+        entityType: 'edge',
+        entityId: edgeId,
+        metadata: { modelId },
+      });
       return res.json({ ok: true });
     } catch (err) {
       console.error('[edges] remove error', err);

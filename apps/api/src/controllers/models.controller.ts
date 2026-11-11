@@ -11,6 +11,7 @@ import { regenerateModelDAS } from '../c4/das-service.js';
 import { saveDasOverrides } from '../c4/das-canonical.js';
 import { getVersion, listVersions, restoreVersion } from '../c4/versions.js';
 import { inspectModel } from '../c4/inspections.js';
+import { recordAudit } from '../c4/audit.js';
 import { importCatalogAssets } from '../c4/catalog-import.js';
 import { parseDiagrams } from '../c4/diagrams.js';
 import { runShadowCheck } from '../c4/shadow.js';
@@ -196,6 +197,15 @@ export class ModelController {
       const created = model.rows[0];
       // O DAS é gerado pelo fluxo único, com todos os diagramas e metadados.
       created.das_content = await regenerateModelDAS(created.id);
+      await recordAudit({
+        orgId,
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'model.create',
+        entityType: 'model',
+        entityId: created.id,
+        metadata: { title: created.title, c4Type: created.c4_type },
+      });
       return res.status(201).json(created);
     } catch (err) {
       console.error('[models] create error', err);
@@ -303,6 +313,15 @@ export class ModelController {
 
       // O DAS já nasce preenchido com o diagrama importado.
       created.das_content = await regenerateModelDAS(created.id);
+      await recordAudit({
+        orgId,
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'model.import',
+        entityType: 'model',
+        entityId: created.id,
+        metadata: { title: created.title },
+      });
       return res.status(201).json({ ...created, diagrams: [], catalog });
     } catch (err) {
       if (err instanceof UnsafeUrlError) {
@@ -531,6 +550,15 @@ export class ModelController {
       const updated = result.rows[0];
       // Regenera o DAS automaticamente com todos os tipos de diagrama.
       updated.das_content = await regenerateModelDAS(id);
+      await recordAudit({
+        orgId,
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'model.update',
+        entityType: 'model',
+        entityId: id,
+        metadata: { fields: Object.keys(req.body ?? {}) },
+      });
       return res.json(updated);
     } catch (err) {
       console.error('[models] update error', err);
@@ -572,9 +600,26 @@ export class ModelController {
         // `shadow` também grava overrides: a diferença é que a geração normal
         // continua usando o caminho legado até o cutover.
         const saved = await saveDasOverrides(id, content, req.user!.id);
+        await recordAudit({
+          orgId: (model.org_id as string) ?? null,
+          actorId: req.user!.id,
+          actorEmail: req.user!.email,
+          action: 'das.update',
+          entityType: 'model',
+          entityId: id,
+          metadata: { changedKeys: saved?.changedKeys ?? [] },
+        });
         return res.json({ ok: true, ...saved });
       }
       await pool.query('UPDATE models SET das_content = $1, updated_at = NOW() WHERE id = $2', [content, id]);
+      await recordAudit({
+        orgId: (model.org_id as string) ?? null,
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'das.update',
+        entityType: 'model',
+        entityId: id,
+      });
       return res.json({ ok: true });
     } catch (err) {
       console.error('[models] updateDas error', err);
@@ -627,6 +672,15 @@ export class ModelController {
       }
       const restored = await restoreVersion(id, versionId, req.user!.id);
       if (!restored) return res.status(404).json({ error: 'Versão não encontrada' });
+      await recordAudit({
+        orgId: (model.org_id as string) ?? null,
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'version.restore',
+        entityType: 'model_version',
+        entityId: versionId,
+        metadata: { modelId: id, newVersion: restored.version },
+      });
       return res.json({ ok: true, ...restored });
     } catch (err) {
       console.error('[models] restore error', err);
@@ -662,6 +716,14 @@ export class ModelController {
       }
 
       await pool.query('DELETE FROM models WHERE id = $1', [id]);
+      await recordAudit({
+        orgId: (model.org_id as string) ?? null,
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'model.delete',
+        entityType: 'model',
+        entityId: id,
+      });
       return res.json({ ok: true });
     } catch (err) {
       console.error('[models] remove error', err);

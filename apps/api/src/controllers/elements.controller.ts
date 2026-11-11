@@ -2,6 +2,7 @@ import { pool } from '../db.js';
 import type { Response } from 'express';
 import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, isWriterRole } from '../auth/access.js';
+import { recordAudit } from '../c4/audit.js';
 import { flags } from '../flags.js';
 import {
   canonicalModelHasData,
@@ -152,6 +153,15 @@ export class ElementController {
           order: row.order,
         });
       }
+      await recordAudit({
+        orgId: String(model.org_id),
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'element.create',
+        entityType: 'element',
+        entityId: element.rows[0].id,
+        metadata: { modelId, type, title: cleanTitle },
+      });
       return res.status(201).json(element.rows[0]);
     } catch (err) {
       console.error('[elements] create error', err);
@@ -307,6 +317,15 @@ export class ElementController {
           order: row.order,
         });
       }
+      await recordAudit({
+        orgId: String(model.org_id),
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'element.update',
+        entityType: 'element',
+        entityId: elementId,
+        metadata: { modelId, fields: Object.keys(req.body ?? {}) },
+      });
       return res.json(result.rows[0]);
     } catch (err) {
       console.error('[elements] update error', err);
@@ -335,6 +354,15 @@ export class ElementController {
       if (flags.canonicalModel === 'on') {
         await removeCanonicalElement(elementId);
       }
+      await recordAudit({
+        orgId: String(model.org_id),
+        actorId: req.user!.id,
+        actorEmail: req.user!.email,
+        action: 'element.delete',
+        entityType: 'element',
+        entityId: elementId,
+        metadata: { modelId },
+      });
       return res.json({ ok: true });
     } catch (err) {
       console.error('[elements] remove error', err);
