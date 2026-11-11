@@ -34,6 +34,7 @@ import {
   importModel,
 } from './services/api';
 import { Canvas } from './components/Canvas';
+import { inspectModel, type InspectionReport } from './services/api';
 import {
   listModelVersions,
   getModelVersion,
@@ -372,6 +373,9 @@ export default function App() {
   const [showVersions, setShowVersions] = useState(false);
   const [versions, setVersions] = useState<ModelVersion[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
+  const [showInspections, setShowInspections] = useState(false);
+  const [inspectionReport, setInspectionReport] = useState<InspectionReport | null>(null);
+  const [inspectionsLoading, setInspectionsLoading] = useState(false);
   const [domainRules, setDomainRules] = useState<Array<{ id: string; domain: string; role: string; enabled: boolean }>>([]);
   const [newDomain, setNewDomain] = useState('');
   const [newDomainRole, setNewDomainRole] = useState('viewer');
@@ -2241,6 +2245,24 @@ export default function App() {
                   >
                     Versões
                   </button>
+                  <button
+                    onClick={async () => {
+                      if (!selectedId) return;
+                      setShowInspections(true);
+                      setInspectionsLoading(true);
+                      try {
+                        const report = await inspectModel(selectedId);
+                        setInspectionReport(report);
+                      } catch (err) {
+                        setError(err instanceof Error ? err.message : String(err));
+                      } finally {
+                        setInspectionsLoading(false);
+                      }
+                    }}
+                    style={buttonStyle}
+                  >
+                    Inspeções
+                  </button>
                   <button onClick={onDelete} style={dangerButtonStyle}>Excluir</button>
                 </>
               )}
@@ -2305,6 +2327,40 @@ export default function App() {
             </ul>
             <div style={{ marginTop: 12, textAlign: 'right' }}>
               <button onClick={() => setShowVersions(false)} style={buttonStyle}>Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInspections && (
+        <div
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+          onClick={() => setShowInspections(false)}
+        >
+          <div
+            style={{ background: '#1a1d24', border: '1px solid #2a2f3a', borderRadius: 8, padding: 16, width: 'min(640px, 90vw)', maxHeight: '80vh', overflow: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ marginTop: 0 }}>Inspeções de arquitetura</h3>
+            {inspectionsLoading && <p>Carregando...</p>}
+            {!inspectionsLoading && inspectionReport && (
+              <>
+                <p>Total de problemas: {inspectionReport.totalIssues} (erros: {inspectionReport.bySeverity.error}, avisos: {inspectionReport.bySeverity.warning}, info: {inspectionReport.bySeverity.info})</p>
+                {inspectionReport.issues.length === 0 && <p>Nenhum problema encontrado.</p>}
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+                  {inspectionReport.issues.map((issue, index) => (
+                    <li key={index} style={{ borderBottom: '1px solid #2a2f3a', padding: '6px 0' }}>
+                      <span style={{ fontWeight: 600, color: issue.severity === 'error' ? '#f87171' : issue.severity === 'warning' ? '#fbbf24' : '#93c5fd' }}>
+                        [{issue.severity}] {issue.code}
+                      </span>
+                      <div style={{ fontSize: 13 }}>{issue.message}</div>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            <div style={{ marginTop: 12, textAlign: 'right' }}>
+              <button onClick={() => setShowInspections(false)} style={buttonStyle}>Fechar</button>
             </div>
           </div>
         </div>

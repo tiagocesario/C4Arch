@@ -365,6 +365,24 @@ export const restoreModelVersion = (id: string, versionId: string) =>
     { method: 'POST' }
   );
 
+export interface InspectionIssue {
+  code: string;
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  entityId?: string;
+  viewKey?: string;
+}
+
+export interface InspectionReport {
+  modelId: string;
+  totalIssues: number;
+  bySeverity: { error: number; warning: number; info: number };
+  issues: InspectionIssue[];
+}
+
+export const inspectModel = (id: string) =>
+  req<InspectionReport>('/api/models/' + id + '/inspections');
+
 // ---------------------------------------------------------------------------
 // Elementos e conexões
 // ---------------------------------------------------------------------------

@@ -35,5 +35,6 @@ router.put('/:id/das', verifyToken, ModelController.updateDas);
 router.get('/:id/versions', verifyToken, ModelController.versions);
 router.get('/:id/versions/:versionId', verifyToken, ModelController.version);
 router.post('/:id/versions/:versionId/restore', verifyToken, ModelController.restore);
+router.get('/:id/inspections', verifyToken, ModelController.inspect);
 
 export default router;

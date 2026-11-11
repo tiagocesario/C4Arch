@@ -10,6 +10,7 @@ import {
 import { regenerateModelDAS } from '../c4/das-service.js';
 import { saveDasOverrides } from '../c4/das-canonical.js';
 import { getVersion, listVersions, restoreVersion } from '../c4/versions.js';
+import { inspectModel } from '../c4/inspections.js';
 import { importCatalogAssets } from '../c4/catalog-import.js';
 import { parseDiagrams } from '../c4/diagrams.js';
 import { runShadowCheck } from '../c4/shadow.js';
@@ -633,7 +634,19 @@ export class ModelController {
     }
   }
 
-  static async remove(req: AuthenticatedRequest, res: Response) {
+  static async inspect(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+    if (!isUuid(id)) return res.status(404).json({ error: 'Modelo não encontrado' });
+    try {
+      const model = await getModelAccess(req.user!.id, id);
+      if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      const report = await inspectModel(id);
+      return res.json(report);
+    } catch (err) {
+      console.error('[models] inspect error', err);
+      return res.status(500).json({ error: 'Erro ao inspecionar modelo' });
+    }
+  }
     const { id } = req.params;
     if (!isUuid(id)) {
       return res.status(404).json({ error: 'Modelo não encontrado' });
