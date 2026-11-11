@@ -361,6 +361,10 @@ export interface DasSection {
   heading: string;
   content: string;
   hasChildren: boolean;
+  /** Índice da linha do cabeçalho no Markdown normalizado. */
+  startLine: number;
+  /** Índice (exclusivo) da primeira linha após a seção. */
+  endLine: number;
 }
 
 /**
@@ -384,16 +388,16 @@ export function parseDasSections(markdown: string): DasSection[] {
 
   return starts.map((start, position) => {
     const next = starts[position + 1];
-    const content = lines
-      .slice(start.index, next ? next.index : lines.length)
-      .join('\n')
-      .trim();
+    const endLine = next ? next.index : lines.length;
+    const content = lines.slice(start.index, endLine).join('\n').trim();
     return {
       key: start.key,
       level: start.level,
       heading: start.heading,
       content,
       hasChildren: Boolean(next && next.level > start.level),
+      startLine: start.index,
+      endLine,
     };
   });
 }
@@ -448,4 +452,67 @@ export function diffDasSections(generated: string, legacy: string): DasDiff {
   }
 
   return { overrides, changedKeys: overrides.map((override) => override.section_key) };
+}
+
+/**
+ * Aplica os overrides por seção ao DAS gerado pelo template.
+ *
+ * - `replace` troca a seção inteira (cabeçalho incluso);
+ * - `append` adiciona conteúdo ao final da seção;
+ * - `hide` remove a seção;
+ * - `document` substitui o documento inteiro.
+ *
+ * Seções com filhos não são substituídas: o override vale apenas para folhas,
+ * para não apagar subseções por acidente. Chaves desconhecidas são anexadas ao
+ * final, preservando o conteúdo em vez de descartá-lo.
+ */
+export function applyDasOverrides(
+  generated: string,
+  overrides: CanonicalDasOverride[]
+): string {
+  if (overrides.length === 0) return generated;
+
+  const documentOverride = overrides.find((override) => override.section_key === 'document');
+  if (documentOverride) return documentOverride.content ?? '';
+
+  const normalized = generated.replace(/\r\n/g, '\n');
+  const sections = parseDasSections(normalized);
+  const byKey = new Map(overrides.map((override) => [override.section_key, override]));
+  const lines = normalized.split('\n');
+  const replacements: Array<{ start: number; end: number; text: string }> = [];
+  const handled = new Set<string>();
+
+  for (const section of sections) {
+    const override = byKey.get(section.key);
+    if (!override) continue;
+    handled.add(section.key);
+    if (section.hasChildren) continue;
+
+    if (override.mode === 'hide') {
+      replacements.push({ start: section.startLine, end: section.endLine, text: '' });
+    } else if (override.mode === 'append') {
+      replacements.push({ start: section.endLine, end: section.endLine, text: override.content ?? '' });
+    } else {
+      replacements.push({
+        start: section.startLine,
+        end: section.endLine,
+        text: override.content ?? '',
+      });
+    }
+  }
+
+  let output = [...lines];
+  for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
+    const textLines = replacement.text ? replacement.text.split('\n') : [];
+    output.splice(replacement.start, replacement.end - replacement.start, ...textLines);
+  }
+
+  let text = output.join('\n');
+  for (const override of overrides) {
+    if (override.section_key === 'document' || handled.has(override.section_key)) continue;
+    if (override.mode === 'hide' || !override.content?.trim()) continue;
+    text = `${text.trimEnd()}\n\n${override.content.trim()}\n`;
+  }
+
+  return `${text.replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }

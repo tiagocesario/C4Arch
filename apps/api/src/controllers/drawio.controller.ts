@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../auth/middleware.js';
 import { signDrawioToken } from '../auth/tokens.js';
 import { getModelAccess, isWriterRole } from '../auth/access.js';
 import { pool } from '../db.js';
-import { regenerateModelDAS } from '../c4/das.js';
+import { regenerateModelDAS } from '../c4/das-service.js';
 import { parseDiagrams, resolveDiagramXml, withDiagramXml } from '../c4/diagrams.js';
 import { isC4ModelType } from '../c4/model-types.js';
 import {

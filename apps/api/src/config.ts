@@ -96,4 +96,9 @@ export const config = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET?.trim() ?? '',
   googleCallbackUrl: process.env.GOOGLE_CALLBACK_URL?.trim() ?? 'http://localhost:4000/api/auth/google/callback',
   frontendUrl: (process.env.FRONTEND_URL ?? process.env.PUBLIC_API_URL ?? 'http://localhost:3000').replace(/\/$/, ''),
+  /**
+   * Token de serviço usado pelo realtime/worker nas rotas internas de
+   * `model_state`. Vazio desabilita o endpoint (fail closed).
+   */
+  internalToken: process.env.API_TOKEN_REALTIME?.trim() ?? '',
 };

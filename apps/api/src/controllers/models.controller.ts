@@ -7,7 +7,9 @@ import {
   isC4ModelType,
   type C4ModelType,
 } from '../c4/model-types.js';
-import { regenerateModelDAS } from '../c4/das.js';
+import { regenerateModelDAS } from '../c4/das-service.js';
+import { saveDasOverrides } from '../c4/das-canonical.js';
+import { getVersion, listVersions, restoreVersion } from '../c4/versions.js';
 import { importCatalogAssets } from '../c4/catalog-import.js';
 import { parseDiagrams } from '../c4/diagrams.js';
 import { runShadowCheck } from '../c4/shadow.js';
@@ -553,11 +555,69 @@ export class ModelController {
       if (!isWriterRole(model.member_role)) {
         return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
       }
+      if (flags.dasOverrides !== 'off') {
+        // `shadow` também grava overrides: a diferença é que a geração normal
+        // continua usando o caminho legado até o cutover.
+        const saved = await saveDasOverrides(id, content, req.user!.id);
+        return res.json({ ok: true, ...saved });
+      }
       await pool.query('UPDATE models SET das_content = $1, updated_at = NOW() WHERE id = $2', [content, id]);
       return res.json({ ok: true });
     } catch (err) {
       console.error('[models] updateDas error', err);
       return res.status(500).json({ error: 'Erro ao salvar DAS' });
+    }
+  }
+
+  static async versions(req: AuthenticatedRequest, res: Response) {
+    const { id } = req.params;
+    if (!isUuid(id)) return res.status(404).json({ error: 'Modelo não encontrado' });
+    try {
+      const model = await getModelAccess(req.user!.id, id);
+      if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      const limit = Number(req.query.limit ?? 100);
+      const versions = await listVersions(id, Number.isFinite(limit) ? limit : 100);
+      return res.json({ versions });
+    } catch (err) {
+      console.error('[models] versions error', err);
+      return res.status(500).json({ error: 'Erro ao listar versões' });
+    }
+  }
+
+  static async version(req: AuthenticatedRequest, res: Response) {
+    const { id, versionId } = req.params;
+    if (!isUuid(id) || !isUuid(versionId)) {
+      return res.status(404).json({ error: 'Versão não encontrada' });
+    }
+    try {
+      const model = await getModelAccess(req.user!.id, id);
+      if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      const version = await getVersion(id, versionId);
+      if (!version) return res.status(404).json({ error: 'Versão não encontrada' });
+      return res.json(version);
+    } catch (err) {
+      console.error('[models] version error', err);
+      return res.status(500).json({ error: 'Erro ao carregar versão' });
+    }
+  }
+
+  static async restore(req: AuthenticatedRequest, res: Response) {
+    const { id, versionId } = req.params;
+    if (!isUuid(id) || !isUuid(versionId)) {
+      return res.status(404).json({ error: 'Versão não encontrada' });
+    }
+    try {
+      const model = await getModelAccess(req.user!.id, id);
+      if (!model) return res.status(404).json({ error: 'Modelo não encontrado' });
+      if (!isWriterRole(model.member_role)) {
+        return res.status(403).json({ error: 'Sem permissão para restaurar este modelo' });
+      }
+      const restored = await restoreVersion(id, versionId, req.user!.id);
+      if (!restored) return res.status(404).json({ error: 'Versão não encontrada' });
+      return res.json({ ok: true, ...restored });
+    } catch (err) {
+      console.error('[models] restore error', err);
+      return res.status(500).json({ error: 'Erro ao restaurar versão' });
     }
   }
 

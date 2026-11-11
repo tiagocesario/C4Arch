@@ -39,7 +39,7 @@ jobs:
         run: npm test
 
   schema-migration:
-    name: Schema e backfill (M1/M2)
+    name: Schema, backfill e escrita canônica (M1/M2/M3)
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -92,3 +92,8 @@ jobs:
         run: npm run test:m2 --workspace=@c4arch/api
         env:
           RUN_M2_TESTS: "true"
+
+      - name: Testar estado durável, projetor, DAS e restore (M3)
+        run: npm run test:m3 --workspace=@c4arch/api
+        env:
+          RUN_M3_TESTS: "true"

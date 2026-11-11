@@ -119,6 +119,11 @@ export const schemaQueries = [
       created_by UUID REFERENCES users(id) ON DELETE SET NULL
     )`,
 
+    `CREATE TABLE IF NOT EXISTS model_version_counters (
+      model_id UUID PRIMARY KEY REFERENCES models(id) ON DELETE CASCADE,
+      version  INTEGER NOT NULL DEFAULT 0
+    )`,
+
     `CREATE TABLE IF NOT EXISTS integrations (
       id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       org_id     UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,

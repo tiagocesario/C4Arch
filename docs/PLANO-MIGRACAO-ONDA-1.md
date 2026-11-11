@@ -574,6 +574,11 @@ documentadas.
 
 ### M3 — Escrita canônica, DAS e versões (8–12 dias)
 
+> **Concluído em 11/11/2026.** `model_state` durável, projetor em sombra/on,
+> DAS canônico com overrides, versões por hash e restore; evidências em
+> `docs/M3-CHECKLIST.md` e rollback em `scripts/rollback-m3.sql`. Flags seguem
+> em `off`; cutover de leitura continua no M5.
+
 - `PUT /api/internal/models/:id/state` e gravação de `model_state` pelo
   realtime (debounce 2s, flush 15s).
 - Projetor idempotente em modo sombra (`PROJECTOR_SHADOW=on`), comparando

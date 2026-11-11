@@ -16,6 +16,8 @@ let projectionErrorsTotal = 0;
 let shadowComparisonsTotal = 0;
 let shadowDivergentModelsTotal = 0;
 const shadowDivergences = new Map<string, number>();
+const projectionRuns = new Map<string, number>();
+const projectionDivergences = new Map<string, number>();
 const startedAt = Date.now();
 
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
@@ -71,6 +73,15 @@ export function recordShadowComparison(divergent: boolean, kinds: string[] = [])
   for (const kind of kinds) {
     shadowDivergences.set(kind, (shadowDivergences.get(kind) ?? 0) + 1);
   }
+}
+
+export function recordProjectionRun(mode: string, outcome: string): void {
+  const key = `${mode}:${outcome}`;
+  projectionRuns.set(key, (projectionRuns.get(key) ?? 0) + 1);
+}
+
+export function recordProjectionDivergence(kind: string): void {
+  projectionDivergences.set(kind, (projectionDivergences.get(kind) ?? 0) + 1);
 }
 
 export function renderMetrics(): string {

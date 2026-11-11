@@ -649,15 +649,27 @@ export function generateDAS(
   folderName?: string | null,
   drawioXml?: string | null,
   diagrams: ModelDiagram[] = [],
-  assets?: Map<string, DasAsset>
+  assets?: Map<string, DasAsset>,
+  options: { aggregateXml?: boolean } = {}
 ): string {
   const now = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
   const scope = model.c4_scope ?? '—';
   const diagramEntries = collectDiagrams(model, drawioXml, diagrams, assets);
   const primaryType = model.c4_type ?? 'container';
   const diagramTypes = diagramEntries.map((entry) => typeLabel(entry.c4Type)).join(', ');
-  const aggregatedElements = aggregateElements(diagramEntries, elements);
-  const aggregatedEdges = aggregateEdges(diagramEntries, edges, elements);
+  // No DAS canônico os elementos/relações vêm das tabelas canônicas; o XML
+  // permanece apenas nas seções visuais de diagramas. Assim não duplicamos
+  // shapes desenhados no draw.io com o modelo de domínio.
+  const aggregateXml = options.aggregateXml !== false;
+  const aggregatedElements = aggregateElements(
+    aggregateXml ? diagramEntries : [],
+    elements
+  );
+  const aggregatedEdges = aggregateEdges(
+    aggregateXml ? diagramEntries : [],
+    edges,
+    elements
+  );
 
   const inventoryRows = diagramEntries
     .map((entry) => {

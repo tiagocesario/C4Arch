@@ -2,11 +2,12 @@ import { app } from './server.js';
 import { createServer } from 'http';
 import { connectDb, seedDemo, pool } from './db.js';
 import { runMigrations } from './db/migrate.js';
-import { regenerateAllDAS } from './c4/das.js';
+import { regenerateAllDAS } from './c4/das-service.js';
 import { backfillCatalogFromModels } from './c4/catalog-import.js';
 import { config } from './config.js';
-import { describeFlags } from './flags.js';
+import { describeFlags, flags } from './flags.js';
 import { setModelsTotal } from './observability/metrics.js';
+import { formatProjectionSummary, projectAllModels } from './c4/projector.js';
 
 const start = async () => {
   await connectDb();
@@ -45,6 +46,25 @@ const start = async () => {
     }
   } catch (err) {
     console.error('[api] Falha ao preencher o catálogo a partir dos modelos', err);
+  }
+
+  // M3: com PROJECTOR_SHADOW ativo, compara (ou aplica, em `on`) o estado
+  // durável do Yjs contra as tabelas canônicas. Falhas não impedem o startup.
+  if (flags.projectorShadow !== 'off') {
+    try {
+      const mode = flags.projectorShadow === 'on' ? 'on' : 'shadow';
+      const projection = await projectAllModels({ mode });
+      console.log(
+        `[api] projetor ${mode}: ${projection.total} modelo(s), ` +
+          `${projection.applied} aplicado(s), ${projection.divergent} divergente(s), ` +
+          `${projection.failed} falha(s)`
+      );
+      for (const report of projection.reports.filter((item) => !item.ok).slice(0, 10)) {
+        console.warn(formatProjectionSummary(report));
+      }
+    } catch (err) {
+      console.error('[api] Falha ao executar o projetor no startup', err);
+    }
   }
 
   const server = createServer(app);

@@ -74,6 +74,7 @@ services:
       - VERSION_HASH=${VERSION_HASH:-off}
       - REALTIME_PG_STATE=${REALTIME_PG_STATE:-off}
       - PROJECTOR_SHADOW=${PROJECTOR_SHADOW:-off}
+      - API_TOKEN_REALTIME=${API_TOKEN_REALTIME:-}
       - METRICS_ENABLED=${METRICS_ENABLED:-true}
       - STORAGE_DRIVER=${STORAGE_DRIVER:-drive}
       - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
@@ -162,10 +163,14 @@ services:
       - STORAGE_DIR=/app/storage
       - VERSION_HASH=${VERSION_HASH:-off}
       - PROJECTOR_SHADOW=${PROJECTOR_SHADOW:-off}
+      - API_URL=http://api:4000
+      - API_TOKEN_REALTIME=${API_TOKEN_REALTIME:-}
     volumes:
       - c4arch_storage:/app/storage
     depends_on:
       db:
+        condition: service_healthy
+      api:
         condition: service_healthy
       storage-init:
         condition: service_completed_successfully

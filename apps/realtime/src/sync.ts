@@ -4,6 +4,7 @@ import type { Server } from 'http';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+import { flags } from './flags.js';
 
 export type OperationType =
   | 'createElement'
@@ -25,6 +26,9 @@ interface ModelState {
   doc: Y.Doc;
   clients: Set<WebSocket>;
   version: number;
+  /** Há alterações ainda não gravadas em `model_state`. */
+  dirty: boolean;
+  persistTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface CachedModel {
@@ -41,6 +45,11 @@ const allowAnonymous = process.env.WS_ALLOW_ANONYMOUS === 'true';
 const MAX_MESSAGES_PER_WINDOW = 300;
 const MESSAGE_WINDOW_MS = 10_000;
 const MAX_PAYLOAD_BYTES = 1024 * 1024;
+
+// Persistência do estado durável: debounce curto para não gravar a cada patch,
+// flush periódico para não perder alterações de sessões longas.
+const PERSIST_DEBOUNCE_MS = 2_000;
+const PERSIST_FLUSH_MS = 15_000;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -114,6 +123,115 @@ const serializeModel = (doc: Y.Doc, modelId: string): Record<string, unknown> =>
   }));
   return { modelId, elements, edges: serializedEdges };
 };
+
+function createEntry(doc = new Y.Doc()): ModelState {
+  return {
+    doc,
+    clients: new Set<WebSocket>(),
+    version: 0,
+    dirty: false,
+    persistTimer: null,
+  };
+}
+
+async function apiRequest(
+  path: string,
+  init: RequestInit,
+  timeoutMs = 8000
+): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(apiUrl.replace(/\/$/, '') + path, {
+      ...init,
+      headers: {
+        ...(init.headers ?? {}),
+        'X-Internal-Token': apiToken,
+      },
+      signal: controller.signal,
+    });
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Lê o estado Yjs durável; `null` quando a rota está desligada ou vazia. */
+async function getStateFromApi(modelId: string): Promise<Uint8Array | null> {
+  if (!apiToken || !isUuid(modelId)) return null;
+  const response = await apiRequest(
+    '/api/internal/models/' + encodeURIComponent(modelId) + '/state',
+    { method: 'GET' }
+  );
+  if (!response?.ok) return null;
+  try {
+    const body = (await response.json()) as { state?: unknown };
+    if (typeof body.state !== 'string') return null;
+    const bytes = Buffer.from(body.state, 'base64');
+    return bytes.length > 0 ? new Uint8Array(bytes) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function putStateToApi(modelId: string, update: Uint8Array): Promise<boolean> {
+  if (!apiToken || !isUuid(modelId)) return false;
+  const response = await apiRequest(
+    '/api/internal/models/' + encodeURIComponent(modelId) + '/state',
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state: Buffer.from(update).toString('base64') }),
+    }
+  );
+  return Boolean(response?.ok);
+}
+
+async function flushState(modelId: string): Promise<void> {
+  const entry = models.get(modelId);
+  if (!entry || !entry.dirty) return;
+  if (flags.realtimePgState === 'off') {
+    entry.dirty = false;
+    return;
+  }
+
+  entry.dirty = false;
+  const ok = await putStateToApi(modelId, Y.encodeStateAsUpdate(entry.doc));
+  if (!ok) {
+    entry.dirty = true;
+    console.warn(`[realtime] falha ao persistir model_state ${modelId}`);
+  }
+}
+
+function schedulePersist(modelId: string): void {
+  if (flags.realtimePgState === 'off') return;
+  const entry = models.get(modelId);
+  if (!entry) return;
+
+  entry.dirty = true;
+  if (entry.persistTimer) return;
+  entry.persistTimer = setTimeout(() => {
+    entry.persistTimer = null;
+    void flushState(modelId);
+  }, PERSIST_DEBOUNCE_MS);
+  entry.persistTimer.unref?.();
+}
+
+/** Flush periódico de todos os modelos com alterações pendentes. */
+export async function flushAllStates(): Promise<void> {
+  await Promise.all([...models.keys()].map((modelId) => flushState(modelId)));
+}
+
+export function startPeriodicFlush(): ReturnType<typeof setInterval> {
+  const timer = setInterval(() => {
+    flushAllStates().catch((err) => {
+      console.error('[realtime] falha no flush periódico', err);
+    });
+  }, PERSIST_FLUSH_MS);
+  timer.unref?.();
+  return timer;
+}
 
 export function attachWebsocket(httpServer: Server) {
   const wss = new WebSocketServer({
@@ -244,7 +362,10 @@ export function attachWebsocket(httpServer: Server) {
             if (previous) {
               previous.clients.delete(ws);
               if (previous.clients.size === 0) {
-                await saveSnapshot(modelId, storageDir);
+                await flushState(modelId);
+                if (flags.realtimePgState !== 'on') {
+                  await saveSnapshot(modelId, storageDir);
+                }
                 models.delete(modelId);
               }
             }
@@ -253,7 +374,7 @@ export function attachWebsocket(httpServer: Server) {
           modelId = requestedModelId;
           let entry = models.get(modelId);
           if (!entry) {
-            entry = { doc: new Y.Doc(), clients: new Set<WebSocket>(), version: 0 };
+            entry = createEntry();
             models.set(modelId, entry);
           }
           entry.clients.add(ws);
@@ -261,7 +382,14 @@ export function attachWebsocket(httpServer: Server) {
 
           const docEmpty = doc.getMap('elements').size === 0 && doc.getArray('edges').length === 0;
           const hydrationToken = sessionToken ?? apiToken;
-          if (docEmpty && hydrationToken) {
+          if (docEmpty && flags.realtimePgState !== 'off') {
+            const durable = await getStateFromApi(modelId);
+            if (durable) {
+              Y.applyUpdate(doc, durable);
+            }
+          }
+
+          if (docEmpty && doc.getMap('elements').size === 0 && hydrationToken) {
             const cached = await getModelFromApi(modelId, hydrationToken);
             if (cached) {
               for (const element of cached.elements) {
@@ -274,6 +402,9 @@ export function attachWebsocket(httpServer: Server) {
                 if (!normalized.fromId || !normalized.toId) continue;
                 doc.getArray('edges').push([normalized] as Array<unknown>);
               }
+              // Estado novo criado a partir do legado: persiste no primeiro
+              // flush para que o projetor tenha uma base durável.
+              if (flags.realtimePgState !== 'off') schedulePersist(modelId);
             }
           }
 
@@ -304,10 +435,13 @@ export function attachWebsocket(httpServer: Server) {
           }
           entry.version += 1;
           broadcast(modelId, entry);
-          try {
-            await saveSnapshot(modelId, storageDir);
-          } catch (err) {
-            console.error('[realtime] falha ao salvar snapshot:', err);
+          schedulePersist(modelId);
+          if (flags.realtimePgState !== 'on') {
+            try {
+              await saveSnapshot(modelId, storageDir);
+            } catch (err) {
+              console.error('[realtime] falha ao salvar snapshot:', err);
+            }
           }
           break;
         }
@@ -327,7 +461,10 @@ export function attachWebsocket(httpServer: Server) {
       if (!entry) return;
       entry.clients.delete(ws);
       if (entry.clients.size === 0) {
-        await saveSnapshot(modelId, storageDir);
+        await flushState(modelId);
+        if (flags.realtimePgState !== 'on') {
+          await saveSnapshot(modelId, storageDir);
+        }
         models.delete(modelId);
       }
     });
@@ -587,6 +724,10 @@ export function getModels(): ModelState[] {
 }
 
 export async function loadStorageModels(dir: string) {
+  // Em `on`, o estado durável é a única fonte; carregar arquivos antigos
+  // faria o realtime servir um snapshot desatualizado após o restart.
+  if (flags.realtimePgState === 'on') return;
+
   let entries: string[];
   try {
     entries = await fs.readdir(dir);
@@ -628,13 +769,16 @@ export async function loadStorageModels(dir: string) {
       doc.getArray('edges').push([edge] as Array<unknown>);
     }
 
-    models.set(modelId, { doc, clients: new Set<WebSocket>(), version: 0 });
+    models.set(modelId, createEntry(doc));
   }
 }
 
 export async function closeAll() {
   for (const [modelId, entry] of models) {
-    await saveSnapshot(modelId, storageDir);
+    await flushState(modelId);
+    if (flags.realtimePgState !== 'on') {
+      await saveSnapshot(modelId, storageDir);
+    }
     for (const client of entry.clients) {
       client.close();
     }

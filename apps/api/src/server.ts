@@ -53,6 +53,9 @@ app.use(
 // parser global de 100 kB não tenta processá-lo novamente.
 const LARGE_XML_JSON_LIMIT = '8mb';
 const largeXmlJson = express.json({ limit: LARGE_XML_JSON_LIMIT });
+// O estado Yjs é binário e trafega em base64; um documento grande pode passar
+// de 100kb com folga. A rota é interna e autenticada por token de serviço.
+const internalStateJson = express.json({ limit: '16mb' });
 
 app.use((req, res, next) => {
   const isLargeXmlRoute =
@@ -61,6 +64,11 @@ app.use((req, res, next) => {
       /^\/api\/models\/[^/]+\/drawio\/import\/?$/.test(req.path));
   if (isLargeXmlRoute) {
     return largeXmlJson(req, res, next);
+  }
+  const isInternalStateRoute =
+    req.method === 'PUT' && /^\/api\/internal\/models\/[^/]+\/state\/?$/.test(req.path);
+  if (isInternalStateRoute) {
+    return internalStateJson(req, res, next);
   }
   return next();
 });
@@ -131,6 +139,7 @@ import appsRouter from './routes/apps.routes.js';
 import servicesRouter from './routes/services.routes.js';
 import drawioRouter from './routes/drawio.routes.js';
 import groupsRouter from './routes/groups.routes.js';
+import internalRouter from './routes/internal.routes.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/orgs', orgsRouter);
@@ -142,6 +151,11 @@ app.use('/api/apps', appsRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/models', drawioRouter);
 app.use('/api/groups', groupsRouter);
+
+// Rotas internas só existem quando há token de serviço configurado.
+if (config.internalToken) {
+  app.use('/api/internal', internalRouter);
+}
 
 app.get('/', (_req, res) => {
   res.json({ name: 'C4Arch API', status: 'ok', version: '0.1.0' });

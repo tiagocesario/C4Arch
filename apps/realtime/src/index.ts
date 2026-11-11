@@ -1,5 +1,5 @@
 import http from 'http';
-import { attachWebsocket, setStorageDir, loadStorageModels, closeAll, setApiBase } from './sync.js';
+import { attachWebsocket, setStorageDir, loadStorageModels, closeAll, setApiBase, startPeriodicFlush } from './sync.js';
 import { describeFlags } from './flags.js';
 
 const port = Number(process.env.WS_PORT ?? 4001);
@@ -25,6 +25,9 @@ const start = async () => {
 
   const server = http.createServer();
   attachWebsocket(server);
+  // Flush periódico do estado durável (model_state), além do debounce por
+  // alteração. Sem isso, uma sessão longa sem pausa poderia acumular patches.
+  startPeriodicFlush();
 
   server.listen(port, () => {
     console.log(`[realtime] WebSocket Yjs rodando na porta ${port}`);

@@ -31,4 +31,9 @@ router.get('/:id/das', verifyToken, ModelController.das);
 // Atualizar DAS do modelo
 router.put('/:id/das', verifyToken, ModelController.updateDas);
 
+// Histórico de versões e restauração
+router.get('/:id/versions', verifyToken, ModelController.versions);
+router.get('/:id/versions/:versionId', verifyToken, ModelController.version);
+router.post('/:id/versions/:versionId/restore', verifyToken, ModelController.restore);
+
 export default router;

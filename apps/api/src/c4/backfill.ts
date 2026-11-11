@@ -51,6 +51,12 @@ export interface BuildSnapshotInput {
   versions?: LegacyVersionInput[];
   existingVersionHashes?: string[];
   dasGenerated?: string | null;
+  /**
+   * Quando `false`, o layout não é lido do XML draw.io; usa apenas as posições
+   * do estado colaborativo. O projetor do M3 usa essa opção para que o Yjs seja
+   * a fonte do layout.
+   */
+  layoutFromXml?: boolean;
 }
 
 export interface BackfillOptions {
@@ -328,16 +334,19 @@ export function buildCanonicalSnapshot(input: BuildSnapshotInput): CanonicalSnap
   const views = buildViews(model, elements, input.parentModel, warnings);
   const primaryViewKey = views[0]?.key ?? (model.c4_type || 'container');
 
-  // Layout a partir do XML.
+  // Layout a partir do XML (ou apenas do estado, no projetor).
   const layout: CanonicalLayoutRow[] = [];
   const byName = nameIndex(elements);
   const positionedInPrimary = new Set<string>();
-  const diagrams = [
-    { c4Type: primaryViewKey, xml: model.drawio_xml ?? null },
-    ...parseDiagrams(model.diagrams)
-      .filter((diagram) => diagram.c4Type !== primaryViewKey)
-      .map((diagram) => ({ c4Type: diagram.c4Type, xml: diagram.drawioXml ?? null })),
-  ];
+  const diagrams =
+    input.layoutFromXml === false
+      ? []
+      : [
+          { c4Type: primaryViewKey, xml: model.drawio_xml ?? null },
+          ...parseDiagrams(model.diagrams)
+            .filter((diagram) => diagram.c4Type !== primaryViewKey)
+            .map((diagram) => ({ c4Type: diagram.c4Type, xml: diagram.drawioXml ?? null })),
+        ];
 
   for (const diagram of diagrams) {
     for (const shape of extractDiagramLayout(diagram.xml)) {
