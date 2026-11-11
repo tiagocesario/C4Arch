@@ -522,6 +522,7 @@ export async function saveSnapshot(modelId: string, dir: string): Promise<boolea
 
   const snapshot = serializeModel(entry.doc, modelId);
   const payload = JSON.stringify(snapshot, null, 2);
+  const bytes = Buffer.byteLength(payload, 'utf8');
 
   try {
     await fs.mkdir(dir, { recursive: true });
@@ -529,6 +530,9 @@ export async function saveSnapshot(modelId: string, dir: string): Promise<boolea
     const temp = `${file}.tmp`;
     await fs.writeFile(temp, payload, 'utf8');
     await fs.rename(temp, file);
+    if (process.env.TELEMETRY_VERBOSE === 'true') {
+      console.log(`[realtime] snapshot ${modelId}: ${bytes} bytes`);
+    }
     return true;
   } catch (err) {
     console.error('[realtime] erro ao salvar snapshot:', err);

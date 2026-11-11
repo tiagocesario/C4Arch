@@ -188,6 +188,120 @@ export async function runMigrations() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE (org_id, domain)
     )`,
+
+    // ── Onda 1 / M1: modelo canônico, views, estado e overrides ────────────
+    `CREATE TABLE IF NOT EXISTS model_elements (
+      id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      model_id          UUID NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+      parent_element_id UUID REFERENCES model_elements(id) ON DELETE CASCADE,
+      identifier        TEXT NOT NULL,
+      kind              TEXT NOT NULL CHECK (kind IN (
+                          'person','software_system','container','component',
+                          'deployment_node','infrastructure_node',
+                          'container_instance','software_system_instance')),
+      name              TEXT NOT NULL,
+      description       TEXT,
+      technology        TEXT,
+      url               TEXT,
+      tags              TEXT[] NOT NULL DEFAULT '{}',
+      properties        JSONB NOT NULL DEFAULT '{}'::jsonb,
+      app_id            UUID REFERENCES apps(id) ON DELETE SET NULL,
+      service_id        UUID REFERENCES services(id) ON DELETE SET NULL,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (model_id, identifier)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS model_relationships (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      model_id    UUID NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+      source_id   UUID NOT NULL REFERENCES model_elements(id) ON DELETE CASCADE,
+      target_id   UUID NOT NULL REFERENCES model_elements(id) ON DELETE CASCADE,
+      description TEXT,
+      technology  TEXT,
+      tags        TEXT[] NOT NULL DEFAULT '{}',
+      properties  JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CHECK (source_id <> target_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS model_views (
+      id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      model_id         UUID NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+      key              TEXT NOT NULL,
+      type             TEXT NOT NULL CHECK (type IN (
+                         'system_context','container','component','dynamic',
+                         'deployment','filtered','image')),
+      scope_element_id UUID REFERENCES model_elements(id) ON DELETE SET NULL,
+      title            TEXT,
+      description      TEXT,
+      include          JSONB NOT NULL DEFAULT '[]'::jsonb,
+      exclude          JSONB NOT NULL DEFAULT '[]'::jsonb,
+      auto_layout      BOOLEAN NOT NULL DEFAULT FALSE,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (model_id, key)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS model_view_layout (
+      id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      view_id    UUID NOT NULL REFERENCES model_views(id) ON DELETE CASCADE,
+      element_id UUID REFERENCES model_elements(id) ON DELETE CASCADE,
+      object_key TEXT,
+      x          DOUBLE PRECISION,
+      y          DOUBLE PRECISION,
+      width      DOUBLE PRECISION,
+      height     DOUBLE PRECISION,
+      style      JSONB NOT NULL DEFAULT '{}'::jsonb
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS model_state (
+      model_id     UUID PRIMARY KEY REFERENCES models(id) ON DELETE CASCADE,
+      state        BYTEA NOT NULL,
+      state_vector BYTEA,
+      content_hash TEXT NOT NULL,
+      revision     BIGINT NOT NULL DEFAULT 0,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_by   UUID REFERENCES users(id) ON DELETE SET NULL
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS model_das_overrides (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      model_id    UUID NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+      section_key TEXT NOT NULL,
+      content     TEXT,
+      mode        TEXT NOT NULL DEFAULT 'replace'
+                  CHECK (mode IN ('replace','append','hide')),
+      updated_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (model_id, section_key)
+    )`,
+
+    `CREATE INDEX IF NOT EXISTS idx_model_elements_model
+       ON model_elements(model_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_model_elements_parent
+       ON model_elements(parent_element_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_model_elements_kind
+       ON model_elements(model_id, kind)`,
+    `CREATE INDEX IF NOT EXISTS idx_model_relationships_model
+       ON model_relationships(model_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_model_relationships_source
+       ON model_relationships(source_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_model_relationships_target
+       ON model_relationships(target_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_model_views_model
+       ON model_views(model_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_model_views_scope
+       ON model_views(scope_element_id)`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_model_view_layout_element
+       ON model_view_layout(view_id, element_id)
+       WHERE element_id IS NOT NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_model_view_layout_object
+       ON model_view_layout(view_id, object_key)
+       WHERE object_key IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_model_das_overrides_model
+       ON model_das_overrides(model_id)`,
   ];
 
   for (const q of queries) {
@@ -210,6 +324,21 @@ export async function runMigrations() {
     `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'folders_org_name_key') THEN ALTER TABLE folders ADD CONSTRAINT folders_org_name_key UNIQUE (org_id, name); END IF; END $$`,
     `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'apps_org_name_key') THEN ALTER TABLE apps ADD CONSTRAINT apps_org_name_key UNIQUE (org_id, name); END IF; END $$`,
     `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'services_org_name_key') AND NOT EXISTS (SELECT 1 FROM services GROUP BY org_id, name HAVING count(*) > 1) THEN ALTER TABLE services ADD CONSTRAINT services_org_name_key UNIQUE (org_id, name); END IF; END $$`,
+
+    // ── Onda 1 / M1: metadados de DAS e versionamento por conteúdo ─────────
+    `ALTER TABLE models ADD COLUMN IF NOT EXISTS das_generated_at TIMESTAMPTZ`,
+    `ALTER TABLE models ADD COLUMN IF NOT EXISTS das_source_hash TEXT`,
+    `ALTER TABLE models ADD COLUMN IF NOT EXISTS das_override_count INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE model_versions ADD COLUMN IF NOT EXISTS content_hash TEXT`,
+    `ALTER TABLE model_versions ADD COLUMN IF NOT EXISTS author_id UUID REFERENCES users(id) ON DELETE SET NULL`,
+    `ALTER TABLE model_versions ADD COLUMN IF NOT EXISTS label TEXT`,
+    `ALTER TABLE model_versions ADD COLUMN IF NOT EXISTS description TEXT`,
+    `ALTER TABLE model_versions ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'auto' CHECK (kind IN ('auto','manual','restore','import'))`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_model_versions_hash
+       ON model_versions(model_id, content_hash)
+       WHERE content_hash IS NOT NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_model_versions_model_created
+       ON model_versions(model_id, created_at DESC)`,
   ];
 
   for (const q of alters) {

@@ -1,10 +1,12 @@
 import { app } from './server.js';
 import { createServer } from 'http';
-import { connectDb, seedDemo } from './db.js';
+import { connectDb, seedDemo, pool } from './db.js';
 import { runMigrations } from './db/migrate.js';
 import { regenerateAllDAS } from './c4/das.js';
 import { backfillCatalogFromModels } from './c4/catalog-import.js';
 import { config } from './config.js';
+import { describeFlags } from './flags.js';
+import { setModelsTotal } from './observability/metrics.js';
 
 const start = async () => {
   await connectDb();
@@ -12,6 +14,13 @@ const start = async () => {
 
   if (config.seedDemo) {
     await seedDemo();
+  }
+
+  try {
+    const result = await pool.query('SELECT COUNT(*)::int AS count FROM models');
+    setModelsTotal(result.rows[0]?.count ?? 0);
+  } catch (err) {
+    console.error('[api] Falha ao contar modelos para telemetria', err);
   }
 
   // Aplica o DAS enriquecido a todos os modelos existentes (novos e antigos).
@@ -43,6 +52,7 @@ const start = async () => {
 
   server.listen(port, () => {
     console.log(`[api] C4Arch API rodando na porta ${port}`);
+    console.log('[api] flags da Onda 1:', JSON.stringify(describeFlags()));
     if (config.seedDemo) {
       console.warn('[api] Seed de demonstração habilitado (SEED_DEMO=true). Não use em produção.');
     }

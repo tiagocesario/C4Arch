@@ -2,6 +2,7 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { describeFlags } from './flags.js';
 
 dotenv.config();
 
@@ -90,9 +91,12 @@ async function syncSnapshots() {
   for (const file of entries) {
     if (!file.endsWith('.json')) continue;
     const p = join(storageDir, file);
+    const startedAt = Date.now();
+    let raw: string;
     let data: { modelId?: string };
     try {
-      data = JSON.parse(await fs.readFile(p, 'utf8'));
+      raw = await fs.readFile(p, 'utf8');
+      data = JSON.parse(raw);
     } catch {
       continue;
     }
@@ -121,7 +125,10 @@ async function syncSnapshots() {
         [data.modelId, v, JSON.stringify(data)]
       );
       await client.query('COMMIT');
-      console.log(`[worker] sincronizado modelo ${data.modelId} (v${v})`);
+      console.log(
+        `[worker] sincronizado modelo ${data.modelId} (v${v}) ` +
+          `snapshot=${Buffer.byteLength(raw, 'utf8')}B duração=${Date.now() - startedAt}ms`
+      );
     } catch (err) {
       try {
         await client.query('ROLLBACK');
@@ -136,6 +143,7 @@ async function syncSnapshots() {
 }
 
 (async () => {
+  console.log('[worker] flags da Onda 1:', JSON.stringify(describeFlags()));
   await runMigrations();
   await syncSnapshots();
   setInterval(() => {

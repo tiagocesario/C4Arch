@@ -49,6 +49,13 @@ services:
       - SEED_DEMO=${SEED_DEMO:-false}
       - DEMO_ADMIN_PASSWORD=${DEMO_ADMIN_PASSWORD}
       - TRUST_PROXY=${TRUST_PROXY:-true}
+      - CANONICAL_MODEL=${CANONICAL_MODEL:-off}
+      - CANONICAL_VIEWS=${CANONICAL_VIEWS:-off}
+      - DAS_OVERRIDES=${DAS_OVERRIDES:-off}
+      - VERSION_HASH=${VERSION_HASH:-off}
+      - REALTIME_PG_STATE=${REALTIME_PG_STATE:-off}
+      - PROJECTOR_SHADOW=${PROJECTOR_SHADOW:-off}
+      - METRICS_ENABLED=${METRICS_ENABLED:-false}
     ports: []
 
   web:
@@ -63,6 +70,9 @@ services:
       args:
         VITE_API_URL: ${PUBLIC_API_URL:?PUBLIC_API_URL é obrigatório em produção}
         VITE_WS_URL: ${PUBLIC_WS_URL:?PUBLIC_WS_URL é obrigatório em produção}
+        VITE_CANONICAL_VIEWS: ${VITE_CANONICAL_VIEWS:-off}
+        VITE_DAS_OVERRIDES: ${VITE_DAS_OVERRIDES:-off}
+        VITE_VERSION_HASH: ${VITE_VERSION_HASH:-off}
     environment:
       - NODE_ENV=production
     # Mapeia a porta de provedor (80/443). Em produção, use um reverse proxy
@@ -81,6 +91,8 @@ services:
       - API_URL=http://api:4000
       - API_TOKEN=${API_TOKEN_REALTIME:-}
       - WS_ALLOW_ANONYMOUS=false
+      - REALTIME_PG_STATE=${REALTIME_PG_STATE:-off}
+      - TELEMETRY_VERBOSE=${TELEMETRY_VERBOSE:-false}
     ports: []
 
   worker:
@@ -100,5 +112,7 @@ services:
       - GLAB_PROJECT_ID=${GLAB_PROJECT_ID}
       - GLAB_TOKEN=${GLAB_TOKEN}
       - STORAGE_DIR=/app/storage
+      - VERSION_HASH=${VERSION_HASH:-off}
+      - PROJECTOR_SHADOW=${PROJECTOR_SHADOW:-off}
 
 # Volumes são herdados do docker-compose.yaml.

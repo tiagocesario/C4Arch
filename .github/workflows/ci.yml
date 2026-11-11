@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-and-test:
+    name: Typecheck e testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+      # config.ts valida o segredo no import; os testes não usam banco real.
+      JWT_SECRET: test-only-secret-with-at-least-32-characters-123456
+      DB_PASSWORD: test-only-password
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck (api, web, realtime, worker)
+        run: npm run typecheck
+
+      - name: Testes (api e realtime)
+        run: npm test
+
+  schema-migration:
+    name: Schema canônico (M1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: c4arch
+          POSTGRES_PASSWORD: c4arch
+          POSTGRES_DB: c4arch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U c4arch -d c4arch"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      NODE_ENV: test
+      JWT_SECRET: test-only-secret-with-at-least-32-characters-123456
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: c4arch
+      DB_USER: c4arch
+      DB_PASSWORD: c4arch
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci --no-audit --no-fund
+
+      - name: Build da API
+        run: npm run build --workspace=@c4arch/api
+
+      - name: Aplicar migrações (1ª vez)
+        run: node apps/api/dist/db/migrate.js
+
+      - name: Aplicar migrações (2ª vez, idempotência)
+        run: node apps/api/dist/db/migrate.js
+
+      - name: Instalar cliente PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Verificar tabelas canônicas
+        run: |
+          psql "postgresql://c4arch:c4arch@localhost:5432/c4arch" -v ON_ERROR_STOP=1 -Atc "
+            SELECT tablename FROM pg_tables
+             WHERE schemaname = 'public'
+               AND tablename IN ('model_elements','model_relationships','model_views',
+                                 'model_view_layout','model_state','model_das_overrides')
+             ORDER BY tablename;" | tee /tmp/tables.txt
+          test "$(wc -l < /tmp/tables.txt)" -eq 6

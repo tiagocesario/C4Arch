@@ -12,6 +12,15 @@ api:
     CORS_ORIGIN: http://localhost:3000
     ALLOW_REGISTRATION: "false"
     SEED_DEMO: "false"
+    METRICS_ENABLED: "false"
+
+flags:
+  canonicalModel: "off"
+  canonicalViews: "off"
+  dasOverrides: "off"
+  versionHash: "off"
+  realtimePgState: "off"
+  projectorShadow: "off"
 
 web:
   port: 3000

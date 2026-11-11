@@ -1,5 +1,6 @@
 import http from 'http';
 import { attachWebsocket, setStorageDir, loadStorageModels, closeAll, setApiBase } from './sync.js';
+import { describeFlags } from './flags.js';
 
 const port = Number(process.env.WS_PORT ?? 4001);
 const storageDir = process.env.STORAGE_DIR ?? 'storage';
@@ -27,6 +28,7 @@ const start = async () => {
 
   server.listen(port, () => {
     console.log(`[realtime] WebSocket Yjs rodando na porta ${port}`);
+    console.log('[realtime] flags da Onda 1:', JSON.stringify(describeFlags()));
   });
 
   const shutdown = async (signal: string) => {

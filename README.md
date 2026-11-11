@@ -66,6 +66,10 @@ c4arch/
 └── docs/
     ├── PRD.md          # PRD canônico e atualizado
     ├── PDR.md          # visão original (legado)
+    ├── ANALISE-STRUCTURIZR.md
+    ├── PLANO-MIGRACAO-ONDA-1.md
+    ├── M0-CHECKLIST.md
+    ├── M1-CHECKLIST.md
     └── ADR/
 ```
 
@@ -77,11 +81,23 @@ c4arch/
 - `docs/DAS.md` — Documento de Arquitetura de Soluções (visão, containers,
   componentes, modelo de dados, segurança e deploy), com as imagens do desenho
   draw.io.
+- `docs/ANALISE-STRUCTURIZR.md` — estudo comparativo com o Structurizr, lacunas
+  do C4Arch, melhorias recomendadas e roadmap em três ondas.
+- `docs/PLANO-MIGRACAO-ONDA-1.md` — plano detalhado da Onda 1: schema canônico,
+  endpoints, UI, fases de rollout, testes, critérios de aceite e rollback.
+- `docs/M0-CHECKLIST.md` — checklist e evidências da preparação (flags, backup,
+  telemetria, CI e higiene do Git).
+- `docs/M1-CHECKLIST.md` — checklist e evidências do schema canônico (DDL,
+  verificação e rollback).
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
   Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
   `models.diagrams` e persistência de tela no F5), `ADR-0019` (importação de
   modelos por arquivo/Drive/URL e DAS automático) e `ADR-0020` (hardening de
   importação, grupos de acesso e exportação do DAS).
+  Decisões propostas para a Onda 1: `ADR-0021` (modelo canônico e fonte única de
+  verdade), `ADR-0022` (views como projeções do modelo), `ADR-0023` (DAS como
+  projeção com overrides) e `ADR-0024` (versionamento restaurável e persistência
+  do estado colaborativo).
 
 ## Login de desenvolvimento
 

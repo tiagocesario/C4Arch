@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { pool } from './db.js';
+import { metricsMiddleware, renderMetrics } from './observability/metrics.js';
 
 const app = express();
 
@@ -21,6 +22,7 @@ if (config.trustProxy) {
 }
 
 app.disable('x-powered-by');
+app.use(metricsMiddleware);
 app.use(
   helmet({
     // A página do draw.io precisa incorporar o embed.diagrams.net; a CSP dela
@@ -85,6 +87,15 @@ app.get('/healthz', async (_req, res) => {
   } catch {
     return res.status(503).json({ status: 'unavailable' });
   }
+});
+
+// Métricas no formato Prometheus. Desabilitado por padrão em produção; ligue
+// com METRICS_ENABLED=true e exponha apenas na rede interna.
+app.get('/metrics', (_req, res) => {
+  if (!config.metricsEnabled) {
+    return res.status(404).json({ error: 'Recurso não encontrado' });
+  }
+  res.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics());
 });
 
 const apiLimiter = rateLimit({

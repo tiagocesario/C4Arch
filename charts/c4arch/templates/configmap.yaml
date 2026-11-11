@@ -13,3 +13,10 @@ data:
   CORS_ORIGIN: {{ .Values.api.env.CORS_ORIGIN | quote }}
   ALLOW_REGISTRATION: {{ .Values.api.env.ALLOW_REGISTRATION | quote }}
   SEED_DEMO: {{ .Values.api.env.SEED_DEMO | quote }}
+  METRICS_ENABLED: {{ .Values.api.env.METRICS_ENABLED | quote }}
+  CANONICAL_MODEL: {{ .Values.flags.canonicalModel | quote }}
+  CANONICAL_VIEWS: {{ .Values.flags.canonicalViews | quote }}
+  DAS_OVERRIDES: {{ .Values.flags.dasOverrides | quote }}
+  VERSION_HASH: {{ .Values.flags.versionHash | quote }}
+  REALTIME_PG_STATE: {{ .Values.flags.realtimePgState | quote }}
+  PROJECTOR_SHADOW: {{ .Values.flags.projectorShadow | quote }}
