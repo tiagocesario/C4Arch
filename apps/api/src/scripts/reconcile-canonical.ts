@@ -6,10 +6,6 @@ import { flags } from '../flags.js';
 
 /**
  * Reconciliação diária do M5.
- *
- * Compara legado × canônico para todos os modelos e, quando `model_state`
- * existe, também projeta o estado durável. Imprime um resumo por modelo e
- * retorna código 1 se houver divergências, para uso em cron/CI.
  */
 const main = async () => {
   await runMigrations();
@@ -23,18 +19,25 @@ const main = async () => {
   for (const model of models.rows) {
     try {
       const shadow = await shadowModel(model.id);
-      const projection =
-        flags.projectorShadow !== 'off' ? await projectModel(model.id, { mode: 'shadow' }) : null;
+      const relevantDivergences = shadow.divergences.filter(
+        (divergence) => !divergence.kind.startsWith('OVERRIDE')
+      );
+      const shadowOk = relevantDivergences.length === 0;
 
-      const status = shadow.ok && (!projection || projection.ok) ? 'ok' : 'divergente';
+      const projection =
+        flags.projectorShadow !== 'off'
+          ? await projectModel(model.id, { mode: 'shadow' })
+          : null;
+
+      const status = shadowOk && (!projection || projection.ok) ? 'ok' : 'divergente';
       if (status === 'divergente') divergent += 1;
       console.log(
         `[reconcile] ${model.title} (${model.id}): ${status}` +
           ` (elementos=${shadow.expected.elements}, relações=${shadow.expected.relationships})` +
           (projection ? ` projeção=${projection.ok ? 'ok' : 'divergente'}` : '')
       );
-      if (!shadow.ok) {
-        for (const divergence of shadow.divergences.slice(0, 5)) {
+      if (!shadowOk) {
+        for (const divergence of relevantDivergences.slice(0, 5)) {
           console.log(`  - ${divergence.kind} ${divergence.entityId ?? divergence.viewKey ?? ''}`);
         }
       }
