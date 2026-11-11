@@ -647,6 +647,8 @@ export class ModelController {
       return res.status(500).json({ error: 'Erro ao inspecionar modelo' });
     }
   }
+
+  static async remove(req: AuthenticatedRequest, res: Response) {
     const { id } = req.params;
     if (!isUuid(id)) {
       return res.status(404).json({ error: 'Modelo não encontrado' });
