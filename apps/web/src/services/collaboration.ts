@@ -253,7 +253,7 @@ export async function importStructurizrWorkspace(input: {
   c4Type?: string;
   folderId?: string | null;
   parentId?: string | null;
-  format?: 'json' | 'dsl';
+  format?: 'json' | 'dsl' | 'plantuml';
 }): Promise<{ id: string; import: StructurizrImportResult }> {
   return request('/api/models/import/structurizr', {
     method: 'POST',
@@ -265,7 +265,7 @@ export async function importStructurizrIntoModel(
   modelId: string,
   input: {
     content: string;
-    format?: 'json' | 'dsl';
+    format?: 'json' | 'dsl' | 'plantuml';
     mode?: 'replace' | 'merge';
     title?: string;
     c4Type?: string;

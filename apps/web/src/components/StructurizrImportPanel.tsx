@@ -50,7 +50,7 @@ export function StructurizrImportPanel({
   const [title, setTitle] = useState('');
   const [c4Type, setC4Type] = useState('container');
   const [mode, setMode] = useState<'replace' | 'merge'>('replace');
-  const [format, setFormat] = useState<'auto' | 'json' | 'dsl'>('auto');
+  const [format, setFormat] = useState<'auto' | 'json' | 'dsl' | 'plantuml'>('auto');
   const [templateId, setTemplateId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -209,6 +209,7 @@ export function StructurizrImportPanel({
               <option value="auto">Detectar</option>
               <option value="json">JSON</option>
               <option value="dsl">DSL</option>
+              <option value="plantuml">PlantUML</option>
             </select>
           </label>
           {modelId && (

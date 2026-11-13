@@ -9,6 +9,10 @@ import {
   importWorkspaceIntoModel,
   parseStructurizrWorkspace,
 } from '../c4/structurizr-import.js';
+import {
+  detectPlantUmlFormat,
+  parsePlantUmlWorkspace,
+} from '../c4/plantuml-import.js';
 import { isC4ModelType, type C4ModelType } from '../c4/model-types.js';
 import { STRUCTURIZR_TEMPLATES } from '../c4/structurizr-templates.js';
 
@@ -35,7 +39,7 @@ function validateImportBody(body: Record<string, unknown>, res: Response): strin
     res.status(413).json({ error: 'Conteúdo do workspace muito grande' });
     return null;
   }
-  if (body.format !== undefined && body.format !== 'json' && body.format !== 'dsl') {
+  if (body.format !== undefined && body.format !== 'json' && body.format !== 'dsl' && body.format !== 'plantuml') {
     res.status(400).json({ error: 'format deve ser "json" ou "dsl"' });
     return null;
   }
@@ -44,6 +48,23 @@ function validateImportBody(body: Record<string, unknown>, res: Response): strin
     return null;
   }
   return content;
+}
+
+/** Detecta o formato e faz o parse do workspace. Retorna null se inválido. */
+function parseImportedWorkspace(content: string): { workspace: any; kind: 'structurizr' | 'plantuml' } | null {
+  if (detectPlantUmlFormat(content)) {
+    try {
+      return { workspace: parsePlantUmlWorkspace(content), kind: 'plantuml' };
+    } catch {
+      return null;
+    }
+  }
+  try {
+    const format = detectStructurizrFormat(content);
+    return { workspace: parseStructurizrWorkspace(content, format), kind: 'structurizr' };
+  } catch {
+    return null;
+  }
 }
 
 export class ImportController {
@@ -91,20 +112,18 @@ export class ImportController {
         }
       }
 
-      const format = typeof body.format === 'string' ? (body.format as 'json' | 'dsl') : undefined;
-      let workspace;
-      try {
-        workspace = parseStructurizrWorkspace(content, format ?? detectStructurizrFormat(content));
-      } catch {
-        return res.status(400).json({ error: 'Workspace Structurizr inválido' });
+      const parsed = parseImportedWorkspace(content);
+      if (!parsed) {
+        return res.status(400).json({ error: 'Workspace inválido (Structurizr ou PlantUML/C4)' });
       }
+      const { workspace, kind } = parsed;
 
       const c4Type = (body.c4Type as C4ModelType | undefined) ?? 'container';
       const title =
         cleanTitle(body.title) ??
         cleanTitle(body.name) ??
         cleanTitle(workspace.name) ??
-        'Modelo importado do Structurizr';
+        (kind === 'plantuml' ? 'Modelo importado do PlantUML' : 'Modelo importado do Structurizr');
 
       const created = await pool.query(
         `INSERT INTO models (org_id, title, description, status, folder_id, c4_type, c4_scope, parent_id)
@@ -132,11 +151,11 @@ export class ImportController {
         orgId,
         actorId: req.user!.id,
         actorEmail: req.user!.email,
-        action: 'model.import.structurizr',
+        action: kind === 'plantuml' ? 'model.import.plantuml' : 'model.import.structurizr',
         entityType: 'model',
         entityId: model.id,
         metadata: {
-          format: format ?? detectStructurizrFormat(content),
+          format: kind,
           elements: result.elements,
           relationships: result.relationships,
         },
@@ -167,13 +186,11 @@ export class ImportController {
         return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
       }
 
-      const format = typeof body.format === 'string' ? (body.format as 'json' | 'dsl') : undefined;
-      let workspace;
-      try {
-        workspace = parseStructurizrWorkspace(content, format ?? detectStructurizrFormat(content));
-      } catch {
-        return res.status(400).json({ error: 'Workspace Structurizr inválido' });
+      const parsed = parseImportedWorkspace(content);
+      if (!parsed) {
+        return res.status(400).json({ error: 'Workspace inválido (Structurizr ou PlantUML/C4)' });
       }
+      const { workspace, kind } = parsed;
 
       const result = await importWorkspaceIntoModel(id, workspace, {
         mode: body.mode === 'merge' ? 'merge' : 'replace',
@@ -186,11 +203,11 @@ export class ImportController {
         orgId: (model.org_id as string) ?? null,
         actorId: req.user!.id,
         actorEmail: req.user!.email,
-        action: 'model.import.structurizr',
+        action: kind === 'plantuml' ? 'model.import.plantuml' : 'model.import.structurizr',
         entityType: 'model',
         entityId: id,
         metadata: {
-          format: format ?? detectStructurizrFormat(content),
+          format: kind,
           mode: result.mode,
           elements: result.elements,
           relationships: result.relationships,
