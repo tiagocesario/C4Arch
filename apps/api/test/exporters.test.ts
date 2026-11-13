@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   EXPORT_FORMATS,
   exportModel,
+  hasRawAngleInAttribute,
+  isUsableDrawioXml,
   renderDrawio,
   renderHtml,
   renderMermaid,
@@ -178,6 +180,19 @@ test('renderDrawio inclui IDs estáveis e arestas conectadas', () => {
   assert.match(xml, /c4archElementId="cp1"/);
   assert.match(xml, /source="c4arch-p1" target="c4arch-s1"/);
   assert.match(xml, /id="edge-e1"/);
+});
+
+test('renderDrawio escapa o HTML dos labels dentro dos atributos XML', () => {
+  const xml = renderDrawio(sampleGraph());
+  // O draw.io rejeita '<' cru em atributos; o HTML do label deve virar entidade.
+  assert.match(xml, /label="&lt;b&gt;Cliente&lt;\/b&gt;/);
+  assert.doesNotMatch(xml, /label="<b>/);
+  assert.equal(isUsableDrawioXml(xml), true);
+  assert.equal(hasRawAngleInAttribute(xml), false);
+
+  const broken = '<mxfile><diagram><mxGraphModel><root><object label="<b>x</b>"/></root></mxGraphModel></diagram></mxfile>';
+  assert.equal(hasRawAngleInAttribute(broken), true);
+  assert.equal(isUsableDrawioXml(broken), false);
 });
 
 test('renderHtml monta site autocontido com inventário', () => {

@@ -930,6 +930,46 @@ export function renderMermaid(graph: ModelGraph): string {
   return `${lines.join('\n')}\n`;
 }
 
+/**
+ * Detecta XML inválido por `<` cru dentro do valor de um atributo — exatamente
+ * o erro que o draw.io reporta como "não é um arquivo de diagrama". Labels HTML
+ * (`<b>`, `<span>`) precisam ser escapados como entidades no atributo.
+ */
+export function hasRawAngleInAttribute(xml: string): boolean {
+  let inTag = false;
+  let quote: '"' | "'" | null = null;
+
+  for (const char of xml) {
+    if (!inTag) {
+      if (char === '<') inTag = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else if (char === '<') {
+        return true;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+    } else if (char === '>') {
+      inTag = false;
+    }
+  }
+  return false;
+}
+
+/** XML draw.io plausível e bem formado o suficiente para abrir no editor. */
+export function isUsableDrawioXml(xml: string | null | undefined): boolean {
+  if (typeof xml !== 'string') return false;
+  const trimmed = xml.trim();
+  if (!trimmed) return false;
+  if (hasRawAngleInAttribute(trimmed)) return false;
+  return /<mxfile[\s>]/i.test(trimmed) || /<mxGraphModel[\s>]/i.test(trimmed);
+}
+
 /** XML draw.io com IDs estáveis e posições do layout resolvido. */
 export function renderDrawio(graph: ModelGraph): string {
   const rendered = resolveRenderedGraph(graph);
@@ -962,7 +1002,7 @@ export function renderDrawio(graph: ModelGraph): string {
     }`;
     const style = `rounded=1;whiteSpace=wrap;html=1;fillColor=${colors[box.kind]};strokeColor=${border[box.kind]};fontColor=#1e293b;align=left;verticalAlign=top;spacing=8;`;
     cells.push(
-      `<object id="${objectId}" label="${label}" c4archElementId="${escapeXml(box.element.id)}" c4archType="${box.kind}">`
+      `<object id="${objectId}" label="${escapeXml(label)}" c4archElementId="${escapeXml(box.element.id)}" c4archType="${box.kind}">`
     );
     cells.push(
       `  <mxCell id="shape-${box.element.id}" style="${style}" vertex="1" parent="1">`

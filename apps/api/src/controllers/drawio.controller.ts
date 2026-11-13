@@ -7,7 +7,7 @@ import { regenerateModelDAS } from '../c4/das-service.js';
 import { parseDiagrams, resolveDiagramXml, withDiagramXml } from '../c4/diagrams.js';
 import { isC4ModelType } from '../c4/model-types.js';
 import { loadModelGraph } from '../c4/model-graph.js';
-import { renderDrawio } from '../c4/exporters.js';
+import { isUsableDrawioXml, renderDrawio } from '../c4/exporters.js';
 import {
   ASSET_MARKER_ID,
   ASSET_MARKER_KIND,
@@ -285,10 +285,10 @@ export class DrawioController {
       }
       const title = String(model.title ?? 'Modelo');
       let storedXml = resolveDiagramXml(model, diagramType) ?? '';
-      if (!storedXml.trim()) {
-        // Modelos importados antes desta correção (ou criados por API) podem
-        // não ter XML salvo. Gera o desenho a partir do grafo para que a
-        // primeira edição não comece em branco.
+      if (!isUsableDrawioXml(storedXml)) {
+        // Modelos importados antes das correções podem não ter XML salvo ou ter
+        // um XML antigo com HTML cru no label (rejeitado pelo draw.io). Gera o
+        // desenho a partir do grafo para que a edição não abra vazia/quebrada.
         const graph = await loadModelGraph(id);
         if (graph && graph.elements.length > 0) {
           storedXml = renderDrawio(graph);

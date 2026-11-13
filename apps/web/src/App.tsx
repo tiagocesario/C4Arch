@@ -111,6 +111,22 @@ const smallMuted: CSSProperties = { fontSize: 12, color: '#7b8290' };
 
 const statusLabel: Record<ModelStatus, string> = { draft: 'Rascunho', final: 'Final' };
 
+/**
+ * XML antigo gerado antes da correção de escape podia conter HTML cru no
+ * atributo `label`, que o draw.io rejeita. O preview cai no XML regenerado
+ * pelo servidor quando o persistido não é parseável.
+ */
+function isValidDrawioXml(xml: string | null | undefined): xml is string {
+  if (!xml || !xml.trim()) return false;
+  if (typeof DOMParser === 'undefined') return true;
+  try {
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    return doc.getElementsByTagName('parsererror').length === 0;
+  } catch {
+    return false;
+  }
+}
+
 interface AssetDraft {
   kind: 'app' | 'service';
   id?: string;
@@ -1029,12 +1045,12 @@ export default function App() {
         dt === detail.c4Type
           ? detail.drawioXml
           : (detail.diagrams ?? []).find((d) => d.c4Type === dt)?.drawioXml;
-      if ((!xml || !xml.trim()) && (detail.elements.length > 0 || detail.edges.length > 0)) {
-        // Modelos importados do Structurizr podem não ter XML persistido; o
-        // servidor gera o desenho a partir do grafo canônico/legado.
+      if (!isValidDrawioXml(xml) && (detail.elements.length > 0 || detail.edges.length > 0)) {
+        // Modelos importados do Structurizr podem não ter XML persistido ou ter
+        // um XML antigo inválido; o servidor gera o desenho a partir do grafo.
         xml = await getModelDrawioXml(target.id);
       }
-      if (!xml || !xml.trim()) {
+      if (!isValidDrawioXml(xml)) {
         setPreviewError('Este tipo de diagrama ainda não possui um desenho salvo no draw.io.');
         return;
       }
