@@ -62,6 +62,11 @@ const start = async () => {
       for (const report of projection.reports.filter((item) => !item.ok).slice(0, 10)) {
         console.warn(formatProjectionSummary(report));
       }
+      for (const failure of projection.errors.slice(0, 10)) {
+        console.warn(
+          `[api] projetor ${mode}: modelo ${failure.modelId} falhou: ${failure.error}`
+        );
+      }
     } catch (err) {
       console.error('[api] Falha ao executar o projetor no startup', err);
     }
