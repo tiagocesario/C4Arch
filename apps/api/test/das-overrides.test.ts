@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   applyDasOverrides,
   diffDasSections,
+  mergeDasOverrides,
   parseDasSections,
 } from '../src/c4/canonical.js';
 
@@ -84,4 +85,44 @@ test('documento inteiro vira override quando não há seções reconhecíveis', 
   const diff = diffDasSections('texto sem seções', 'texto editado');
   assert.equal(diff.overrides.length, 1);
   assert.equal(diff.overrides[0].section_key, 'document');
+});
+
+test('applyDasOverrides combina append e hide sem perder o texto anexado', () => {
+  const combined = applyDasOverrides(GENERATED, [
+    { section_key: '6.2', content: 'Linha adicional.', mode: 'append' },
+    { section_key: '7', content: null, mode: 'hide' },
+  ]);
+  assert.match(combined, /_Nenhuma conexão\._\n\nLinha adicional\./);
+  assert.doesNotMatch(combined, /## 7\. Modelo de dados/);
+});
+
+test('mergeDasOverrides preserva hide e append ao salvar novamente', () => {
+  const previous = [
+    { section_key: '7', content: null, mode: 'hide' as const },
+    { section_key: '6.2', content: 'Linha adicional.', mode: 'append' as const },
+  ];
+  const hidden = applyDasOverrides(GENERATED, previous);
+  // Usuário edita outra seção sem reintroduzir a seção oculta.
+  const edited = hidden.replace('| Sistema |', '| Sistema |\n| API |');
+
+  const diff = diffDasSections(GENERATED, edited);
+  const merged = mergeDasOverrides(GENERATED, edited, previous, diff);
+  const byKey = new Map(merged.map((override) => [override.section_key, override]));
+
+  assert.equal(byKey.get('7')?.mode, 'hide');
+  assert.equal(byKey.get('6.2')?.mode, 'append');
+  assert.equal(byKey.get('6.1')?.mode, 'replace');
+
+  const roundTrip = applyDasOverrides(GENERATED, merged);
+  assert.doesNotMatch(roundTrip, /## 7\. Modelo de dados/);
+  assert.match(roundTrip, /Linha adicional\./);
+  assert.match(roundTrip, /\| API \|/);
+});
+
+test('mergeDasOverrides abandona hide quando a seção volta ao conteúdo', () => {
+  const previous = [{ section_key: '7', content: null, mode: 'hide' as const }];
+  const stillVisible = GENERATED;
+  const diff = diffDasSections(GENERATED, stillVisible);
+  const merged = mergeDasOverrides(GENERATED, stillVisible, previous, diff);
+  assert.equal(merged.some((override) => override.section_key === '7'), false);
 });

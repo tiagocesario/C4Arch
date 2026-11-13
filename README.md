@@ -32,6 +32,20 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
   de todos os tipos de diagrama do modelo (inventário, elementos e conexões) e
   regenerado ao criar/editar o modelo, adicionar um tipo ou importar draw.io.
   No startup da API, a geração também é aplicada aos modelos antigos.
+- **Interoperabilidade:** importação de workspace Structurizr (JSON ou DSL) e
+  exportação para Structurizr JSON/DSL, C4-PlantUML, Mermaid, SVG, PNG, HTML e
+  draw.io, com preview server-side e legenda.
+- **Colaboração em tempo real:** presença por view/sala, cursores, comentários
+  gerais ou ancorados em elementos, undo/redo por sessão e atualização do canvas
+  via WebSocket + Yjs.
+- **Contrato estável:** OpenAPI 3.1 em `/api/openapi.json`, Swagger UI em
+  `/api/docs`, erros padronizados (`error`/`code`) e idempotência opcional via
+  header `Idempotency-Key`.
+- **Operação:** migrações versionadas (`schema_migrations`), backup/restore
+  (`pg_dump` ou dump lógico JSON), SBOM CycloneDX e auditoria por organização.
+- **MCP server:** `apps/mcp` expõe o modelo C4 a agentes (listar/consultar/criar
+  modelos, DAS, inspections, views, autolayout, exportação, importação e
+  comentários) via JSON-RPC sobre stdio.
 
 ## Quick start (Windows)
 
@@ -55,7 +69,9 @@ c4arch/
 │   ├── api/          # Backend REST + auth + regras de negócio
 │   ├── web/          # Frontend React + editor C4
 │   ├── realtime/     # Serviço WebSocket (Yjs)
-│   └── worker/       # Serviço de sincronização (Drive/GitLab) + versões
+│   ├── worker/       # Serviço de sincronização (Drive/GitLab) + versões
+│   └── mcp/          # Servidor MCP (stdio) sobre a API HTTP
+├── scripts/          # OpenAPI/cliente, backup/restore e SBOM
 ├── docker-compose.yaml
 ├── compose.production.yaml
 ├── .env.example
@@ -72,7 +88,10 @@ c4arch/
     ├── M1-CHECKLIST.md
     ├── M2-CHECKLIST.md
     ├── M3-CHECKLIST.md
+    ├── M4-CHECKLIST.md
     ├── M5-CHECKLIST.md
+    ├── M6-CHECKLIST.md
+    ├── RELATORIO-ONDAS-2-3.md
     └── ADR/
 ```
 
@@ -100,6 +119,11 @@ c4arch/
   ativação de flags).
 - `docs/M5-CHECKLIST.md` — checklist e evidências do cutover (leitura canônica,
   dual-write e reconciliação diária).
+- `docs/M6-CHECKLIST.md` — checklist e evidências da operação contínua
+  (worker, retenção, observabilidade e higiene de migrações).
+- `docs/RELATORIO-ONDAS-2-3.md` — relatório de entrega das Ondas 2 e 3:
+  exportação/interoperabilidade, views, importação Structurizr, colaboração,
+  contrato, MCP, split do frontend, correções e validação executada.
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
   Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
   `models.diagrams` e persistência de tela no F5), `ADR-0019` (importação de
@@ -156,18 +180,36 @@ npm run build --workspace=apps/api
 npm run build --workspace=apps/realtime
 npm run build --workspace=apps/worker
 npm run build --workspace=apps/web
+npm run build --workspace=apps/mcp
 
 # Testes automatizados (Node test runner + tsx)
 npm test --workspace=apps/api
 npm test --workspace=apps/realtime
+npm test --workspace=apps/web
 # ou tudo de uma vez
 npm test
+
+# E2E da web (Playwright + Chromium; API mockada)
+npm run test:e2e --workspace=apps/web
+
+# Contrato e cliente tipado
+npm run openapi:client        # gera apps/web/src/services/generated-api.ts
+
+# Operação
+npm run db:migrate            # aplica migrações versionadas
+npm run backup                # dump + storage em backups/
+npm run restore -- <arquivo>  # restaura dump custom ou JSON gz
+npm run sbom                  # gera sbom.json (CycloneDX)
 ```
 
 O build do frontend executa `tsc --noEmit` no código React antes do Vite;
 erros de tipo quebram o build. Os testes da API cobrem validação anti-SSRF,
-parsing do draw.io para o DAS e escopo dos tokens; os do realtime cobrem
-merge parcial, exclusão em cascata e hidratação do CRDT.
+parsing do draw.io para o DAS, exportadores, importação Structurizr, autolayout,
+PNG, OpenAPI e escopo dos tokens; os do realtime cobrem merge parcial, exclusão
+em cascata, hidratação do CRDT e pilha de undo/redo. Na web, os testes de
+componente (React Testing Library + jsdom) cobrem header/login, painéis de
+versões/inspeções, importação, editor do DAS e presença; o E2E do Playwright
+cobre login, sessão e deep link com a API mockada.
 
 ## Docker
 

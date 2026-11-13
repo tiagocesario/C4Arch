@@ -149,6 +149,8 @@ export async function loadCanonicalEdges(modelId: string): Promise<LegacyEdgeRow
       to_id: row.target_id,
       label: row.description ?? '',
       type,
+      source_title: nameById.get(row.source_id) ?? null,
+      target_title: nameById.get(row.target_id) ?? null,
     };
   }).filter((edge) => nameById.has(edge.from_id) && nameById.has(edge.to_id));
 }

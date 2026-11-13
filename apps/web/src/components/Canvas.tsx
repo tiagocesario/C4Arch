@@ -8,8 +8,8 @@ import {
   type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { sendOp, connected, setOnConnectionChange } from '../services/ws';
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { sendOp, sendPresence, connected, setOnConnectionChange } from '../services/ws';
 import type { Element, Edge as CEdge } from '../services/types';
 
 const typeStyle = {
@@ -29,6 +29,10 @@ interface CanvasProps {
   onRenameElement: (id: string, title: string) => void;
   /** `viewer` só visualiza: nenhuma alteração é enviada ao Yjs/REST. */
   readOnly?: boolean;
+  /** Elemento selecionado; usado para ancorar comentários no canvas. */
+  onSelectElement?: (id: string | null) => void;
+  /** Elementos com comentários abertos recebem destaque. */
+  commentedElementIds?: string[];
 }
 
 export function Canvas({
@@ -37,12 +41,16 @@ export function Canvas({
   edges,
   onRenameElement,
   readOnly = false,
+  onSelectElement,
+  commentedElementIds,
 }: CanvasProps) {
   const { fitView } = useReactFlow();
   const [wsConnected, setWsConnected] = useState(connected);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [rfEdges, setRfEdges] = useState<RFEdge[]>([]);
   const lastFitModelId = useRef<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const lastPresenceSent = useRef(0);
 
   useEffect(() => {
     setOnConnectionChange(setWsConnected);
@@ -50,6 +58,7 @@ export function Canvas({
   }, []);
 
   const applyModel = useCallback((elems: Element[], es: CEdge[]) => {
+    const commented = new Set(commentedElementIds ?? []);
     const list = new Map<string, Node>();
     for (const e of elems) {
       list.set(e.id, {
@@ -57,7 +66,10 @@ export function Canvas({
         type: 'default',
         position: { x: e.positionX ?? 0, y: e.positionY ?? 0 },
         data: { label: e.title, desc: e.description ?? '', kind: kindLabel(e.type) },
-        style: typeStyle[e.type] ?? typeStyle.system,
+        style: {
+          ...(typeStyle[e.type] ?? typeStyle.system),
+          ...(commented.has(e.id) ? { boxShadow: '0 0 0 2px #fbbf24' } : {}),
+        },
       });
     }
     setNodes(() => Array.from(list.values()));
@@ -70,7 +82,7 @@ export function Canvas({
         data: { type: e.type },
       }))
     );
-  }, []);
+  }, [commentedElementIds]);
 
   useEffect(() => {
     applyModel(elements, edges);
@@ -141,14 +153,38 @@ export function Canvas({
     [elements, onRenameElement, readOnly]
   );
 
+  const onMouseMove = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+    const now = Date.now();
+    if (now - lastPresenceSent.current < 120) return;
+    lastPresenceSent.current = now;
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    sendPresence({
+      x: Math.round(event.clientX - rect.left),
+      y: Math.round(event.clientY - rect.top),
+    });
+  }, []);
+
+  const onMouseLeave = useCallback(() => {
+    lastPresenceSent.current = 0;
+    sendPresence(null);
+  }, []);
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', background: '#0f1115' }}>
+    <div
+      ref={containerRef}
+      onMouseMove={onMouseMove}
+      onMouseLeave={onMouseLeave}
+      style={{ position: 'relative', width: '100%', height: '100%', background: '#0f1115' }}
+    >
       <ReactFlow
         nodes={nodes}
         edges={rfEdges}
         onConnect={readOnly ? undefined : onConnect}
         onNodesChange={onNodesChange}
         onNodeDoubleClick={readOnly ? undefined : onNodeDoubleClick}
+        onNodeClick={onSelectElement ? (_event, node) => onSelectElement(node.id) : undefined}
+        onPaneClick={onSelectElement ? () => onSelectElement(null) : undefined}
         nodesDraggable={!readOnly}
         nodesConnectable={!readOnly}
         edgesFocusable={!readOnly}

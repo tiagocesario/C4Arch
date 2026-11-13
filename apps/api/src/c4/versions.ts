@@ -142,10 +142,17 @@ export async function getVersion(
 }
 
 async function nextVersion(client: PoolClient, modelId: string): Promise<number> {
+  // O contador é a fonte normal, mas versões podem ter sido inseridas
+  // diretamente (importações, fixtures, migrações antigas). Semeie/alinhe com
+  // o maior `version` existente para não violar o índice único
+  // `(model_id, version)`, nem reaproveitar números já usados.
   await client.query(
     `INSERT INTO model_version_counters(model_id, version)
-     VALUES ($1, 0)
-     ON CONFLICT (model_id) DO NOTHING`,
+     SELECT $1, COALESCE(MAX(version), 0)
+       FROM model_versions
+      WHERE model_id = $1
+     ON CONFLICT (model_id) DO UPDATE
+       SET version = GREATEST(model_version_counters.version, EXCLUDED.version)`,
     [modelId]
   );
   const result = await client.query<{ version: number }>(
@@ -257,7 +264,6 @@ export async function restoreVersion(
       [modelId, Buffer.from(state), Buffer.from(stateVector), contentHash, userId]
     );
 
-    const next = await nextVersion(client, modelId);
     const snapshot = {
       modelId,
       elements: decoded.elements.map((element) => ({
@@ -279,34 +285,53 @@ export async function restoreVersion(
       })),
     };
 
-    const inserted = await client.query<{ id: string }>(
-      `INSERT INTO model_versions
-         (model_id, version, snapshot, content_hash, author_id, label, description, kind)
-       VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, 'restore')
-       ON CONFLICT (model_id, content_hash) WHERE content_hash IS NOT NULL DO NOTHING
-       RETURNING id`,
-      [
-        modelId,
-        next,
-        JSON.stringify(snapshot),
-        contentHash,
-        userId,
-        `Restauração da versão ${version.version}`,
-        `Restaurado por ${userId ?? 'sistema'} em ${new Date().toISOString()}`,
-      ]
+    // Versões só representam mudanças de conteúdo. Se o hash restaurado já
+    // existe, reutilizamos a versão em vez de consumir um número do contador
+    // (o que abriria buracos na sequência sem versão correspondente).
+    const existing = await client.query<{ id: string; version: number }>(
+      'SELECT id, version FROM model_versions WHERE model_id = $1 AND content_hash = $2',
+      [modelId, contentHash]
     );
 
-    let newVersionId = inserted.rows[0]?.id;
-    if (!newVersionId) {
-      const existing = await client.query<{ id: string }>(
-        'SELECT id FROM model_versions WHERE model_id = $1 AND content_hash = $2',
-        [modelId, contentHash]
+    let assignedVersion: number;
+    let newVersionId: string;
+    if (existing.rows[0]) {
+      assignedVersion = existing.rows[0].version;
+      newVersionId = existing.rows[0].id;
+    } else {
+      assignedVersion = await nextVersion(client, modelId);
+      const inserted = await client.query<{ id: string }>(
+        `INSERT INTO model_versions
+           (model_id, version, snapshot, content_hash, author_id, label, description, kind)
+         VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, 'restore')
+         ON CONFLICT (model_id, content_hash) WHERE content_hash IS NOT NULL DO NOTHING
+         RETURNING id`,
+        [
+          modelId,
+          assignedVersion,
+          JSON.stringify(snapshot),
+          contentHash,
+          userId,
+          `Restauração da versão ${version.version}`,
+          `Restaurado por ${userId ?? 'sistema'} em ${new Date().toISOString()}`,
+        ]
       );
-      newVersionId = existing.rows[0]?.id ?? version.id;
+      newVersionId = inserted.rows[0]?.id ?? version.id;
+
+      if (!inserted.rows[0]) {
+        // Corrida com outro escritor: o hash passou a existir entre a leitura
+        // e o INSERT. Reporta a versão realmente gravada.
+        const raced = await client.query<{ id: string; version: number }>(
+          'SELECT id, version FROM model_versions WHERE model_id = $1 AND content_hash = $2',
+          [modelId, contentHash]
+        );
+        assignedVersion = raced.rows[0]?.version ?? assignedVersion;
+        newVersionId = raced.rows[0]?.id ?? newVersionId;
+      }
     }
 
     await client.query('COMMIT');
-    return { version: next, contentHash, versionId: newVersionId };
+    return { version: assignedVersion, contentHash, versionId: newVersionId };
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;

@@ -5,6 +5,10 @@ import rateLimit from 'express-rate-limit';
 import { config } from './config.js';
 import { pool } from './db.js';
 import { metricsMiddleware, renderMetrics } from './observability/metrics.js';
+import { requestContext } from './observability/http.js';
+import { idempotencyMiddleware } from './security/idempotency.js';
+import { buildOpenApiDocument, renderDocsHtml } from './openapi.js';
+import { ApiError, errorBody } from './errors.js';
 
 const app = express();
 
@@ -22,6 +26,7 @@ if (config.trustProxy) {
 }
 
 app.disable('x-powered-by');
+app.use(requestContext);
 app.use(metricsMiddleware);
 app.use(
   helmet({
@@ -42,7 +47,8 @@ app.use(
       return callback(null, false);
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id'],
+    exposedHeaders: ['X-Request-Id', 'Idempotency-Replayed', 'Content-Disposition'],
     maxAge: 600,
   })
 );
@@ -61,6 +67,8 @@ app.use((req, res, next) => {
   const isLargeXmlRoute =
     req.method === 'POST' &&
     (req.path === '/api/models/import' ||
+      req.path === '/api/models/import/structurizr' ||
+      /^\/api\/models\/[^/]+\/import\/structurizr\/?$/.test(req.path) ||
       /^\/api\/models\/[^/]+\/drawio\/import\/?$/.test(req.path));
   if (isLargeXmlRoute) {
     return largeXmlJson(req, res, next);
@@ -87,6 +95,10 @@ app.use((req, res, next) => {
   return next();
 });
 
+// Idempotência opcional para métodos mutantes. Fica depois do parser para
+// hashear o corpo e antes das rotas para capturar a resposta JSON.
+app.use('/api', idempotencyMiddleware);
+
 // Healthcheck para Docker/Compose. Verifica também o banco.
 app.get('/healthz', async (_req, res) => {
   try {
@@ -104,6 +116,16 @@ app.get('/metrics', (_req, res) => {
     return res.status(404).json({ error: 'Recurso não encontrado' });
   }
   res.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics());
+});
+
+// Contrato OpenAPI e documentação interativa.
+app.get('/api/openapi.json', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json(buildOpenApiDocument());
+});
+app.get('/api/docs', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.type('text/html; charset=utf-8').send(renderDocsHtml());
 });
 
 const apiLimiter = rateLimit({
@@ -141,12 +163,22 @@ import drawioRouter from './routes/drawio.routes.js';
 import groupsRouter from './routes/groups.routes.js';
 import auditRouter from './routes/audit.routes.js';
 import internalRouter from './routes/internal.routes.js';
+import exportsRouter from './routes/exports.routes.js';
+import importsRouter from './routes/imports.routes.js';
+import viewsRouter from './routes/views.routes.js';
+import commentsRouter from './routes/comments.routes.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/orgs', orgsRouter);
+// Importação Structurizr precisa vir antes do CRUD de modelos para que
+// `/api/models/import/structurizr` não caia em `/:id`.
+app.use('/api/models', importsRouter);
 app.use('/api/models', modelsRouter);
 app.use('/api/models', elementsRouter);
 app.use('/api/models', edgesRouter);
+app.use('/api/models', exportsRouter);
+app.use('/api/models', viewsRouter);
+app.use('/api/models', commentsRouter);
 app.use('/api/folders', foldersRouter);
 app.use('/api/apps', appsRouter);
 app.use('/api/services', servicesRouter);
@@ -169,29 +201,43 @@ app.use((_req, res) => {
 
 app.use(
   (
-    err: { type?: string; status?: number; message?: string },
+    err: unknown,
     _req: express.Request,
     res: express.Response,
     _next: express.NextFunction
   ) => {
-    if (err?.type === 'entity.parse.failed') {
-      return res.status(400).json({ error: 'JSON inválido' });
+    const candidate = err as {
+      type?: string;
+      status?: number;
+      message?: string;
+      statusCode?: number;
+    };
+
+    if (candidate?.type === 'entity.parse.failed') {
+      return res.status(400).json(errorBody('INVALID_JSON', 'JSON inválido'));
     }
-    if (err?.type === 'entity.too.large') {
-      return res.status(413).json({ error: 'Corpo da requisição muito grande' });
+    if (candidate?.type === 'entity.too.large') {
+      return res.status(413).json(errorBody('PAYLOAD_TOO_LARGE', 'Corpo da requisição muito grande'));
+    }
+    if (err instanceof ApiError) {
+      return res.status(err.status).json(errorBody(err.code, err.message, err.details));
     }
 
     const status =
-      typeof err?.status === 'number' && err.status >= 400 && err.status < 500
-        ? err.status
-        : 500;
+      typeof candidate?.status === 'number' && candidate.status >= 400 && candidate.status < 500
+        ? candidate.status
+        : typeof candidate?.statusCode === 'number' &&
+            candidate.statusCode >= 400 &&
+            candidate.statusCode < 500
+          ? candidate.statusCode
+          : 500;
 
     if (status === 500) {
       console.error('[api] Unhandled error:', err);
-      return res.status(500).json({ error: 'Erro interno do servidor' });
+      return res.status(500).json(errorBody('INTERNAL_ERROR', 'Erro interno do servidor'));
     }
 
-    return res.status(status).json({ error: 'Requisição inválida' });
+    return res.status(status).json(errorBody('BAD_REQUEST', candidate?.message ?? 'Requisição inválida'));
   }
 );
 

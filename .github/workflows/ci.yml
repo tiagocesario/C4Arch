@@ -32,11 +32,35 @@ jobs:
       - name: Instalar dependências
         run: npm ci --no-audit --no-fund
 
-      - name: Typecheck (api, web, realtime, worker)
+      - name: Typecheck (api, web, realtime, worker, mcp)
         run: npm run typecheck
 
       - name: Testes (api e realtime)
         run: npm test
+
+  web-e2e:
+    name: E2E da web (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci --no-audit --no-fund
+
+      - name: Instalar Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Testes E2E (API mockada)
+        run: npm run test:e2e --workspace=@c4arch/web
 
   schema-migration:
     name: Schema, backfill e escrita canônica (M1/M2/M3)

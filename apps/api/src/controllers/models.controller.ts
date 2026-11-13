@@ -220,13 +220,15 @@ export class ModelController {
    * lote com relatório individual de sucesso/falha.
    */
   static async importModel(req: AuthenticatedRequest, res: Response) {
-    const { orgId, folderId, title, description, c4Type, xml, url, name, source } =
+    const { orgId, folderId, title, description, c4Type, c4Scope, parentId, xml, url, name, source } =
       req.body as {
         orgId?: string;
         folderId?: string | null;
         title?: string;
         description?: string | null;
         c4Type?: C4ModelType;
+        c4Scope?: string | null;
+        parentId?: string | null;
         xml?: string;
         url?: string;
         name?: string;
@@ -256,6 +258,12 @@ export class ModelController {
     if (url !== undefined && typeof url !== 'string') {
       return res.status(400).json({ error: 'url inválida' });
     }
+    if (c4Scope !== undefined && c4Scope !== null && typeof c4Scope !== 'string') {
+      return res.status(400).json({ error: 'c4Scope inválido' });
+    }
+    if (parentId !== undefined && parentId !== null && !isUuid(parentId)) {
+      return res.status(400).json({ error: 'parentId inválido' });
+    }
 
     try {
       const role = await getOrgRole(req.user!.id, orgId);
@@ -270,6 +278,16 @@ export class ModelController {
         );
         if (folder.rows.length === 0) {
           return res.status(404).json({ error: 'Pasta não encontrada ou não pertence à organização' });
+        }
+      }
+
+      if (parentId) {
+        const parent = await pool.query(
+          'SELECT id, org_id, c4_type FROM models WHERE id = $1',
+          [parentId]
+        );
+        if (parent.rows.length === 0 || parent.rows[0].org_id !== orgId) {
+          return res.status(404).json({ error: 'Modelo pai não encontrado ou não pertence à organização' });
         }
       }
 
@@ -298,16 +316,31 @@ export class ModelController {
         cleanOptionalText(description, 5000) ??
         (source ? `Importado de ${source}`.slice(0, 5000) : null);
 
+      // Mesma regra do create: um grupo só pode ter um diagrama por tipo.
+      // Sem isso, o índice único do banco viraria um 500 na importação.
+      if (parentId) {
+        const dup = await pool.query(
+          `SELECT id FROM models WHERE org_id = $1 AND c4_type = $2
+             AND (id = $3 OR parent_id = $3)`,
+          [orgId, effectiveType, parentId]
+        );
+        if (dup.rows.length > 0) {
+          return res
+            .status(409)
+            .json({ error: 'Já existe um diagrama deste tipo vinculado a este modelo' });
+        }
+      }
+
       // Antes de criar o modelo, cadastra no catálogo os componentes do XML
       // que ainda não existem como app/serviço. A operação é idempotente.
       const catalog = await importCatalogAssets(orgId, content);
 
       const result = await pool.query(
         `INSERT INTO models
-           (org_id, title, description, status, folder_id, c4_type, drawio_xml)
-         VALUES ($1, $2, $3, 'draft', $4, $5, $6)
+           (org_id, title, description, status, folder_id, c4_type, c4_scope, parent_id, drawio_xml)
+         VALUES ($1, $2, $3, 'draft', $4, $5, $6, $7, $8)
          RETURNING *`,
-        [orgId, cleanTitle, importDescription, folderId ?? null, effectiveType, content]
+        [orgId, cleanTitle, importDescription, folderId ?? null, effectiveType, c4Scope ?? null, parentId ?? null, content]
       );
       const created = result.rows[0];
 
@@ -477,6 +510,22 @@ export class ModelController {
         const parent = await pool.query('SELECT id, org_id, c4_type FROM models WHERE id = $1', [parentId]);
         if (parent.rows.length === 0 || parent.rows[0].org_id !== orgId) {
           return res.status(404).json({ error: 'Modelo pai não encontrado ou não pertence à organização' });
+        }
+        // Evita ciclos: o novo pai não pode ser o próprio modelo nem um
+        // descendente dele. A hierarquia é rasa, mas a checagem é genérica.
+        const ancestry = await pool.query(
+          `WITH RECURSIVE ancestors AS (
+             SELECT id, parent_id FROM models WHERE id = $1
+             UNION ALL
+             SELECT m.id, m.parent_id
+               FROM models m
+               JOIN ancestors a ON m.id = a.parent_id
+           )
+           SELECT 1 FROM ancestors WHERE id = $2 LIMIT 1`,
+          [parentId, id]
+        );
+        if (ancestry.rows.length > 0) {
+          return res.status(400).json({ error: 'parentId inválido: ciclo de modelos' });
         }
       }
       // unicidade do tipo de diagrama no grupo

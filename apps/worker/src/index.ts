@@ -103,28 +103,50 @@ async function insertVersionByHash(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(
-      `INSERT INTO model_version_counters(model_id, version)
-       VALUES ($1, 0)
-       ON CONFLICT (model_id) DO NOTHING`,
-      [modelId]
+    // Só consome um número do contador quando o conteúdo é novo. O índice
+    // único de content_hash garante que versões repetidas não sejam criadas.
+    const existing = await client.query<{ version: number }>(
+      'SELECT version FROM model_versions WHERE model_id = $1 AND content_hash = $2',
+      [modelId, contentHash]
     );
-    const versionResult = await client.query(
-      `UPDATE model_version_counters
-          SET version = version + 1
-        WHERE model_id = $1
-        RETURNING version`,
-      [modelId]
-    );
-    const version = versionResult.rows[0].version as number;
+    let version: number | null = existing.rows[0]?.version ?? null;
+    let created = false;
 
-    const inserted = await client.query(
-      `INSERT INTO model_versions (model_id, version, snapshot, content_hash, kind)
-       VALUES ($1, $2, $3::jsonb, $4, 'auto')
-       ON CONFLICT (model_id, content_hash) WHERE content_hash IS NOT NULL DO NOTHING
-       RETURNING id`,
-      [modelId, version, JSON.stringify(snapshot), contentHash]
-    );
+    if (version === null) {
+      await client.query(
+        `INSERT INTO model_version_counters(model_id, version)
+         VALUES ($1, 0)
+         ON CONFLICT (model_id) DO NOTHING`,
+        [modelId]
+      );
+      const versionResult = await client.query<{ version: number }>(
+        `UPDATE model_version_counters
+            SET version = version + 1
+          WHERE model_id = $1
+          RETURNING version`,
+        [modelId]
+      );
+      version = versionResult.rows[0].version;
+
+      const inserted = await client.query<{ id: string }>(
+        `INSERT INTO model_versions (model_id, version, snapshot, content_hash, kind)
+         VALUES ($1, $2, $3::jsonb, $4, 'auto')
+         ON CONFLICT (model_id, content_hash) WHERE content_hash IS NOT NULL DO NOTHING
+         RETURNING id`,
+        [modelId, version, JSON.stringify(snapshot), contentHash]
+      );
+      created = inserted.rows.length > 0;
+
+      if (!created) {
+        // Corrida com outra instância: o hash já existia entre a leitura e o
+        // INSERT. Não reporta um número que não foi persistido.
+        const raced = await client.query<{ version: number }>(
+          'SELECT version FROM model_versions WHERE model_id = $1 AND content_hash = $2',
+          [modelId, contentHash]
+        );
+        version = raced.rows[0]?.version ?? null;
+      }
+    }
 
     // Retenção: mantém as 30 versões automáticas mais recentes por modelo.
     await client.query(
@@ -141,7 +163,7 @@ async function insertVersionByHash(
     );
     await client.query('COMMIT');
 
-    if (inserted.rows.length > 0) {
+    if (created && version !== null) {
       console.log(`[worker] versão por hash ${modelId} (v${version}) ${contentHash.slice(0, 19)}…`);
     }
   } catch (err) {
@@ -213,42 +235,50 @@ async function syncSnapshotsShadow(): Promise<void> {
   }
 }
 
+/**
+ * O worker não é mais dono do schema. A API aplica as migrações versionadas
+ * (`schema_migrations`) e o worker apenas verifica o contrato mínimo e executa
+ * reparos de dados idempotentes (duplicatas e contador de versões).
+ */
 async function runMigrations() {
-  const queries = [
-    `CREATE TABLE IF NOT EXISTS model_versions (
-      model_id UUID NOT NULL,
-      version INTEGER NOT NULL,
-      snapshot JSONB NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`,
-    `CREATE TABLE IF NOT EXISTS model_version_counters (
-      model_id UUID PRIMARY KEY,
-      version INTEGER NOT NULL DEFAULT 0
-    )`,
+  const required = [
+    'models',
+    'model_versions',
+    'model_version_counters',
+    'integrations',
+    'schema_migrations',
+  ];
+  const missing: string[] = [];
+  for (const table of required) {
+    const result = await pool.query<{ present: boolean }>(
+      'SELECT to_regclass($1) IS NOT NULL AS present',
+      [`public.${table}`]
+    );
+    if (!result.rows[0]?.present) missing.push(table);
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `[worker] schema ausente (${missing.join(', ')}). Execute as migrações da API antes de iniciar o worker.`
+    );
+  }
+
+  // Reparos de dados mantidos aqui porque dependem do estado do storage.
+  await pool.query(
     `DELETE FROM model_versions a
        USING model_versions b
       WHERE a.model_id = b.model_id
         AND a.version = b.version
-        AND a.ctid < b.ctid`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS idx_model_versions_model_version
-       ON model_versions(model_id, version)`,
+        AND a.ctid < b.ctid`
+  );
+  await pool.query(
     `INSERT INTO model_version_counters(model_id, version)
      SELECT model_id, MAX(version)
        FROM model_versions
       GROUP BY model_id
      ON CONFLICT (model_id) DO UPDATE
-       SET version = GREATEST(model_version_counters.version, EXCLUDED.version)`,
-    `CREATE TABLE IF NOT EXISTS integrations (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      kind TEXT NOT NULL,
-      status TEXT NOT NULL,
-      synced_at TIMESTAMPTZ
-    )`,
-  ];
-  for (const q of queries) {
-    await pool.query(q);
-  }
-  console.log('[worker] migrations aplicadas');
+       SET version = GREATEST(model_version_counters.version, EXCLUDED.version)`
+  );
+  console.log('[worker] schema verificado');
 }
 
 async function syncSnapshots() {

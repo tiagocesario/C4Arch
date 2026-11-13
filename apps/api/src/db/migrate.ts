@@ -1,6 +1,13 @@
 import { pool } from '../db.js';
 
-export const schemaQueries = [
+/**
+ * Schema do C4Arch.
+ *
+ * `schemaQueries`/`schemaAlters` continuam exportados porque os testes de SQL e
+ * ferramentas de inspeção dependem deles. `migrations` é a fonte executada por
+ * `runMigrations`, com registro em `schema_migrations` e transação por versão.
+ */
+const baseSchemaQueries = [
     `CREATE TABLE IF NOT EXISTS users (
       id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
       email         TEXT NOT NULL UNIQUE,
@@ -148,29 +155,6 @@ export const schemaQueries = [
       status     TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','ok','error')),
       error      TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`,
-
-    `CREATE TABLE IF NOT EXISTS apps (
-      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      name        TEXT NOT NULL,
-      description TEXT,
-      kind        TEXT NOT NULL DEFAULT 'app' CHECK (kind IN ('app','service')),
-      metadata    JSONB,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`,
-
-    `CREATE TABLE IF NOT EXISTS services (
-      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-      name        TEXT NOT NULL,
-      description TEXT,
-      protocol    TEXT NOT NULL DEFAULT 'http',
-      port        INTEGER,
-      metadata    JSONB,
-      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
 
     `CREATE INDEX IF NOT EXISTS idx_models_org_id ON models(org_id)`,
@@ -323,7 +307,7 @@ export const schemaQueries = [
        ON model_das_overrides(model_id)`,
 ];
 
-export const schemaAlters = [
+const baseAlters = [
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS folder_id UUID REFERENCES folders(id) ON DELETE SET NULL`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS drawio_xml TEXT`,
     `ALTER TABLE models ADD COLUMN IF NOT EXISTS c4_type TEXT NOT NULL DEFAULT 'container'`,
@@ -354,19 +338,151 @@ export const schemaAlters = [
        WHERE content_hash IS NOT NULL`,
     `CREATE INDEX IF NOT EXISTS idx_model_versions_model_created
        ON model_versions(model_id, created_at DESC)`,
+    // Índice antes criado pelo worker; agora o schema tem um único dono (API).
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_model_versions_model_version
+       ON model_versions(model_id, version)`,
 ];
 
+// ── Onda 2/3: colaboração, idempotência, eventos e comentários ─────────────
+const wave2SchemaQueries = [
+    `CREATE TABLE IF NOT EXISTS idempotency_keys (
+      scope_hash      TEXT NOT NULL,
+      key             TEXT NOT NULL,
+      method          TEXT NOT NULL,
+      path            TEXT NOT NULL,
+      request_hash    TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'processing'
+                      CHECK (status IN ('processing','completed')),
+      response_status INTEGER,
+      response_body   JSONB,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      completed_at    TIMESTAMPTZ,
+      PRIMARY KEY (scope_hash, key)
+    )`,
+
+    `CREATE INDEX IF NOT EXISTS idx_idempotency_created
+       ON idempotency_keys(created_at)`,
+
+    `CREATE TABLE IF NOT EXISTS model_events (
+      id         BIGSERIAL PRIMARY KEY,
+      model_id   UUID NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      actor_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+      payload    JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+
+    `CREATE INDEX IF NOT EXISTS idx_model_events_model_created
+       ON model_events(model_id, created_at DESC)`,
+
+    `CREATE INDEX IF NOT EXISTS idx_comments_model_created
+       ON comments(model_id, created_at)`,
+
+    `CREATE INDEX IF NOT EXISTS idx_comments_element
+       ON comments(element_id)`,
+];
+
+const wave2SchemaAlters = [
+    `ALTER TABLE comments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ`,
+    `ALTER TABLE comments ADD COLUMN IF NOT EXISTS resolved_by UUID REFERENCES users(id) ON DELETE SET NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_model_elements_identifier
+       ON model_elements(model_id, identifier)`,
+];
+
+export const schemaQueries = [...baseSchemaQueries, ...wave2SchemaQueries];
+export const schemaAlters = [...baseAlters, ...wave2SchemaAlters];
+
+export interface Migration {
+  id: string;
+  name: string;
+  statements: string[];
+  /**
+   * Migrações legadas são idempotentes e podem falhar em bancos que já tinham
+   * estruturas parciais (por exemplo, um índice único que não pode ser criado
+   * por causa de dados duplicados). O erro é registrado, mas a versão avança.
+   * Migrações novas são estritas.
+   */
+  tolerateErrors?: boolean;
+}
+
+export const migrations: Migration[] = [
+  {
+    id: '001-base-schema',
+    name: 'Schema base do C4Arch',
+    statements: baseSchemaQueries,
+    tolerateErrors: true,
+  },
+  {
+    id: '002-base-alters',
+    name: 'Alters acumulados da Onda 1',
+    statements: baseAlters,
+    tolerateErrors: true,
+  },
+  {
+    id: '003-wave2-collaboration',
+    name: 'Colaboração, idempotência e eventos',
+    statements: [...wave2SchemaQueries, ...wave2SchemaAlters],
+  },
+];
+
+const SCHEMA_MIGRATIONS_TABLE = `
+  CREATE TABLE IF NOT EXISTS schema_migrations (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )
+`;
+
 export async function runMigrations() {
-  for (const q of schemaQueries) {
-    await pool.query(q);
+  await pool.query(SCHEMA_MIGRATIONS_TABLE);
+
+  const applied = await pool.query<{ id: string }>('SELECT id FROM schema_migrations');
+  const appliedIds = new Set(applied.rows.map((row) => row.id));
+
+  for (const migration of migrations) {
+    if (appliedIds.has(migration.id)) continue;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const [index, statement] of migration.statements.entries()) {
+        await client.query('SAVEPOINT migration_step');
+        try {
+          await client.query(statement);
+          await client.query('RELEASE SAVEPOINT migration_step');
+        } catch (err) {
+          await client.query('ROLLBACK TO SAVEPOINT migration_step');
+          if (!migration.tolerateErrors) {
+            throw err;
+          }
+          console.warn(
+            `[db] Migração ${migration.id}, instrução ${index + 1} ignorada:`,
+            err instanceof Error ? err.message : err
+          );
+        }
+      }
+      await client.query(
+        `INSERT INTO schema_migrations (id, name) VALUES ($1, $2)
+         ON CONFLICT (id) DO NOTHING`,
+        [migration.id, migration.name]
+      );
+      await client.query('COMMIT');
+      console.log(`[db] ✓ Migração aplicada: ${migration.id} (${migration.name})`);
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      console.error(`[db] Erro na migração ${migration.id}:`, err);
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
-  for (const q of schemaAlters) {
-    try {
-      await pool.query(q);
-    } catch (err) {
-      console.error('[db] Migration alter warning:', err);
-    }
+  // Limpeza oportunista de chaves de idempotência antigas (24h). Nunca falha a
+  // inicialização se a tabela ainda não existir em um banco parcial.
+  try {
+    await pool.query("DELETE FROM idempotency_keys WHERE created_at < NOW() - INTERVAL '24 hours'");
+  } catch {
+    // ignorada
   }
 
   console.log('[db] ✓ Migrations aplicadas');

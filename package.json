@@ -5,21 +5,27 @@
   "description": "C4Arch - Arquitetura C4 colaborativa e viva",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<owner>/c4arch.git"
+    "url": "git+https://github.com/tiagocesario/C4Arch.git"
   },
   "license": "MIT",
   "workspaces": [
     "apps/api",
     "apps/web",
     "apps/realtime",
-    "apps/worker"
+    "apps/worker",
+    "apps/mcp"
   ],
   "scripts": {
     "dev": "echo 'Use npm run dev --workspace=<name> (e.g. apps/api)'",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present"
+    "test": "npm run test --workspaces --if-present",
+    "db:migrate": "npm run db:migrate --workspace=apps/api",
+    "openapi:client": "node scripts/generate-client.mjs",
+    "backup": "node scripts/backup.mjs",
+    "restore": "node scripts/restore.mjs",
+    "sbom": "node scripts/sbom.mjs"
   },
   "engines": {
     "node": ">=20.0.0"

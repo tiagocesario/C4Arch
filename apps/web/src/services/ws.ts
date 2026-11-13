@@ -4,6 +4,25 @@ let socket: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let onUpdate: ((modelId: string, elements: Element[], edges: Edge[]) => void) | null = null;
 
+export interface PresenceUser {
+  clientId: string;
+  name: string;
+  color: string;
+  viewKey: string | null;
+  cursor: { x: number; y: number } | null;
+}
+
+let onPresence: ((modelId: string, viewKey: string | null, users: PresenceUser[]) => void) | null = null;
+let onRealtimeError: ((message: string) => void) | null = null;
+
+// Última presença recebida; a UI usa como estado inicial ao montar o painel.
+let lastPresence: { modelId: string; viewKey: string | null; users: PresenceUser[] } | null = null;
+
+// Identidade do usuário e view atual, reenviados a cada join/reconexão.
+let presenceUser: { name: string; color?: string } | null = null;
+let currentViewKey: string | null = null;
+let lastCursor: { x: number; y: number } | null = null;
+
 // Indicador de conexão para exibir "WS: online/offline".
 export let connected = false;
 
@@ -36,6 +55,20 @@ export function setOnUpdate(fn: (modelId: string, elements: Element[], edges: Ed
   onUpdate = fn;
 }
 
+export function setOnPresence(
+  fn: ((modelId: string, viewKey: string | null, users: PresenceUser[]) => void) | null
+) {
+  onPresence = fn;
+}
+
+export function getLastPresence() {
+  return lastPresence;
+}
+
+export function setOnRealtimeError(fn: ((message: string) => void) | null) {
+  onRealtimeError = fn;
+}
+
 function notifyConnection(value: boolean) {
   connected = value;
   onConnectionChange?.(value);
@@ -43,7 +76,16 @@ function notifyConnection(value: boolean) {
 
 function sendJoin() {
   if (pendingModelId && socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: 'join', modelId: pendingModelId }));
+    socket.send(
+      JSON.stringify({
+        type: 'join',
+        modelId: pendingModelId,
+        viewKey: currentViewKey ?? undefined,
+        user: presenceUser
+          ? { name: presenceUser.name, color: presenceUser.color, cursor: lastCursor }
+          : undefined,
+      })
+    );
   }
 }
 
@@ -115,6 +157,9 @@ export function connect() {
       type?: string;
       modelId?: string;
       model?: { elements?: unknown; edges?: unknown };
+      viewKey?: string | null;
+      users?: PresenceUser[];
+      error?: string;
     };
     try {
       msg = JSON.parse(e.data as string);
@@ -125,6 +170,16 @@ export function connect() {
       const elements = Array.isArray(msg.model?.elements) ? (msg.model?.elements as Element[]) : [];
       const edges = Array.isArray(msg.model?.edges) ? (msg.model?.edges as Edge[]) : [];
       onUpdate?.(msg.modelId, elements, edges);
+      return;
+    }
+    if (msg.type === 'presence' && msg.modelId) {
+      const users = Array.isArray(msg.users) ? msg.users : [];
+      lastPresence = { modelId: msg.modelId, viewKey: msg.viewKey ?? null, users };
+      onPresence?.(msg.modelId, msg.viewKey ?? null, users);
+      return;
+    }
+    if (msg.type === 'error') {
+      onRealtimeError?.(msg.error ?? 'Erro de colaboração');
     }
   };
 
@@ -161,12 +216,55 @@ export function sendOp(op: Record<string, unknown>) {
   socket.send(payload);
 }
 
-export function join(modelId: string | null) {
+export function join(
+  modelId: string | null,
+  options?: { viewKey?: string | null; user?: { name: string; color?: string } | null }
+) {
   if (pendingModelId !== modelId) {
     pendingOps = [];
   }
+  if (options) {
+    if (options.viewKey !== undefined) currentViewKey = options.viewKey;
+    if (options.user !== undefined) presenceUser = options.user;
+  }
   pendingModelId = modelId;
   if (modelId) sendJoin();
+}
+
+/** Atualiza a view/sala de presença do usuário. */
+export function setViewKey(viewKey: string | null) {
+  currentViewKey = viewKey;
+  if (pendingModelId && socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ type: 'presence', modelId: pendingModelId, viewKey }));
+  }
+}
+
+/** Atualiza nome/cor usados na presença. */
+export function setPresenceUser(user: { name: string; color?: string } | null) {
+  presenceUser = user;
+}
+
+/** Envia a posição do cursor (ou `null` para limpar) na view atual. */
+export function sendPresence(cursor: { x: number; y: number } | null) {
+  lastCursor = cursor;
+  if (!pendingModelId || socket?.readyState !== WebSocket.OPEN) return;
+  socket.send(
+    JSON.stringify({
+      type: 'presence',
+      modelId: pendingModelId,
+      viewKey: currentViewKey,
+      cursor: cursor ?? { x: null, y: null },
+      user: presenceUser ?? undefined,
+    })
+  );
+}
+
+export function undo() {
+  if (pendingModelId) sendOp({ type: 'undo', modelId: pendingModelId });
+}
+
+export function redo() {
+  if (pendingModelId) sendOp({ type: 'redo', modelId: pendingModelId });
 }
 
 export function disconnect() {
@@ -175,6 +273,9 @@ export function disconnect() {
   generation += 1;
   pendingOps = [];
   pendingModelId = null;
+  currentViewKey = null;
+  lastCursor = null;
+  lastPresence = null;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;

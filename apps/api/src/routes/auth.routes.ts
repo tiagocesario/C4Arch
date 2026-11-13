@@ -9,16 +9,16 @@ import { pool } from '../db.js';
 const router = Router();
 
 const KNOWN_REGISTER_ERRORS = new Set([
-  'Email invÃƒÂ¡lido',
+  'Email inválido',
   'Senha muito longa',
-  'Nome invÃƒÂ¡lido',
-  'Email jÃƒÂ¡ cadastrado',
+  'Nome inválido',
+  'Email já cadastrado',
 ]);
 
 // Registro
 router.post('/register', async (req, res) => {
   if (!config.allowRegistration) {
-    return res.status(403).json({ error: 'Registro de novos usuÃƒÂ¡rios desabilitado' });
+    return res.status(403).json({ error: 'Registro de novos usuários desabilitado' });
   }
 
   const { email, name, password } = req.body as {
@@ -28,7 +28,7 @@ router.post('/register', async (req, res) => {
   };
 
   if (typeof email !== 'string' || typeof name !== 'string' || typeof password !== 'string') {
-    return res.status(400).json({ error: 'email, name e password sÃƒÂ£o obrigatÃƒÂ³rios' });
+    return res.status(400).json({ error: 'email, name e password são obrigatórios' });
   }
 
   try {
@@ -41,7 +41,7 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: message });
     }
     console.error('[auth] register error', err);
-    return res.status(500).json({ error: 'Erro ao criar usuÃƒÂ¡rio' });
+    return res.status(500).json({ error: 'Erro ao criar usuário' });
   }
 });
 
@@ -50,19 +50,19 @@ router.post('/login', async (req, res) => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (typeof email !== 'string' || typeof password !== 'string') {
-    return res.status(400).json({ error: 'email e password sÃƒÂ£o obrigatÃƒÂ³rios' });
+    return res.status(400).json({ error: 'email e password são obrigatórios' });
   }
 
   try {
     const result = await AuthService.login(email, password);
     return res.json(result);
   } catch {
-    // Mensagem genÃƒÂ©rica: nÃƒÂ£o revela se o e-mail existe.
-    return res.status(401).json({ error: 'Email ou senha invÃƒÂ¡lidos' });
+    // Mensagem genérica: não revela se o e-mail existe.
+    return res.status(401).json({ error: 'Email ou senha inválidos' });
   }
 });
 
-// Perfil do usuÃƒÂ¡rio autenticado (inclui a org da qual ele pertence)
+// Perfil do usuário autenticado (inclui a org da qual ele pertence)
 router.get('/me', verifyToken, async (req: AuthenticatedRequest, res) => {
   try {
     const userId = req.user!.id;
@@ -70,7 +70,7 @@ router.get('/me', verifyToken, async (req: AuthenticatedRequest, res) => {
       userId,
     ]);
     if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'UsuÃƒÂ¡rio nÃƒÂ£o encontrado' });
+      return res.status(404).json({ error: 'Usuário não encontrado' });
     }
     const user = userResult.rows[0];
     const orgResult = await pool.query(
@@ -84,13 +84,13 @@ router.get('/me', verifyToken, async (req: AuthenticatedRequest, res) => {
     const org = orgResult.rows[0] ?? null;
     return res.json({
       user: { id: user.id, email: user.email, name: user.name },
-      // O papel vem de `memberships`, nunca do JWT. Ãƒâ€° usado apenas para a UI;
-      // cada rota do servidor revalida a permissÃƒÂ£o no banco.
+      // O papel vem de `memberships`, nunca do JWT. É usado apenas para a UI;
+      // cada rota do servidor revalida a permissão no banco.
       org: org ? { id: org.org_id, name: org.org_name, role: org.role } : null,
     });
   } catch (err) {
     console.error('[auth] me error', err);
-    return res.status(500).json({ error: 'Erro ao carregar sessÃƒÂ£o' });
+    return res.status(500).json({ error: 'Erro ao carregar sessão' });
   }
 });
 
@@ -106,7 +106,7 @@ function pruneOauthStates() {
 
 router.get('/google', (req, res) => {
   if (!config.googleClientId || !config.googleClientSecret) {
-    return res.status(503).json({ error: 'Login com Google nao configurado' });
+    return res.status(503).json({ error: 'Login com Google não configurado' });
   }
   pruneOauthStates();
   const state = crypto.randomBytes(24).toString('hex');
@@ -128,7 +128,7 @@ router.get('/google/callback', async (req, res) => {
   const code = typeof req.query.code === 'string' ? req.query.code : '';
   const state = typeof req.query.state === 'string' ? req.query.state : '';
   if (!code || !state || !oauthStates.has(state)) {
-    return res.status(400).json({ error: 'Estado OAuth invalido ou expirado' });
+    return res.status(400).json({ error: 'Estado OAuth inválido ou expirado' });
   }
   oauthStates.delete(state);
 
@@ -157,7 +157,7 @@ router.get('/google/callback', async (req, res) => {
     if (!userRes.ok) return res.status(401).json({ error: 'Falha ao obter perfil do Google' });
     const profile = await userRes.json();
     const email = String(profile.email || '').trim().toLowerCase();
-    if (!email) return res.status(400).json({ error: 'Email nao informado pelo Google' });
+    if (!email) return res.status(400).json({ error: 'Email não informado pelo Google' });
 
     const domain = email.split('@')[1] || '';
     const ruleResult = await pool.query(
@@ -166,7 +166,7 @@ router.get('/google/callback', async (req, res) => {
     );
     const rule = ruleResult.rows[0];
     if (!rule) {
-      return res.status(403).json({ error: 'Dominio de email nao autorizado' });
+      return res.status(403).json({ error: 'Domínio de email não autorizado' });
     }
 
     let userResult = await pool.query('SELECT id, email, name FROM users WHERE lower(email) = $1', [email]);
@@ -186,7 +186,7 @@ router.get('/google/callback', async (req, res) => {
         user = userResult.rows[0];
       }
     }
-    if (!user) return res.status(500).json({ error: 'Falha ao criar usuario SSO' });
+    if (!user) return res.status(500).json({ error: 'Falha ao criar usuário SSO' });
 
     await pool.query(
       'INSERT INTO memberships (org_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, user_id) DO NOTHING',
@@ -205,11 +205,11 @@ router.get('/google/callback', async (req, res) => {
 
 router.get('/domains', verifyToken, async (req: AuthenticatedRequest, res) => {
   const orgId = typeof req.query.orgId === 'string' ? req.query.orgId : '';
-  if (!orgId) return res.status(400).json({ error: 'orgId e obrigatorio' });
+  if (!orgId) return res.status(400).json({ error: 'orgId é obrigatório' });
   try {
     const { getOrgRole } = await import('../auth/access.js');
     const role = await getOrgRole(req.user!.id, orgId);
-    if (role !== 'owner') return res.status(403).json({ error: 'Somente owner pode gerenciar dominios' });
+    if (role !== 'owner') return res.status(403).json({ error: 'Somente owner pode gerenciar domínios' });
     const result = await pool.query(
       'SELECT id, org_id, domain, role, enabled, created_at FROM login_domain_rules WHERE org_id = $1 ORDER BY domain',
       [orgId]
@@ -217,21 +217,21 @@ router.get('/domains', verifyToken, async (req: AuthenticatedRequest, res) => {
     return res.json(result.rows);
   } catch (err) {
     console.error('[auth] domains list error', err);
-    return res.status(500).json({ error: 'Erro ao listar dominios' });
+    return res.status(500).json({ error: 'Erro ao listar domínios' });
   }
 });
 
 router.post('/domains', verifyToken, async (req: AuthenticatedRequest, res) => {
   const { orgId, domain, role } = req.body || {};
   if (!orgId || typeof domain !== 'string' || !domain.trim()) {
-    return res.status(400).json({ error: 'orgId e domain sao obrigatorios' });
+    return res.status(400).json({ error: 'orgId e domain são obrigatórios' });
   }
   const cleanDomain = domain.trim().toLowerCase().replace(/^@/, '');
   const cleanRole = role === 'editor' || role === 'owner' ? role : 'viewer';
   try {
     const { getOrgRole } = await import('../auth/access.js');
     const ownerRole = await getOrgRole(req.user!.id, orgId);
-    if (ownerRole !== 'owner') return res.status(403).json({ error: 'Somente owner pode gerenciar dominios' });
+    if (ownerRole !== 'owner') return res.status(403).json({ error: 'Somente owner pode gerenciar domínios' });
     const result = await pool.query(
       'INSERT INTO login_domain_rules (org_id, domain, role) VALUES ($1, $2, $3) ON CONFLICT (org_id, domain) DO UPDATE SET role = EXCLUDED.role, enabled = TRUE RETURNING id, org_id, domain, role, enabled, created_at',
       [orgId, cleanDomain, cleanRole]
@@ -239,23 +239,23 @@ router.post('/domains', verifyToken, async (req: AuthenticatedRequest, res) => {
     return res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('[auth] domains create error', err);
-    return res.status(500).json({ error: 'Erro ao criar dominio' });
+    return res.status(500).json({ error: 'Erro ao criar domínio' });
   }
 });
 
 router.delete('/domains/:id', verifyToken, async (req: AuthenticatedRequest, res) => {
   try {
     const found = await pool.query('SELECT org_id FROM login_domain_rules WHERE id = $1', [req.params.id]);
-    if (found.rows.length === 0) return res.status(404).json({ error: 'Dominio nao encontrado' });
+    if (found.rows.length === 0) return res.status(404).json({ error: 'Domínio não encontrado' });
     const orgId = found.rows[0].org_id;
     const { getOrgRole } = await import('../auth/access.js');
     const role = await getOrgRole(req.user!.id, orgId);
-    if (role !== 'owner') return res.status(403).json({ error: 'Somente owner pode gerenciar dominios' });
+    if (role !== 'owner') return res.status(403).json({ error: 'Somente owner pode gerenciar domínios' });
     await pool.query('DELETE FROM login_domain_rules WHERE id = $1', [req.params.id]);
     return res.json({ ok: true });
   } catch (err) {
     console.error('[auth] domains delete error', err);
-    return res.status(500).json({ error: 'Erro ao excluir dominio' });
+    return res.status(500).json({ error: 'Erro ao excluir domínio' });
   }
 });
 

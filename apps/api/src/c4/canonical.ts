@@ -51,6 +51,9 @@ export interface LegacyEdgeRow {
   to_id: string;
   label?: string | null;
   type: string;
+  /** Títulos denormalizados usados pela API legada; mantidos por paridade. */
+  source_title?: string | null;
+  target_title?: string | null;
 }
 
 export interface LegacyModelRow {
@@ -455,6 +458,53 @@ export function diffDasSections(generated: string, legacy: string): DasDiff {
 }
 
 /**
+ * Mescla o diff contra o template com os overrides já existentes que precisam
+ * sobreviver a um novo save:
+ *
+ * - `hide` continua valendo enquanto a seção estiver ausente do conteúdo salvo;
+ * - `append` continua valendo quando o conteúdo da seção é exatamente o
+ *   template + texto anexado (o diff o veria como `replace`).
+ */
+export function mergeDasOverrides(
+  generated: string,
+  content: string,
+  previous: CanonicalDasOverride[],
+  diff: DasDiff
+): CanonicalDasOverride[] {
+  const generatedByKey = new Map(
+    parseDasSections(generated).map((section) => [section.key, section])
+  );
+  const savedByKey = new Map(parseDasSections(content).map((section) => [section.key, section]));
+  const overridesByKey = new Map<string, CanonicalDasOverride>();
+
+  for (const override of diff.overrides) {
+    overridesByKey.set(override.section_key, override);
+  }
+
+  for (const override of previous) {
+    if (override.section_key === 'document') continue;
+    const saved = savedByKey.get(override.section_key);
+
+    if (override.mode === 'hide') {
+      if (!saved) overridesByKey.set(override.section_key, override);
+      continue;
+    }
+
+    if (override.mode === 'append' && saved) {
+      const template = generatedByKey.get(override.section_key);
+      const expected = template
+        ? normalizeSection(`${template.content}\n\n${(override.content ?? '').trim()}`)
+        : null;
+      if (expected !== null && normalizeSection(saved.content) === expected) {
+        overridesByKey.set(override.section_key, override);
+      }
+    }
+  }
+
+  return [...overridesByKey.values()];
+}
+
+/**
  * Aplica os overrides por seção ao DAS gerado pelo template.
  *
  * - `replace` troca a seção inteira (cabeçalho incluso);
@@ -502,7 +552,10 @@ export function applyDasOverrides(
   }
 
   let output = [...lines];
-  for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
+  // Aplica de trás para frente. Em índices iguais (append no fim de uma seção
+  // e hide/replace da seção seguinte), a substituição maior vem primeiro para
+  // não apagar o texto recém-inserido.
+  for (const replacement of replacements.sort((a, b) => b.start - a.start || b.end - a.end)) {
     const textLines = replacement.text ? replacement.text.split('\n') : [];
     output.splice(replacement.start, replacement.end - replacement.start, ...textLines);
   }

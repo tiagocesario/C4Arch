@@ -29,7 +29,24 @@ interface ModelState {
   /** Há alterações ainda não gravadas em `model_state`. */
   dirty: boolean;
   persistTimer: ReturnType<typeof setTimeout> | null;
+  /** Histórico de undo/redo por modelo (snapshots Yjs completos, limitado). */
+  undoStack: Uint8Array[];
+  redoStack: Uint8Array[];
+  /** Presença por conexão; cada cliente recebe a lista da sua view/sala. */
+  presence: Map<WebSocket, PresenceUser>;
 }
+
+export interface PresenceUser {
+  clientId: string;
+  name: string;
+  color: string;
+  viewKey: string | null;
+  cursor: { x: number; y: number } | null;
+  updatedAt: number;
+}
+
+const MAX_UNDO_STACK = 50;
+const PRESENCE_COLORS = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa', '#fb7185', '#22d3ee'];
 
 interface CachedModel {
   elements: Array<Record<string, unknown>>;
@@ -107,8 +124,7 @@ const toYjsEdge = (edge: Record<string, unknown>): Record<string, unknown> => {
   };
 };
 
-const serializeModel = (doc: Y.Doc, modelId: string): Record<string, unknown> => {
-  const elements: Array<Record<string, unknown>> = [];
+const serializeModel = (doc: Y.Doc, modelId: string): Record<string, unknown> => {  const elements: Array<Record<string, unknown>> = [];
   const elementsMap = doc.getMap('elements');
   for (const [id, el] of elementsMap) {
     const obj = fromYjsElement(el);
@@ -124,6 +140,58 @@ const serializeModel = (doc: Y.Doc, modelId: string): Record<string, unknown> =>
   return { modelId, elements, edges: serializedEdges };
 };
 
+/** Snapshot completo usado pelo undo/redo. */
+export function captureState(doc: Y.Doc): Uint8Array {
+  return Y.encodeStateAsUpdate(doc);
+}
+
+/**
+ * Substitui o conteúdo do documento pelo snapshot. Diferente de
+ * `Y.applyUpdate`, remove elementos/arestas que não existiam no snapshot,
+ * que é o comportamento esperado ao desfazer uma criação.
+ */
+export function restoreState(doc: Y.Doc, update: Uint8Array): void {
+  const temp = new Y.Doc();
+  Y.applyUpdate(temp, update);
+
+  const elements = doc.getMap('elements');
+  const desiredElements = temp.getMap('elements');
+  for (const key of [...elements.keys()]) {
+    if (!desiredElements.has(key)) elements.delete(key);
+  }
+  for (const [key, value] of desiredElements) {
+    elements.set(key, fromYjsElement(value));
+  }
+
+  const edges = doc.getArray('edges');
+  const desiredEdges = temp.getArray('edges').toArray();
+  edges.delete(0, edges.length);
+  if (desiredEdges.length > 0) edges.push(desiredEdges as Array<unknown>);
+}
+
+function broadcastPresence(modelId: string, entry: ModelState): void {
+  for (const client of entry.clients) {
+    if (client.readyState !== WebSocket.OPEN) continue;
+    const self = entry.presence.get(client);
+    const viewKey = self?.viewKey ?? null;
+    const users = [...entry.presence.values()]
+      .filter((user) => {
+        if (!viewKey) return true;
+        return !user.viewKey || user.viewKey === viewKey;
+      })
+      .map((user) => ({
+        clientId: user.clientId,
+        name: user.name,
+        color: user.color,
+        viewKey: user.viewKey,
+        cursor: user.cursor,
+      }));
+    client.send(
+      JSON.stringify({ type: 'presence', modelId, viewKey, users })
+    );
+  }
+}
+
 function createEntry(doc = new Y.Doc()): ModelState {
   return {
     doc,
@@ -131,6 +199,9 @@ function createEntry(doc = new Y.Doc()): ModelState {
     version: 0,
     dirty: false,
     persistTimer: null,
+    undoStack: [],
+    redoStack: [],
+    presence: new Map<WebSocket, PresenceUser>(),
   };
 }
 
@@ -244,6 +315,11 @@ export function attachWebsocket(httpServer: Server) {
     let modelId: string | null = null;
     let doc: Y.Doc | null = null;
     let sessionToken: string | null = null;
+    const clientId = randomUUID();
+    let presenceName = 'Anônimo';
+    let presenceColor = PRESENCE_COLORS[Math.floor(Math.random() * PRESENCE_COLORS.length)];
+    let viewKey: string | null = null;
+    let cursor: { x: number; y: number } | null = null;
     // Papel por modelo, com TTL curto: uma rebaixamento de owner/editor para
     // viewer passa a bloquear escritas no WS sem exigir reconexão.
     const modelRoles = new Map<string, { role: string; checkedAt: number }>();
@@ -361,6 +437,8 @@ export function attachWebsocket(httpServer: Server) {
             const previous = models.get(modelId);
             if (previous) {
               previous.clients.delete(ws);
+              previous.presence.delete(ws);
+              broadcastPresence(modelId, previous);
               if (previous.clients.size === 0) {
                 await flushState(modelId);
                 if (flags.realtimePgState !== 'on') {
@@ -379,6 +457,35 @@ export function attachWebsocket(httpServer: Server) {
           }
           entry.clients.add(ws);
           doc = entry.doc;
+          viewKey =
+            typeof message.viewKey === 'string' && message.viewKey.trim()
+              ? message.viewKey.trim().slice(0, 120)
+              : null;
+          const userInfo =
+            message.user && typeof message.user === 'object'
+              ? (message.user as Record<string, unknown>)
+              : null;
+          if (userInfo && typeof userInfo.name === 'string' && userInfo.name.trim()) {
+            presenceName = userInfo.name.trim().slice(0, 80);
+          }
+          if (userInfo && typeof userInfo.color === 'string' && /^#[0-9a-f]{6}$/i.test(userInfo.color)) {
+            presenceColor = userInfo.color;
+          }
+          if (userInfo && userInfo.cursor && typeof userInfo.cursor === 'object') {
+            const value = userInfo.cursor as Record<string, unknown>;
+            if (typeof value.x === 'number' && typeof value.y === 'number') {
+              cursor = { x: value.x, y: value.y };
+            }
+          }
+          entry.presence.set(ws, {
+            clientId,
+            name: presenceName,
+            color: presenceColor,
+            viewKey,
+            cursor,
+            updatedAt: Date.now(),
+          });
+
 
           const docEmpty = doc.getMap('elements').size === 0 && doc.getArray('edges').length === 0;
           const hydrationToken = sessionToken ?? apiToken;
@@ -389,7 +496,12 @@ export function attachWebsocket(httpServer: Server) {
             }
           }
 
-          if (docEmpty && doc.getMap('elements').size === 0 && hydrationToken) {
+          // Só hidrata do legado se, após aplicar o estado durável, ainda não
+          // houver nem elementos nem arestas. Checar apenas os elementos
+          // duplicaria arestas quando o estado durável tivesse só relações.
+          const stillEmpty =
+            doc.getMap('elements').size === 0 && doc.getArray('edges').length === 0;
+          if (stillEmpty && hydrationToken) {
             const cached = await getModelFromApi(modelId, hydrationToken);
             if (cached) {
               for (const element of cached.elements) {
@@ -409,6 +521,7 @@ export function attachWebsocket(httpServer: Server) {
           }
 
           ws.send(JSON.stringify({ type: 'state', modelId, model: serializeModel(doc, modelId) }));
+          broadcastPresence(modelId, entry);
           break;
         }
 
@@ -429,9 +542,17 @@ export function attachWebsocket(httpServer: Server) {
             ws.send(JSON.stringify({ type: 'error', error: 'sem permissão de escrita' }));
             return;
           }
+          const before = captureState(entry.doc);
           const changed = applyOperation(entry.doc, patch);
           if (!changed) {
             break;
+          }
+          // Hidratação é semeadura inicial, não uma edição do usuário; não deve
+          // ocupar uma posição no histórico de undo.
+          if (patch.op !== 'hydrateModel') {
+            entry.undoStack.push(before);
+            if (entry.undoStack.length > MAX_UNDO_STACK) entry.undoStack.shift();
+            entry.redoStack = [];
           }
           entry.version += 1;
           broadcast(modelId, entry);
@@ -443,6 +564,84 @@ export function attachWebsocket(httpServer: Server) {
               console.error('[realtime] falha ao salvar snapshot:', err);
             }
           }
+          break;
+        }
+
+        case 'undo':
+        case 'redo': {
+          if (!modelId) {
+            ws.send(JSON.stringify({ type: 'error', error: 'modelId obrigatório' }));
+            return;
+          }
+          const entry = models.get(modelId);
+          if (!entry) {
+            ws.send(JSON.stringify({ type: 'error', error: 'modelo não encontrado' }));
+            return;
+          }
+          const writeRole = await ensureModelRole(modelId);
+          if (!canWrite(writeRole)) {
+            ws.send(JSON.stringify({ type: 'error', error: 'sem permissão de escrita' }));
+            return;
+          }
+          const source = type === 'undo' ? entry.undoStack : entry.redoStack;
+          if (source.length === 0) {
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                error: type === 'undo' ? 'nada para desfazer' : 'nada para refazer',
+              })
+            );
+            return;
+          }
+          const current = captureState(entry.doc);
+          if (type === 'undo') {
+            entry.redoStack.push(current);
+            if (entry.redoStack.length > MAX_UNDO_STACK) entry.redoStack.shift();
+          } else {
+            entry.undoStack.push(current);
+            if (entry.undoStack.length > MAX_UNDO_STACK) entry.undoStack.shift();
+          }
+          const previous = source.pop();
+          if (previous) restoreState(entry.doc, previous);
+          entry.version += 1;
+          broadcast(modelId, entry);
+          schedulePersist(modelId);
+          if (flags.realtimePgState !== 'on') {
+            await saveSnapshot(modelId, storageDir).catch(() => false);
+          }
+          break;
+        }
+
+        case 'presence': {
+          if (!modelId) break;
+          const entry = models.get(modelId);
+          if (!entry) break;
+          const presence = entry.presence.get(ws);
+          if (!presence) break;
+          if (typeof message.viewKey === 'string') {
+            viewKey = message.viewKey.trim().slice(0, 120) || null;
+            presence.viewKey = viewKey;
+          }
+          const userInfo =
+            message.user && typeof message.user === 'object'
+              ? (message.user as Record<string, unknown>)
+              : null;
+          if (userInfo && typeof userInfo.name === 'string' && userInfo.name.trim()) {
+            presence.name = userInfo.name.trim().slice(0, 80);
+            presenceName = presence.name;
+          }
+          if (message.cursor && typeof message.cursor === 'object') {
+            const value = message.cursor as Record<string, unknown>;
+            if (typeof value.x === 'number' && typeof value.y === 'number') {
+              cursor = { x: value.x, y: value.y };
+              presence.cursor = cursor;
+            } else if (value.x === null && value.y === null) {
+              cursor = null;
+              presence.cursor = null;
+            }
+          }
+          presence.updatedAt = Date.now();
+          broadcastPresence(modelId, entry);
           break;
         }
 
@@ -460,6 +659,8 @@ export function attachWebsocket(httpServer: Server) {
       const entry = models.get(modelId);
       if (!entry) return;
       entry.clients.delete(ws);
+      entry.presence.delete(ws);
+      broadcastPresence(modelId, entry);
       if (entry.clients.size === 0) {
         await flushState(modelId);
         if (flags.realtimePgState !== 'on') {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import {
   listModels,
@@ -34,6 +34,18 @@ import {
   importModel,
 } from './services/api';
 import { Canvas } from './components/Canvas';
+import { AppHeader } from './components/AppHeader';
+import { CommentsPanel } from './components/CommentsPanel';
+import { DasEditor } from './components/DasEditor';
+import { ExportPanel } from './components/ExportPanel';
+import { ImportModelsPanel } from './components/ImportModelsPanel';
+import type { ImportResult, ImportSource } from './components/ImportModelsPanel';
+import { InspectionsPanel } from './components/InspectionsPanel';
+import { LoginScreen } from './components/LoginScreen';
+import { PresenceBar } from './components/PresenceBar';
+import { StructurizrImportPanel } from './components/StructurizrImportPanel';
+import { VersionsPanel } from './components/VersionsPanel';
+import { autoLayoutViewModel, type ModelComment } from './services/collaboration';
 import { inspectModel, type InspectionReport } from './services/api';
 import {
   listModelVersions,
@@ -42,6 +54,11 @@ import {
   type ModelVersion,
 } from './services/api';
 import * as ws from './services/ws';
+import { parseHashRoute, replaceHashRoute } from './router';
+import { escapeHtml, markdownToHtml } from './utils/markdown';
+import { buildDasFromSections, firstDiagramXml, parseDasSections } from './utils/das';
+import { nameFromImportUrl, normalizeText, stripFileExtension } from './utils/text';
+import { C4_TYPE_HELP, C4_TYPE_LABEL } from './utils/c4';
 import type {
   Model,
   ModelDetail,
@@ -52,7 +69,6 @@ import type {
   SessionUser,
   AssetDependency,
   C4ModelType,
-  ModelDiagram,
 } from './services/types';
 import { C4_MODEL_TYPES } from './services/types';
 import type { UserRole } from './types/user';
@@ -60,233 +76,6 @@ import UserManagement from './pages/UserManagement';
 import GroupManagement from './pages/GroupManagement';
 
 type Mode = 'files' | 'edit' | 'users' | 'groups' | 'catalog' | 'domains';
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/** Formatação inline mínima usada pelo DAS (negrito e código). */
-function renderInline(value: string): string {
-  return escapeHtml(value)
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>');
-}
-
-function splitTableRow(row: string): string[] {
-  return row
-    .trim()
-    .replace(/^\||\|$/g, '')
-    .replace(/\\\|/g, '\u0000')
-    .split('|')
-    .map((cell) => cell.replace(/\u0000/g, '|').trim());
-}
-
-/**
- * Renderizador Markdown simples e seguro para o DAS. Cobre títulos, tabelas,
- * listas, citações, negrito, código e régua horizontal — o suficiente para o
- * documento gerado pela API e para o PDF.
- */
-function markdownToHtml(md: string): string {
-  const lines = md.replace(/\r\n/g, '\n').split('\n');
-  const html: string[] = [];
-  let paragraph: string[] = [];
-  let list: string[] = [];
-  let quote: string[] = [];
-
-  const flushParagraph = () => {
-    if (paragraph.length > 0) {
-      html.push(`<p>${renderInline(paragraph.join(' '))}</p>`);
-      paragraph = [];
-    }
-  };
-  const flushList = () => {
-    if (list.length > 0) {
-      html.push(`<ul>${list.map((item) => `<li>${renderInline(item)}</li>`).join('')}</ul>`);
-      list = [];
-    }
-  };
-  const flushQuote = () => {
-    if (quote.length > 0) {
-      html.push(`<blockquote>${quote.map(renderInline).join('<br/>')}</blockquote>`);
-      quote = [];
-    }
-  };
-  const flushAll = () => {
-    flushParagraph();
-    flushList();
-    flushQuote();
-  };
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const trimmed = line.trim();
-
-    if (!trimmed) {
-      flushAll();
-      continue;
-    }
-
-    // Tabelas: agrupa linhas consecutivas que começam e terminam com "|".
-    if (/^\|.*\|$/.test(trimmed)) {
-      const tableLines: string[] = [];
-      while (index < lines.length && /^\s*\|.*\|\s*$/.test(lines[index])) {
-        tableLines.push(lines[index].trim());
-        index += 1;
-      }
-      index -= 1;
-      flushAll();
-
-      if (tableLines.length >= 2) {
-        const isSeparator = (row: string) => /^\|[\s\-:|]+\|$/.test(row);
-        const header = splitTableRow(tableLines[0]);
-        const bodyStart = isSeparator(tableLines[1]) ? 2 : 1;
-        const body = tableLines.slice(bodyStart).map(splitTableRow);
-        const headHtml = header.map((cell) => `<th>${renderInline(cell)}</th>`).join('');
-        const bodyHtml = body
-          .map((row) => {
-            const cells = header.map((_, cellIndex) => row[cellIndex] ?? '');
-            return `<tr>${cells.map((cell) => `<td>${renderInline(cell)}</td>`).join('')}</tr>`;
-          })
-          .join('');
-        html.push(`<table><thead><tr>${headHtml}</tr></thead><tbody>${bodyHtml}</tbody></table>`);
-      } else {
-        html.push(`<p>${renderInline(tableLines.join(' '))}</p>`);
-      }
-      continue;
-    }
-
-    const heading = trimmed.match(/^(#{1,3})\s+(.*)$/);
-    if (heading) {
-      flushAll();
-      const level = heading[1].length;
-      html.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
-      continue;
-    }
-
-    if (/^---+$/.test(trimmed)) {
-      flushAll();
-      html.push('<hr/>');
-      continue;
-    }
-
-    if (/^>\s?/.test(trimmed)) {
-      flushParagraph();
-      flushList();
-      quote.push(trimmed.replace(/^>\s?/, ''));
-      continue;
-    }
-
-    if (/^[-*]\s+/.test(trimmed)) {
-      flushParagraph();
-      flushQuote();
-      list.push(trimmed.replace(/^[-*]\s+/, ''));
-      continue;
-    }
-
-    flushList();
-    flushQuote();
-    paragraph.push(trimmed);
-  }
-
-  flushAll();
-  return html.join('\n');
-}
-
-// Normaliza texto para busca: minúsculas e sem acentos, para que "servico"
-// encontre "Serviço" enquanto o usuário digita.
-function normalizeText(value: string | null | undefined): string {
-  return (value ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-function stripFileExtension(value: string): string {
-  return value
-    .replace(/(\.drawio)?\.xml$/i, '')
-    .replace(/\.drawio$/i, '')
-    .trim();
-}
-
-/** Usa o XML do diagrama primário ou, se vazio, o primeiro tipo com desenho. */
-function firstDiagramXml(model: {
-  drawioXml?: string | null;
-  diagrams?: ModelDiagram[];
-}): string | null {
-  if (model.drawioXml) return model.drawioXml;
-  return model.diagrams?.find((diagram) => diagram.drawioXml)?.drawioXml ?? null;
-}
-
-interface DasSection {
-  heading: string;
-  body: string;
-}
-
-/**
- * Separa o cabeçalho (metadados antes do primeiro `##`) das seções de nível 2.
- * O DAS gerado pela API usa `##` para cada seção do documento.
- */
-function parseDasSections(content: string): { preamble: string; sections: DasSection[] } {
-  const lines = content.split('\n');
-  const sections: DasSection[] = [];
-  const preamble: string[] = [];
-  let current: DasSection | null = null;
-  for (const line of lines) {
-    if (line.startsWith('## ')) {
-      if (current) sections.push(current);
-      current = { heading: line.slice(3).trim(), body: '' };
-    } else if (current) {
-      current.body += (current.body ? '\n' : '') + line;
-    } else {
-      preamble.push(line);
-    }
-  }
-  if (current) sections.push(current);
-  return { preamble: preamble.join('\n'), sections };
-}
-
-function buildDasFromSections(preamble: string, sections: DasSection[]): string {
-  const parts: string[] = [];
-  if (preamble.trim()) parts.push(preamble);
-  for (const section of sections) {
-    parts.push(`## ${section.heading}\n\n${section.body}`);
-  }
-  return parts.join('\n\n');
-}
-
-function nameFromImportUrl(raw: string): string {
-  try {
-    const url = new URL(raw);
-    const fromPath = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() ?? '');
-    if (fromPath && fromPath !== 'view' && fromPath !== 'edit') {
-      return stripFileExtension(fromPath);
-    }
-    const driveId = url.pathname.match(/\/file\/d\/([^/]+)/)?.[1] ?? url.searchParams.get('id');
-    return driveId ? `Modelo importado ${driveId.slice(0, 8)}` : 'Modelo importado';
-  } catch {
-    return 'Modelo importado';
-  }
-}
-
-interface ImportResult {
-  name: string;
-  ok: boolean;
-  error?: string;
-}
-
-type ImportSource = 'files' | 'folder' | 'drive' | 'urls';
-
-const ROLE_LABEL: Record<UserRole, string> = {
-  owner: 'Owner',
-  editor: 'Editor',
-  viewer: 'Viewer',
-};
 
 const inputStyle: CSSProperties = {
   padding: '8px',
@@ -320,26 +109,6 @@ const dangerButtonStyle: CSSProperties = {
 const smallMuted: CSSProperties = { fontSize: 12, color: '#7b8290' };
 
 const statusLabel: Record<ModelStatus, string> = { draft: 'Rascunho', final: 'Final' };
-
-const C4_TYPE_LABEL: Record<C4ModelType, string> = {
-  'system-context': 'Contexto do sistema',
-  container: 'Container',
-  component: 'Componente',
-  code: 'Código',
-  'system-landscape': 'System landscape',
-  dynamic: 'Dinâmico',
-  deployment: 'Implantação',
-};
-
-const C4_TYPE_HELP: Record<C4ModelType, string> = {
-  'system-context': 'Um software system em foco, com pessoas e sistemas externos.',
-  container: 'Apps, serviços e data stores que compõem um software system.',
-  component: 'Componentes dentro de um container específico.',
-  code: 'Classes, interfaces e tabelas de um componente (use sob demanda).',
-  'system-landscape': 'People e software systems de uma organização/empresa.',
-  dynamic: 'Interações em runtime para uma feature ou caso de uso.',
-  deployment: 'Instâncias de systems/containers em um ambiente de deployment.',
-};
 
 interface AssetDraft {
   kind: 'app' | 'service';
@@ -392,6 +161,14 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [booting, setBooting] = useState(true);
+  // Deep link presente na URL no primeiro carregamento. Enquanto ele não for
+  // aplicado, o efeito de persistência não pode sobrescrever o hash com a
+  // tela padrão (senão `#/catalog` ou `#/models/:id` seriam perdidos).
+  const pendingHashRef = useRef<string | null>(
+    typeof window !== 'undefined' && window.location.hash.length > 1
+      ? window.location.hash
+      : null
+  );
   const [orgId, setOrgId] = useState('');
   const [orgName, setOrgName] = useState('');
   const [currentUser, setCurrentUser] = useState<SessionUser | null>(null);
@@ -451,6 +228,16 @@ export default function App() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+
+  // Colaboração, comentários e interoperabilidade (Ondas 2/3).
+  const [showComments, setShowComments] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [showStructurizrImport, setShowStructurizrImport] = useState(false);
+  const [structurizrTargetModelId, setStructurizrTargetModelId] = useState<string | null>(null);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [modelComments, setModelComments] = useState<ModelComment[]>([]);
+  const [presenceUsers, setPresenceUsers] = useState<ws.PresenceUser[]>([]);
+  const [autoLayoutBusy, setAutoLayoutBusy] = useState(false);
 
   const [search, setSearch] = useState('');
   const [folderFilter, setFolderFilter] = useState<string>('all');
@@ -714,7 +501,27 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    ws.join(selectedId);
+    ws.join(selectedId, {
+      viewKey: model?.c4Type ?? 'container',
+      user: currentUser ? { name: currentUser.name || currentUser.email } : null,
+    });
+  }, [selectedId, model?.c4Type, currentUser]);
+
+  useEffect(() => {
+    ws.setOnPresence((id, _viewKey, users) => {
+      if (id === selectedId) setPresenceUsers(users);
+    });
+    ws.setOnRealtimeError((message) => setError(message));
+    return () => {
+      ws.setOnPresence(null);
+      ws.setOnRealtimeError(null);
+    };
+  }, [selectedId]);
+
+  useEffect(() => {
+    setSelectedElementId(null);
+    setModelComments([]);
+    setPresenceUsers([]);
   }, [selectedId]);
 
   // Persiste a tela/modelo atual para sobreviver ao F5. Só grava depois do
@@ -722,6 +529,8 @@ export default function App() {
   useEffect(() => {
     if (!loggedIn || booting) return;
     if (mode === 'edit' && !selectedId) return;
+    // Não apaga um deep link antes de o efeito de rota aplicá-lo.
+    if (pendingHashRef.current) return;
     try {
       localStorage.setItem(
         'c4arch_view',
@@ -736,6 +545,36 @@ export default function App() {
       // ignora
     }
   }, [loggedIn, booting, mode, selectedId, previewModel, previewDiagramType]);
+
+  // Deep link (`#/models/<id>`) e navegação por hash. A URL é atualizada com
+  // `replaceState` para não poluir o histórico com cada troca de aba.
+  useEffect(() => {
+    if (!loggedIn || booting) return;
+    const apply = () => {
+      const hash = window.location.hash;
+      pendingHashRef.current = null;
+      if (!hash || hash === '#' || hash === '#/') return;
+      const route = parseHashRoute(hash);
+      if (route.modelId) {
+        void openModel(route.modelId);
+      } else {
+        setMode(route.mode);
+      }
+    };
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
+    // `openModel` e `setMode` são estáveis o suficiente para este efeito, que
+    // só deve reagir ao login e a mudanças manuais de hash.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn, booting]);
+
+  useEffect(() => {
+    if (!loggedIn) return;
+    // O hash inicial é a fonte da rota até o efeito de deep link aplicá-lo.
+    if (pendingHashRef.current) return;
+    replaceHashRoute(mode, selectedId);
+  }, [loggedIn, mode, selectedId]);
 
   // (limpeza feita em clearSession)
 
@@ -1351,6 +1190,13 @@ export default function App() {
 
   const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
+  const activeViewKey = model?.c4Type ?? 'container';
+  const commentedElementIds = useMemo(
+    () =>
+      [...new Set(modelComments.map((comment) => comment.elementId).filter((id): id is string => !!id))],
+    [modelComments]
+  );
+
   const dasParsed = useMemo(() => parseDasSections(dasContent), [dasContent]);
   const dasSectionItems = useMemo(
     () => [
@@ -1371,7 +1217,6 @@ export default function App() {
   );
   const dasEmptySections = dasSectionItems.filter((item) => !item.body.trim()).length;
   const dasActiveIndex = Math.min(dasActiveSection, Math.max(dasSectionItems.length - 1, 0));
-  const dasActiveItem = dasSectionItems[dasActiveIndex] ?? dasSectionItems[0];
   const dasDirty = dasContent !== dasBaselineContent;
 
   if (booting) {
@@ -1434,84 +1279,65 @@ export default function App() {
     setDasContent(buildDasFromSections(dasParsed.preamble, nextSections));
   }
 
+  async function handleAutoLayout() {
+    if (!selectedId || autoLayoutBusy) return;
+    setAutoLayoutBusy(true);
+    try {
+      const result = await autoLayoutViewModel(selectedId, activeViewKey, 'LR');
+      // Mantém o Yjs coerente com o layout gravado no Postgres, para que o
+      // próximo update em tempo real não devolva as posições antigas.
+      for (const position of result.positions) {
+        ws.sendOp({
+          type: 'patch',
+          modelId: selectedId,
+          patch: {
+            op: 'updateElement',
+            data: { id: position.id, positionX: position.x, positionY: position.y },
+          },
+        });
+      }
+      const detail = await getModel(selectedId);
+      setModel(detail);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAutoLayoutBusy(false);
+    }
+  }
+
+  async function handleStructurizrImported(importedModelId: string) {
+    setShowStructurizrImport(false);
+    try {
+      const [detail, list] = await Promise.all([getModel(importedModelId), listModels()]);
+      setModels(list);
+      setModel(detail);
+      setSelectedId(importedModelId);
+      setMode('edit');
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0f1115', color: '#e8eaed' }}>
-      <header style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', gap: '12px', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontWeight: 600 }}>C4Arch</h1>
-        <span style={{ ...smallMuted, marginLeft: 'auto' }}>React Flow + Yjs · Docker</span>
-        {loggedIn && currentRole && (
-          <span
-            title="Perfil na organização (definido em memberships)"
-            style={{
-              ...smallMuted,
-              color: '#c7d2fe',
-              border: '1px solid #2a2f3a',
-              borderRadius: 999,
-              padding: '3px 9px',
-            }}
-          >
-            {currentUser?.email} · {ROLE_LABEL[currentRole]}
-          </span>
-        )}
-        {loggedIn && (
-          <button onClick={clearSession} style={buttonStyle}>Sair</button>
-        )}
-      </header>
+      <AppHeader
+        loggedIn={loggedIn}
+        role={currentRole}
+        email={currentUser?.email}
+        onLogout={clearSession}
+      />
 
       {!loggedIn ? (
-        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px', background: 'linear-gradient(135deg, #0f1115 0%, #1a1d27 100%)' }}>
-            <div style={{ maxWidth: 420, textAlign: 'center' }}>
-              <svg viewBox="0 0 320 200" width="100%" height="auto" style={{ marginBottom: 16 }}>
-                <rect x="20" y="20" width="80" height="40" rx="6" fill="#438DD5" stroke="#3C7FC0" />
-                <text x="60" y="45" textAnchor="middle" fill="#fff" fontSize="11" fontFamily="system-ui">System</text>
-                <rect x="120" y="20" width="80" height="40" rx="6" fill="#85BBF0" stroke="#3C7FC0" />
-                <text x="160" y="45" textAnchor="middle" fill="#1f2937" fontSize="11" fontFamily="system-ui">Container</text>
-                <rect x="220" y="20" width="80" height="40" rx="6" fill="#b4d9f7" stroke="#3C7FC0" />
-                <text x="260" y="45" textAnchor="middle" fill="#1f2937" fontSize="11" fontFamily="system-ui">Component</text>
-                <circle cx="60" cy="130" r="18" fill="#238636" />
-                <text x="60" y="135" textAnchor="middle" fill="#fff" fontSize="10" fontFamily="system-ui">Actor</text>
-                <line x1="60" y1="60" x2="60" y2="112" stroke="#7b8290" strokeWidth="1.5" markerEnd="url(#arrow)" />
-                <line x1="100" y1="40" x2="120" y2="40" stroke="#7b8290" strokeWidth="1.5" />
-                <line x1="200" y1="40" x2="220" y2="40" stroke="#7b8290" strokeWidth="1.5" />
-                <defs>
-                  <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-                    <path d="M0,0 L0,6 L6,3 z" fill="#7b8290" />
-                  </marker>
-                </defs>
-              </svg>
-              <h2 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 700 }}>C4Arch</h2>
-              <p style={{ margin: 0, color: '#7b8290', fontSize: 14 }}>
-                Modele arquitetura C4 viva em equipe, com persistência e edição em tempo real.
-              </p>
-            </div>
-          </div>
-          <div style={{ width: 360, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '32px', borderLeft: '1px solid #2a2f3a', background: '#1a1d27' }}>
-            <form onSubmit={loginUser} style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-              <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Entrar</h3>
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email"
-                style={inputStyle}
-              />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Senha"
-                style={inputStyle}
-              />
-              {error && <div style={{ color: '#ef4444', fontSize: 12 }}>{error}</div>}
-              <button type="submit" style={{ ...buttonStyle, background: '#3b82f6', color: '#fff' }}>
-                Entrar
-              </button>
-              <button type="button" onClick={() => { window.location.href = (import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/google'; }} style={{ ...buttonStyle, background: '#fff', color: '#1f2937' }}>
-                Entrar com Google
-              </button>
-            </form>
-          </div>
-        </div>
+        <LoginScreen
+          email={email}
+          password={password}
+          error={error}
+          onEmailChange={setEmail}
+          onPasswordChange={setPassword}
+          onSubmit={loginUser}
+        />
       ) : (
         <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
           <nav style={{ width: 180, padding: '12px 8px', borderRight: '1px solid #2a2f3a', display: 'flex', flexDirection: 'column', gap: '6px', background: '#111318' }}>
@@ -1595,6 +1421,18 @@ export default function App() {
                 {isWriter && (
                   <button onClick={openImportModels} style={buttonStyle} title="Importar modelos de arquivos, Google Drive ou URL">
                     Importar
+                  </button>
+                )}
+                {isWriter && (
+                  <button
+                    onClick={() => {
+                      setStructurizrTargetModelId(null);
+                      setShowStructurizrImport(true);
+                    }}
+                    style={buttonStyle}
+                    title="Criar um modelo a partir de um workspace Structurizr (JSON ou DSL)"
+                  >
+                    Structurizr
                   </button>
                 )}
               </div>
@@ -2198,390 +2036,219 @@ export default function App() {
               edges={model?.edges ?? []}
               onRenameElement={onSaveElementTitle}
               readOnly={!isWriter}
+              onSelectElement={setSelectedElementId}
+              commentedElementIds={commentedElementIds}
             />
-            <footer style={{ padding: '8px 12px', borderTop: '1px solid #2a2f3a', display: 'flex', gap: 8, justifyContent: 'flex-end', background: '#0f1115' }}>
-              <button onClick={() => { setMode('files'); setSelectedId(null); setModel(null); }} style={buttonStyle}>Voltar</button>
-              {!isWriter && <span style={{ ...smallMuted, alignSelf: 'center' }}>Somente leitura</span>}
-              {isWriter && (
-                <>
-                  <button
-                    onClick={() => { if (model) openEditModel(model); }}
-                    style={buttonStyle}
-                    disabled={!model}
-                  >
-                    Editar modelo
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (!selectedId) return;
-                      const xml = window.prompt('XML draw.io:');
-                      if (xml) importDrawio(selectedId, xml).catch((err) => setError(err.message));
-                    }}
-                    style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
-                  >
-                    Importar draw.io
-                  </button>
-                  <button
-                    onClick={() => { if (selectedId) openDrawio(selectedId); }}
-                    style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
-                  >
-                    Abrir draw.io
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!selectedId) return;
-                      setShowVersions(true);
-                      setVersionsLoading(true);
-                      try {
-                        const res = await listModelVersions(selectedId);
-                        setVersions(res.versions);
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : String(err));
-                      } finally {
-                        setVersionsLoading(false);
-                      }
-                    }}
-                    style={buttonStyle}
-                  >
-                    Versões
-                  </button>
-                  <button
-                    onClick={async () => {
-                      if (!selectedId) return;
-                      setShowInspections(true);
-                      setInspectionsLoading(true);
-                      try {
-                        const report = await inspectModel(selectedId);
-                        setInspectionReport(report);
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : String(err));
-                      } finally {
-                        setInspectionsLoading(false);
-                      }
-                    }}
-                    style={buttonStyle}
-                  >
-                    Inspeções
-                  </button>
-                  <button onClick={onDelete} style={dangerButtonStyle}>Excluir</button>
-                </>
-              )}
+            <footer style={{ padding: '8px 12px', borderTop: '1px solid #2a2f3a', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', background: '#0f1115' }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+                <button onClick={() => { setMode('files'); setSelectedId(null); setModel(null); }} style={buttonStyle}>Voltar</button>
+                <PresenceBar users={presenceUsers} />
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {!isWriter && <span style={{ ...smallMuted, alignSelf: 'center' }}>Somente leitura</span>}
+                {isWriter && (
+                  <>
+                    <button onClick={() => ws.undo()} style={buttonStyle} title="Desfazer (última alteração)">
+                      Desfazer
+                    </button>
+                    <button onClick={() => ws.redo()} style={buttonStyle} title="Refazer">
+                      Refazer
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => setShowComments(true)}
+                  style={{
+                    ...buttonStyle,
+                    borderColor: modelComments.some((comment) => !comment.resolved) ? '#fbbf24' : '#374151',
+                  }}
+                >
+                  Comentários ({modelComments.filter((comment) => !comment.resolved).length})
+                </button>
+                <button onClick={() => setShowExport(true)} style={buttonStyle}>
+                  Exportar
+                </button>
+                {isWriter && (
+                  <>
+                    <button onClick={() => void handleAutoLayout()} disabled={autoLayoutBusy} style={buttonStyle}>
+                      {autoLayoutBusy ? 'Organizando...' : 'Auto layout'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setStructurizrTargetModelId(selectedId);
+                        setShowStructurizrImport(true);
+                      }}
+                      style={buttonStyle}
+                    >
+                      Importar Structurizr
+                    </button>
+                    <button
+                      onClick={() => { if (model) openEditModel(model); }}
+                      style={buttonStyle}
+                      disabled={!model}
+                    >
+                      Editar modelo
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!selectedId) return;
+                        const xml = window.prompt('XML draw.io:');
+                        if (xml) importDrawio(selectedId, xml).catch((err) => setError(err.message));
+                      }}
+                      style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
+                    >
+                      Importar draw.io
+                    </button>
+                    <button
+                      onClick={() => { if (selectedId) openDrawio(selectedId); }}
+                      style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
+                    >
+                      Abrir draw.io
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!selectedId) return;
+                        setShowVersions(true);
+                        setVersionsLoading(true);
+                        try {
+                          const res = await listModelVersions(selectedId);
+                          setVersions(res.versions);
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : String(err));
+                        } finally {
+                          setVersionsLoading(false);
+                        }
+                      }}
+                      style={buttonStyle}
+                    >
+                      Versões
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (!selectedId) return;
+                        setShowInspections(true);
+                        setInspectionsLoading(true);
+                        try {
+                          const report = await inspectModel(selectedId);
+                          setInspectionReport(report);
+                        } catch (err) {
+                          setError(err instanceof Error ? err.message : String(err));
+                        } finally {
+                          setInspectionsLoading(false);
+                        }
+                      }}
+                      style={buttonStyle}
+                    >
+                      Inspeções
+                    </button>
+                    <button onClick={onDelete} style={dangerButtonStyle}>Excluir</button>
+                  </>
+                )}
+              </div>
             </footer>
           </div>
         </ReactFlowProvider>
       )}
 
       {showVersions && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
+        <VersionsPanel
+          versions={versions}
+          loading={versionsLoading}
+          canRestore={isWriter}
+          onClose={() => setShowVersions(false)}
+          onRestore={(version) => {
+            if (!selectedId) return;
+            if (!window.confirm('Restaurar esta versão? O estado atual será substituído.')) return;
+            void (async () => {
+              try {
+                await restoreModelVersion(selectedId, version.id);
+                const detail = await getModel(selectedId);
+                setModel(detail);
+                setShowVersions(false);
+                setError(null);
+              } catch (err) {
+                setError(err instanceof Error ? err.message : String(err));
+              }
+            })();
           }}
-          onClick={() => setShowVersions(false)}
-        >
-          <div
-            style={{ background: '#1a1d24', border: '1px solid #2a2f3a', borderRadius: 8, padding: 16, width: 'min(640px, 90vw)', maxHeight: '80vh', overflow: 'auto' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0 }}>Versões do modelo</h3>
-            {versionsLoading && <p>Carregando...</p>}
-            {!versionsLoading && versions.length === 0 && <p>Nenhuma versão encontrada.</p>}
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {versions.map((version) => (
-                <li key={version.id} style={{ borderBottom: '1px solid #2a2f3a', padding: '8px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                  <div>
-                    <div style={{ fontWeight: 600 }}>v{version.version} — {version.kind}</div>
-                    <div style={{ fontSize: 12, color: '#9ca3af' }}>
-                      {new Date(version.created_at).toLocaleString('pt-BR')}
-                      {version.label ? ` · ${version.label}` : ''}
-                      {version.content_hash ? ` · ${version.content_hash.slice(0, 16)}…` : ''}
-                    </div>
-                  </div>
-                  {isWriter && (
-                    <button
-                      onClick={async () => {
-                        if (!selectedId) return;
-                        if (!window.confirm('Restaurar esta versão? O estado atual será substituído.')) return;
-                        try {
-                          await restoreModelVersion(selectedId, version.id);
-                          const detail = await getModel(selectedId);
-                          setModel(detail);
-                          setShowVersions(false);
-                          setError(null);
-                        } catch (err) {
-                          setError(err instanceof Error ? err.message : String(err));
-                        }
-                      }}
-                      style={buttonStyle}
-                    >
-                      Restaurar
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <div style={{ marginTop: 12, textAlign: 'right' }}>
-              <button onClick={() => setShowVersions(false)} style={buttonStyle}>Fechar</button>
-            </div>
-          </div>
-        </div>
+        />
       )}
 
       {showInspections && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-          onClick={() => setShowInspections(false)}
-        >
-          <div
-            style={{ background: '#1a1d24', border: '1px solid #2a2f3a', borderRadius: 8, padding: 16, width: 'min(640px, 90vw)', maxHeight: '80vh', overflow: 'auto' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 style={{ marginTop: 0 }}>Inspeções de arquitetura</h3>
-            {inspectionsLoading && <p>Carregando...</p>}
-            {!inspectionsLoading && inspectionReport && (
-              <>
-                <p>Total de problemas: {inspectionReport.totalIssues} (erros: {inspectionReport.bySeverity.error}, avisos: {inspectionReport.bySeverity.warning}, info: {inspectionReport.bySeverity.info})</p>
-                {inspectionReport.issues.length === 0 && <p>Nenhum problema encontrado.</p>}
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-                  {inspectionReport.issues.map((issue, index) => (
-                    <li key={index} style={{ borderBottom: '1px solid #2a2f3a', padding: '6px 0' }}>
-                      <span style={{ fontWeight: 600, color: issue.severity === 'error' ? '#f87171' : issue.severity === 'warning' ? '#fbbf24' : '#93c5fd' }}>
-                        [{issue.severity}] {issue.code}
-                      </span>
-                      <div style={{ fontSize: 13 }}>{issue.message}</div>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-            <div style={{ marginTop: 12, textAlign: 'right' }}>
-              <button onClick={() => setShowInspections(false)} style={buttonStyle}>Fechar</button>
-            </div>
-          </div>
-        </div>
+        <InspectionsPanel
+          report={inspectionReport}
+          loading={inspectionsLoading}
+          onClose={() => setShowInspections(false)}
+        />
+      )}
+
+      {showExport && selectedId && model && (
+        <ExportPanel
+          modelId={selectedId}
+          modelTitle={model.title}
+          onClose={() => setShowExport(false)}
+        />
+      )}
+
+      {showComments && selectedId && (
+        <CommentsPanel
+          modelId={selectedId}
+          selectedElementId={selectedElementId}
+          elements={(model?.elements ?? []).map((element) => ({ id: element.id, title: element.title }))}
+          isWriter={isWriter}
+          onClose={() => setShowComments(false)}
+          onCommentsChange={setModelComments}
+        />
+      )}
+
+      {showStructurizrImport && (
+        <StructurizrImportPanel
+          modelId={structurizrTargetModelId}
+          orgId={orgId}
+          c4Types={[...C4_MODEL_TYPES]}
+          onClose={() => setShowStructurizrImport(false)}
+          onImported={(result) => void handleStructurizrImported(result.modelId)}
+        />
       )}
 
       {showImportModels && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.65)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1150,
-            padding: 16,
+        <ImportModelsPanel
+          source={importSource}
+          files={importFiles}
+          links={importLinks}
+          folderId={importFolderId}
+          type={importType}
+          folderOptions={folderTree.map((folder) => ({
+            id: folder.id,
+            name: folder.name,
+            depth: folderDepth(folder),
+          }))}
+          importing={importing}
+          progress={importProgress}
+          results={importResults}
+          error={importError}
+          onSourceChange={(next) => {
+            setImportSource(next);
+            setImportFiles([]);
+            setImportLinks('');
+            setImportResults([]);
+            setImportError(null);
           }}
-          onClick={closeImportModels}
-        >
-          <div
-            style={{
-              background: '#1a1d27',
-              border: '1px solid #2a2f3a',
-              borderRadius: 10,
-              width: 'min(720px, 96vw)',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              padding: 20,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 12,
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <h3 style={{ margin: 0 }}>Importar modelos</h3>
-                <div style={smallMuted}>
-                  Importe um ou vários arquivos <code>.drawio</code>/<code>.xml</code> de pasta
-                  local, Google Drive ou outra URL. Cada arquivo vira um modelo com DAS gerado
-                  automaticamente.
-                </div>
-              </div>
-              <button onClick={closeImportModels} style={buttonStyle} disabled={importing}>
-                Fechar
-              </button>
-            </div>
-
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {(
-                [
-                  ['files', 'Arquivos'],
-                  ['folder', 'Pasta local'],
-                  ['drive', 'Google Drive'],
-                  ['urls', 'Outras URLs'],
-                ] as [ImportSource, string][]
-              ).map(([source, label]) => (
-                <button
-                  key={source}
-                  onClick={() => {
-                    setImportSource(source);
-                    setImportFiles([]);
-                    setImportLinks('');
-                    setImportResults([]);
-                    setImportError(null);
-                  }}
-                  style={{
-                    ...buttonStyle,
-                    background: importSource === source ? '#4f46e5' : 'transparent',
-                    border: '1px solid #2a2f3a',
-                    color: importSource === source ? '#fff' : '#e8eaed',
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            {(importSource === 'files' || importSource === 'folder') && (
-              <div style={{ display: 'grid', gap: 6 }}>
-                {importSource === 'files' ? (
-                  <input
-                    key="import-files"
-                    type="file"
-                    multiple
-                    accept=".drawio,.xml,application/xml,text/xml"
-                    onChange={(e) => {
-                      setImportFiles(Array.from(e.target.files ?? []));
-                      setImportResults([]);
-                      setImportError(null);
-                    }}
-                    style={{ color: '#e8eaed' }}
-                  />
-                ) : (
-                  <input
-                    key="import-folder"
-                    type="file"
-                    multiple
-                    onChange={(e) => {
-                      setImportFiles(Array.from(e.target.files ?? []));
-                      setImportResults([]);
-                      setImportError(null);
-                    }}
-                    ref={(element) => {
-                      if (element) {
-                        element.setAttribute('webkitdirectory', '');
-                        element.setAttribute('directory', '');
-                      }
-                    }}
-                    style={{ color: '#e8eaed' }}
-                  />
-                )}
-                <div style={smallMuted}>
-                  {importFiles.length > 0
-                    ? `${importFiles.length} arquivo(s) selecionado(s).`
-                    : 'Selecione um ou vários arquivos. Formatos: .drawio, .xml.'}
-                </div>
-              </div>
-            )}
-
-            {(importSource === 'drive' || importSource === 'urls') && (
-              <div style={{ display: 'grid', gap: 6 }}>
-                <textarea
-                  value={importLinks}
-                  onChange={(e) => {
-                    setImportLinks(e.target.value);
-                    setImportResults([]);
-                    setImportError(null);
-                  }}
-                  rows={5}
-                  placeholder={
-                    importSource === 'drive'
-                      ? 'https://drive.google.com/file/d/<id>/view\n(um link por linha; o arquivo precisa estar compartilhado como "Qualquer pessoa com o link")'
-                      : 'https://exemplo.com/diagrama.drawio\n(uma URL por linha)'
-                  }
-                  style={{ ...inputStyle, width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }}
-                />
-                <div style={smallMuted}>
-                  {importSource === 'drive'
-                    ? 'A importação lê arquivos individuais do Drive via link público. Pastas do Drive devem ser sincronizadas localmente e importadas pela aba "Pasta local".'
-                    : 'O servidor baixa cada URL e valida se o conteúdo é XML draw.io.'}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gap: 8, gridTemplateColumns: '1fr 1fr' }}>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <span style={smallMuted}>Pasta de destino</span>
-                <select
-                  value={importFolderId ?? ''}
-                  onChange={(e) => setImportFolderId(e.target.value || null)}
-                  style={inputStyle}
-                >
-                  <option value="">Sem pasta</option>
-                  {folderTree.map((folder) => (
-                    <option key={folder.id} value={folder.id}>
-                      {'\u00a0'.repeat(folderDepth(folder) * 2)}{folder.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label style={{ display: 'grid', gap: 4 }}>
-                <span style={smallMuted}>Tipo de diagrama</span>
-                <select
-                  value={importType}
-                  onChange={(e) => setImportType(e.target.value as C4ModelType | 'auto')}
-                  style={inputStyle}
-                >
-                  <option value="auto">Detectar pelo nome do arquivo</option>
-                  {C4_MODEL_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {C4_TYPE_LABEL[type]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            {importProgress && <div style={{ color: '#93c5fd' }}>{importProgress}</div>}
-
-            {importResults.length > 0 && (
-              <div
-                style={{
-                  maxHeight: 170,
-                  overflowY: 'auto',
-                  border: '1px solid #2a2f3a',
-                  borderRadius: 6,
-                  padding: 8,
-                  display: 'grid',
-                  gap: 4,
-                  fontSize: 12,
-                }}
-              >
-                {importResults.map((result, index) => (
-                  <div
-                    key={`${result.name}-${index}`}
-                    style={{ color: result.ok ? '#86efac' : '#fca5a5' }}
-                  >
-                    {result.ok ? '✓' : '✗'} {result.name}
-                    {result.error ? ` — ${result.error}` : ''}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {importError && <div style={{ color: '#f87171' }}>{importError}</div>}
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={closeImportModels} style={buttonStyle} disabled={importing}>
-                Cancelar
-              </button>
-              <button
-                onClick={runImportModels}
-                style={{ ...primaryButtonStyle, opacity: importing ? 0.7 : 1 }}
-                disabled={importing}
-              >
-                {importing ? 'Importando...' : 'Importar'}
-              </button>
-            </div>
-          </div>
-        </div>
+          onFilesChange={(next) => {
+            setImportFiles(next);
+            setImportResults([]);
+            setImportError(null);
+          }}
+          onLinksChange={(next) => {
+            setImportLinks(next);
+            setImportResults([]);
+            setImportError(null);
+          }}
+          onFolderChange={setImportFolderId}
+          onTypeChange={setImportType}
+          onClose={closeImportModels}
+          onSubmit={() => void runImportModels()}
+        />
       )}
 
       {previewModel && (
@@ -2684,221 +2351,25 @@ export default function App() {
       )}
 
       {dasModel && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, padding: 16 }}
-          onClick={closeDasEditor}
-        >
-          <div
-            style={{ background: '#1a1d27', border: '1px solid #2a2f3a', borderRadius: 10, width: 'min(1280px, 97vw)', height: 'min(88vh, 920px)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                e.preventDefault();
-                void saveDas();
-              }
-            }}
-            tabIndex={-1}
-          >
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #2a2f3a', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-                <h3 style={{ margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>DAS — {dasModel.title}</h3>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <span className={'das-badge ' + (dasDirty ? 'das-badge-warn' : 'das-badge-ok')}>
-                    {dasSaving ? 'Salvando...' : dasDirty ? 'Alterações não salvas' : 'Salvo'}
-                  </span>
-                  <span className="das-badge">{dasSectionItems.length} seções</span>
-                  {dasEmptySections > 0 && (
-                    <span className="das-badge das-badge-warn">{dasEmptySections} sem conteúdo</span>
-                  )}
-                </div>
-              </div>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                <button onClick={() => void regenerateDas()} style={buttonStyle} disabled={dasLoading || dasSaving}>
-                  Regenerar
-                </button>
-                <button
-                  onClick={() => {
-                    const w = window.open('', '_blank');
-                    if (!w) return;
-                    const imgTag = dasPreviewUrl
-                      ? `<div style="margin-bottom:16px;"><iframe src="${escapeHtml(dasPreviewUrl)}" title="Diagrama draw.io" style="width:100%;height:380px;border:1px solid #ccc;"></iframe></div>`
-                      : '';
-                    const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(dasModel?.title ?? 'DAS')}</title><style>body{font-family:system-ui,sans-serif;margin:24px;color:#111;line-height:1.5;}h1{font-size:22px;}h1,h2,h3{color:#1f2937;line-height:1.25;}h2{font-size:17px;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #e5e7eb;}h3{font-size:14px;margin:16px 0 6px;}p{margin:8px 0;}table{border-collapse:collapse;width:100%;margin:10px 0 16px;}th,td{border:1px solid #d1d5db;padding:6px 8px;font-size:11px;line-height:1.35;text-align:left;vertical-align:top;}th{background:#f3f4f6;}tr:nth-child(even) td{background:#fafafa;}blockquote{margin:0 0 16px;padding:8px 12px;border-left:4px solid #93c5fd;background:#eff6ff;}ul{margin:8px 0;padding-left:22px;}li{margin:2px 0;}code{background:#f3f4f6;padding:1px 4px;border-radius:3px;}hr{border:none;border-top:1px solid #d1d5db;margin:16px 0;}@media print{body{margin:12px;}h2,h3{break-after:avoid;}table{break-inside:auto;}tr{break-inside:avoid;}}</style></head><body>${imgTag}${markdownToHtml(dasContent)}</body></html>`;
-                    w.document.write(html);
-                    w.document.close();
-                    w.focus();
-                    setTimeout(() => { w.print(); }, 300);
-                  }}
-                  style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
-                  title="Exportar o DAS como PDF (imprimir/salvar PDF)"
-                >
-                  Exportar PDF
-                </button>
-                <button onClick={() => void saveDas()} style={primaryButtonStyle} disabled={dasSaving || !dasDirty}>
-                  {dasSaving ? 'Salvando...' : 'Salvar'}
-                </button>
-                <button onClick={closeDasEditor} style={buttonStyle}>Fechar</button>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 8, padding: '8px 12px', borderBottom: '1px solid #2a2f3a', alignItems: 'center' }}>
-              <button onClick={() => setDasViewMode('preview')} style={{ ...buttonStyle, background: dasViewMode === 'preview' ? '#2a2f3a' : 'transparent' }}>Visualizar</button>
-              <button onClick={() => setDasViewMode('edit')} style={{ ...buttonStyle, background: dasViewMode === 'edit' ? '#2a2f3a' : 'transparent' }}>Editar</button>
-              <span style={{ ...smallMuted, marginLeft: 'auto' }}>Ctrl+S salva · Markdown nas seções · alterações em memória</span>
-            </div>
-            <div style={{ flex: 1, minHeight: 0, padding: 12, overflow: 'auto' }}>
-              {dasLoading ? (
-                <div style={{ color: '#7b8290' }}>Carregando DAS...</div>
-              ) : dasViewMode === 'edit' ? (
-                <div className="das-editor-grid">
-                  <aside className="das-editor-sidebar" aria-label="Seções do DAS">
-                    <div className="das-editor-sidebar-head">
-                      <strong>Seções do documento</strong>
-                      <span className="das-editor-sidebar-meta">
-                        {dasSectionItems.length} seções
-                        {dasEmptySections > 0 ? ` · ${dasEmptySections} pendentes` : ' · completo'}
-                      </span>
-                    </div>
-                    <nav className="das-editor-section-list">
-                      {dasSectionItems.map((item, index) => {
-                        const filled = item.body.trim().length > 0;
-                        return (
-                          <button
-                            key={item.key}
-                            type="button"
-                            className={'das-section-item' + (index === dasActiveIndex ? ' is-active' : '')}
-                            onClick={() => setDasActiveSection(index)}
-                            title={item.label}
-                          >
-                            <span className="das-section-index">{String(index + 1).padStart(2, '0')}</span>
-                            <span className="das-section-label">{item.label}</span>
-                            <span
-                              className={'das-section-dot' + (filled ? ' is-filled' : '')}
-                              title={filled ? 'Seção preenchida' : 'Seção sem conteúdo'}
-                            />
-                          </button>
-                        );
-                      })}
-                    </nav>
-                  </aside>
-
-                  <form
-                    className="das-editor-main"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void saveDas();
-                    }}
-                  >
-                    <div className="das-editor-section-head">
-                      <span className="das-editor-eyebrow">
-                        Seção {dasActiveIndex + 1} de {dasSectionItems.length}
-                      </span>
-                      <h4>{dasActiveItem.label}</h4>
-                      <p>{dasActiveItem.description} Aceita Markdown (tabelas, listas, negrito e código).</p>
-                    </div>
-
-                    {!dasActiveItem.body.trim() && (
-                      <div className="das-editor-alert">
-                        Esta seção está sem conteúdo. Você ainda pode salvar, mas o documento ficará incompleto.
-                      </div>
-                    )}
-
-                    <textarea
-                      className="das-editor-textarea"
-                      value={dasActiveItem.body}
-                      onChange={(e) => updateDasSection(e.target.value)}
-                      placeholder={`Descreva ${dasActiveItem.label.toLowerCase()}...`}
-                      spellCheck
-                    />
-
-                    <div className="das-editor-meta">
-                      <span>{dasActiveItem.body.length} caracteres</span>
-                      <span>
-                        {dasActiveItem.body.trim()
-                          ? dasActiveItem.body.trim().split(/\s+/).length
-                          : 0}{' '}
-                        palavras
-                      </span>
-                      <span>{dasActiveItem.body ? dasActiveItem.body.split('\n').length : 0} linhas</span>
-                      <span className={dasDirty ? 'das-status-dirty' : 'das-status-saved'}>
-                        {dasSaving ? 'Salvando...' : dasDirty ? 'Alterações não salvas' : 'Salvo'}
-                      </span>
-                    </div>
-
-                    <div className="das-editor-actions">
-                      <button
-                        type="button"
-                        style={buttonStyle}
-                        onClick={() => setDasContent(dasBaselineContent)}
-                        disabled={!dasDirty || dasSaving}
-                      >
-                        Descartar alterações
-                      </button>
-                      <button type="submit" style={primaryButtonStyle} disabled={dasSaving || !dasDirty}>
-                        {dasSaving ? 'Salvando...' : 'Salvar DAS'}
-                      </button>
-                    </div>
-                  </form>
-
-                  <aside className="das-editor-drawer" aria-label="Painel da seção">
-                    <h4>Painel da seção</h4>
-                    <div className="das-drawer-block">
-                      <span className="das-drawer-label">Identificação</span>
-                      <strong>{dasActiveItem.label}</strong>
-                    </div>
-                    <div className="das-drawer-block">
-                      <span className="das-drawer-label">Status da seção</span>
-                      <span className={'das-badge ' + (dasActiveItem.body.trim() ? 'das-badge-ok' : 'das-badge-warn')}>
-                        {dasActiveItem.body.trim() ? 'Preenchida' : 'Pendente'}
-                      </span>
-                    </div>
-                    <div className="das-drawer-block">
-                      <span className="das-drawer-label">Documento</span>
-                      <span className={'das-badge ' + (dasDirty ? 'das-badge-warn' : 'das-badge-ok')}>
-                        {dasDirty ? 'Alterações não salvas' : 'Salvo'}
-                      </span>
-                    </div>
-                    <div className="das-drawer-block">
-                      <span className="das-drawer-label">Seções pendentes</span>
-                      <span>{dasEmptySections} de {dasSectionItems.length}</span>
-                    </div>
-
-                    <div className="das-drawer-tip">
-                      <strong>Orientações</strong>
-                      <ul>
-                        <li>Edite uma seção por vez; o texto é mantido em memória até salvar.</li>
-                        <li>Use Markdown para tabelas, listas, negrito e blocos de código.</li>
-                        <li>Seções vazias são sinalizadas, mas não bloqueiam o salvamento.</li>
-                        <li>Fechar com alterações pendentes pede confirmação.</li>
-                      </ul>
-                    </div>
-                    <div className="das-drawer-legend">
-                      <span><i className="das-section-dot is-filled" /> preenchida</span>
-                      <span><i className="das-section-dot" /> pendente</span>
-                    </div>
-                  </aside>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}>
-                  <div
-                    className="das-preview"
-                    style={{ background: '#ffffff', color: '#1f2937', width: '210mm', maxWidth: '100%', minHeight: '297mm', padding: '20mm', boxShadow: '0 2px 12px rgba(0,0,0,0.4)', borderRadius: 4, lineHeight: 1.6, fontSize: 12, fontFamily: 'system-ui, sans-serif' }}
-                  >
-                    {dasPreviewUrl && (
-                      <div style={{ marginBottom: 16 }}>
-                        <iframe
-                          src={dasPreviewUrl}
-                          title="Diagrama draw.io"
-                          style={{ width: '100%', height: 360, border: '1px solid #ccc', borderRadius: 4, background: '#fff' }}
-                        />
-                      </div>
-                    )}
-                    <div dangerouslySetInnerHTML={{ __html: markdownToHtml(dasContent) }} />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        <DasEditor
+          modelTitle={dasModel.title}
+          content={dasContent}
+          viewMode={dasViewMode}
+          loading={dasLoading}
+          saving={dasSaving}
+          dirty={dasDirty}
+          sections={dasSectionItems}
+          emptySections={dasEmptySections}
+          activeIndex={dasActiveIndex}
+          previewUrl={dasPreviewUrl}
+          onClose={closeDasEditor}
+          onSave={() => void saveDas()}
+          onRegenerate={() => void regenerateDas()}
+          onDiscard={() => setDasContent(dasBaselineContent)}
+          onSelectSection={setDasActiveSection}
+          onEditSection={updateDasSection}
+          onViewModeChange={setDasViewMode}
+        />
       )}
 
       {assetDraft && (

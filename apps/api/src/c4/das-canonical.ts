@@ -3,6 +3,7 @@ import { pool } from '../db.js';
 import {
   generateDAS,
   loadDasAssets,
+  regenerateModelDAS as legacyRegenerateModelDAS,
   type DasAsset,
   type DasEdge,
   type DasElement,
@@ -14,6 +15,7 @@ import {
   computeContentHash,
   computeDasSourceHash,
   diffDasSections,
+  mergeDasOverrides,
   type CanonicalDasOverride,
   type CanonicalElement,
   type CanonicalRelationship,
@@ -193,6 +195,28 @@ export async function writeCanonicalDas(
   modelId: string,
   options: { force?: boolean } = {}
 ): Promise<{ content: string; changed: boolean; sourceHash: string } | null> {
+  // Fallback do plano (§8): se o modelo ainda não foi migrado, o canônico está
+  // vazio. Nesse caso gera pelo caminho legado (elements/edges + XML) em vez de
+  // sobrescrever o DAS existente com um documento sem elementos.
+  const canonical = await pool.query<{ count: string }>(
+    'SELECT count(*)::text AS count FROM model_elements WHERE model_id = $1',
+    [modelId]
+  );
+  if (Number(canonical.rows[0]?.count ?? 0) === 0) {
+    const current = await pool.query<{
+      das_content: string | null;
+      das_source_hash: string | null;
+    }>('SELECT das_content, das_source_hash FROM models WHERE id = $1', [modelId]);
+    if (current.rows.length === 0) return null;
+    const legacy = await legacyRegenerateModelDAS(modelId);
+    if (legacy === null) return null;
+    return {
+      content: legacy,
+      changed: legacy !== current.rows[0].das_content,
+      sourceHash: current.rows[0].das_source_hash ?? '',
+    };
+  }
+
   const generated = await generateCanonicalDas(modelId);
   if (!generated) return null;
 
@@ -236,12 +260,24 @@ export async function saveDasOverrides(
   if (!generated) return null;
 
   const diff = diffDasSections(generated.generated, content);
+
+  // O diff é calculado contra o template puro, então overrides `hide` e
+  // `append` que já existiam precisam ser preservados: seções ocultas não
+  // aparecem no conteúdo salvo (e não gerariam diff), e o texto anexado seria
+  // reinterpretado como `replace`.
+  const overrides = mergeDasOverrides(
+    generated.generated,
+    content,
+    generated.overrides,
+    diff
+  );
+
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM model_das_overrides WHERE model_id = $1', [modelId]);
-    for (const override of diff.overrides) {
+    for (const override of overrides) {
       await client.query(
         `INSERT INTO model_das_overrides (model_id, section_key, content, mode, updated_by)
          VALUES ($1, $2, $3, $4, $5)`,
@@ -249,7 +285,7 @@ export async function saveDasOverrides(
       );
     }
 
-    const sourceHash = computeDasSourceHash(generated.modelContentHash, diff.overrides);
+    const sourceHash = computeDasSourceHash(generated.modelContentHash, overrides);
     await client.query(
       `UPDATE models
           SET das_content = $1,
@@ -257,14 +293,14 @@ export async function saveDasOverrides(
               das_source_hash = $2,
               das_override_count = $3
         WHERE id = $4`,
-      [content, sourceHash, diff.overrides.length, modelId]
+      [content, sourceHash, overrides.length, modelId]
     );
     await client.query('COMMIT');
 
     return {
-      changedKeys: diff.changedKeys,
+      changedKeys: overrides.map((override) => override.section_key),
       sourceHash,
-      overrideCount: diff.overrides.length,
+      overrideCount: overrides.length,
     };
   } catch (err) {
     await client.query('ROLLBACK');
