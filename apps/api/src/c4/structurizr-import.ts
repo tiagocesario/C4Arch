@@ -549,7 +549,7 @@ export async function importWorkspaceIntoModel(
           element.technology,
           element.url,
           element.tags,
-          JSON.stringify({ legacyType, order, importIdentifier: element.identifier }),
+          JSON.stringify({ legacyType, order, importIdentifier: element.identifier, source: 'structurizr' }),
         ]
       );
     }

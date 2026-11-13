@@ -1092,6 +1092,23 @@ export default function App() {
     await loadPreviewDiagram(target, dt);
   }
 
+  /** Modelos criados/importados via Structurizr abrem no editor C4 (tela #/models/:id). */
+  async function openModelViewer(item: Model) {
+    try {
+      const detail = await getModel(item.id);
+      const isStructurizr = (detail.elements ?? []).some(
+        (element) => (element.metadata as Record<string, unknown> | null)?.importIdentifier != null
+      );
+      if (isStructurizr) {
+        window.open(c4EditorUrl(item.id), '_blank', 'noopener');
+        return;
+      }
+    } catch {
+      // Ignora e cai no preview draw.io tradicional.
+    }
+    openPreview(item);
+  }
+
   async function evolveDiagram(target: Model, nextType: C4ModelType) {
     try {
       const updated = await addModelDiagram(target.id, nextType);
@@ -1920,7 +1937,7 @@ export default function App() {
                               </div>
                               <div style={{ display: 'flex', gap: 6 }}>
                                 <button
-                                  onClick={() => openPreview(item)}
+                                  onClick={() => openModelViewer(item)}
                                   style={buttonStyle}
                                 >
                                   Visualizar
@@ -2003,9 +2020,22 @@ export default function App() {
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            <button onClick={() => openPreview(item)} style={buttonStyle}>
+                            <button onClick={() => openModelViewer(item)} style={buttonStyle}>
                               Visualizar
                             </button>
+                            {isWriter && (
+                              <button
+                                onClick={() => {
+                                  setStructurizrTargetModelId(item.id);
+                                  void loadStructurizrTemplates();
+                                  setShowStructurizrImport(true);
+                                }}
+                                style={buttonStyle}
+                                title="Adicionar novos objetos ao modelo a partir de um workspace Structurizr"
+                              >
+                                Adicionar objetos (Structurizr)
+                              </button>
+                            )}
                             {isWriter && (
                               <button onClick={() => openDrawio(item.id)} style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}>
                                 draw.io
@@ -2219,7 +2249,7 @@ export default function App() {
                       }}
                       style={buttonStyle}
                     >
-                      Importar Structurizr
+                      Adicionar objetos (Structurizr)
                     </button>
                     <button
                       onClick={() => { if (model) openEditModel(model); }}
