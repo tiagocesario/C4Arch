@@ -94,8 +94,6 @@ test('EXPORT_FORMATS cobre todos os formatos suportados', () => {
     'mermaid',
     'plantuml',
     'png',
-    'structurizr-dsl',
-    'structurizr-json',
     'svg',
   ]);
 });

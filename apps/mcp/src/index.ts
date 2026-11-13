@@ -137,14 +137,14 @@ const TOOLS: ToolDefinition[] = [
   {
     name: 'c4_export_model',
     description:
-      'Exporta o modelo em Structurizr JSON/DSL, PlantUML, Mermaid, SVG, HTML, draw.io ou PNG (PNG em base64).',
+      'Exporta o modelo em PlantUML, Mermaid, SVG, HTML, draw.io ou PNG (PNG em base64).',
     inputSchema: {
       type: 'object',
       properties: {
         modelId: MODEL_ID,
         format: {
           type: 'string',
-          enum: ['structurizr-json', 'structurizr-dsl', 'plantuml', 'mermaid', 'svg', 'html', 'drawio', 'png'],
+          enum: ['plantuml', 'mermaid', 'svg', 'html', 'drawio', 'png'],
         },
         theme: { type: 'string', enum: ['light', 'dark'] },
       },

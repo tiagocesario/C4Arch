@@ -13,8 +13,6 @@ import { extractTechnologyFromLabel, slugify } from './canonical.js';
  */
 
 export type ExportFormat =
-  | 'structurizr-json'
-  | 'structurizr-dsl'
   | 'plantuml'
   | 'mermaid'
   | 'svg'
@@ -28,8 +26,7 @@ export const EXPORT_FORMATS: Array<{
   contentType: string;
   extension: string;
 }> = [
-  { format: 'structurizr-json', label: 'Structurizr JSON', contentType: 'application/json; charset=utf-8', extension: 'json' },
-  { format: 'structurizr-dsl', label: 'Structurizr DSL', contentType: 'text/plain; charset=utf-8', extension: 'dsl' },
+
   { format: 'plantuml', label: 'C4-PlantUML', contentType: 'text/plain; charset=utf-8', extension: 'puml' },
   { format: 'mermaid', label: 'Mermaid', contentType: 'text/plain; charset=utf-8', extension: 'mmd' },
   { format: 'svg', label: 'SVG', contentType: 'image/svg+xml; charset=utf-8', extension: 'svg' },
@@ -1048,10 +1045,6 @@ export function exportModel(
   const filename = `${fileBaseTitle(title)}.${metadata.extension}`;
 
   switch (format) {
-    case 'structurizr-json':
-      return { body: renderStructurizrJson(graph), contentType: metadata.contentType, filename };
-    case 'structurizr-dsl':
-      return { body: renderStructurizrDsl(graph), contentType: metadata.contentType, filename };
     case 'plantuml':
       return { body: renderPlantUml(graph), contentType: metadata.contentType, filename };
     case 'mermaid':

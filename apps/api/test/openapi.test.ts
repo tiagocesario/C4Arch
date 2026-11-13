@@ -51,7 +51,7 @@ test('exportação aceita todos os formatos implementados', () => {
   const format = operation.parameters.find((parameter: { name: string }) => parameter.name === 'format');
   assert.deepEqual(
     [...format.schema.enum].sort(),
-    ['drawio', 'html', 'mermaid', 'plantuml', 'png', 'structurizr-dsl', 'structurizr-json', 'svg']
+    ['drawio', 'html', 'mermaid', 'plantuml', 'png', 'svg']
   );
 });
 

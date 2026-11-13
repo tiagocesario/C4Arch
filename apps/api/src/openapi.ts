@@ -472,7 +472,7 @@ export function buildOpenApiDocument() {
               required: true,
               schema: {
                 type: 'string',
-                enum: ['structurizr-json', 'structurizr-dsl', 'plantuml', 'mermaid', 'svg', 'html', 'drawio', 'png'],
+                enum: ['plantuml', 'mermaid', 'svg', 'html', 'drawio', 'png'],
               },
             },
             { name: 'theme', in: 'query', schema: { type: 'string', enum: ['light', 'dark'] } },
