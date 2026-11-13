@@ -50,7 +50,7 @@ export function StructurizrImportPanel({
   const [title, setTitle] = useState('');
   const [c4Type, setC4Type] = useState('container');
   const [mode, setMode] = useState<'replace' | 'merge'>('replace');
-  const [format, setFormat] = useState<'auto' | 'json' | 'dsl' | 'plantuml'>('auto');
+  const [format, setFormat] = useState<'auto' | 'plantuml'>('auto');
   const [templateId, setTemplateId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +63,7 @@ export function StructurizrImportPanel({
     const template = templates.find((item) => item.id === id);
     if (!template) return;
     setContent(template.content);
-    setFormat(template.format);
+    setFormat('auto');
     setC4Type(template.c4Type);
     if (!title.trim()) setTitle(template.name);
     setError(null);
@@ -74,9 +74,8 @@ export function StructurizrImportPanel({
       const text = await file.text();
       setContent(text);
       setTemplateId('');
-      if (!title.trim()) setTitle(file.name.replace(/\.(json|dsl)$/i, ''));
-      if (/\.json$/i.test(file.name)) setFormat('json');
-      else if (/\.dsl$/i.test(file.name)) setFormat('dsl');
+      if (!title.trim()) setTitle(file.name.replace(/\.(json|dsl|puml|plantuml)$/i, ''));
+      if (/\.puml$/i.test(file.name) || /\.plantuml$/i.test(file.name)) setFormat('plantuml');
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -207,8 +206,6 @@ export function StructurizrImportPanel({
               style={{ ...inputStyle, marginTop: 4 }}
             >
               <option value="auto">Detectar</option>
-              <option value="json">JSON</option>
-              <option value="dsl">DSL</option>
               <option value="plantuml">PlantUML</option>
             </select>
           </label>
@@ -234,7 +231,7 @@ export function StructurizrImportPanel({
           <input
             ref={fileInput}
             type="file"
-            accept=".json,.dsl,.txt,application/json,text/plain"
+            accept=".json,.dsl,.puml,.plantuml,.txt,application/json,text/plain"
             style={{ display: 'none' }}
             onChange={(event) => {
               const file = event.target.files?.[0];
