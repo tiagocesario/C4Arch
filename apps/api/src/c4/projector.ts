@@ -5,7 +5,12 @@ import {
   buildCanonicalSnapshot,
   type BuildSnapshotInput,
 } from './backfill.js';
-import type { CanonicalSnapshot, LegacyModelRow } from './canonical.js';
+import type {
+  CanonicalLayoutRow,
+  CanonicalSnapshot,
+  CanonicalView,
+  LegacyModelRow,
+} from './canonical.js';
 import { computeStateContentHash, decodeModelState, type DecodedState } from './state.js';
 import {
   compareSnapshots,
@@ -125,6 +130,44 @@ function snapshotFromDecoded(
 }
 
 /**
+ * O Yjs carrega apenas elementos/arestas, não views nem layout por view. Sem
+ * esta mesclagem, `applyCanonicalSnapshot(..., { prune: true })` apagava todas
+ * as views importadas do Structurizr e o layout delas, deixando somente a view
+ * primária sintética. Views existentes são preservadas; para a view primária,
+ * o snapshot derivado continua sendo a fonte do layout.
+ */
+export function preserveExistingViews(
+  snapshot: CanonicalSnapshot,
+  existing: Pick<CanonicalSnapshot, 'views' | 'layout'>
+): void {
+  const derivedKeys = new Set(snapshot.views.map((view) => view.key));
+  const existingByKey = new Map(existing.views.map((view) => [view.key, view]));
+
+  // Prefere a definição persistida quando a chave já existe: o snapshot
+  // derivado usa um título/descrição sintéticos que não devem sobrescrever a
+  // configuração original importada.
+  snapshot.views = snapshot.views.map((view) => {
+    const current = existingByKey.get(view.key);
+    return current ? { ...(current as CanonicalView), model_id: snapshot.modelId } : view;
+  });
+
+  const preservedKeys = new Set<string>();
+  for (const view of existing.views) {
+    if (derivedKeys.has(view.key)) continue;
+    snapshot.views.push({ ...(view as CanonicalView), model_id: snapshot.modelId });
+    preservedKeys.add(view.key);
+  }
+
+  for (const row of existing.layout) {
+    if (!preservedKeys.has(row.viewKey)) continue;
+    snapshot.layout.push({ ...(row as CanonicalLayoutRow) });
+  }
+
+  snapshot.stats.views = snapshot.views.length;
+  snapshot.stats.layout = snapshot.layout.length;
+}
+
+/**
  * Preserva a hierarquia já existente quando o estado não trouxe um pai. O Yjs
  * atual não carrega geometria de contenção nem `parentId`, então apagar todos
  * os vínculos a cada projeção seria destrutivo.
@@ -201,8 +244,12 @@ export async function projectModel(
     const expected = snapshotFromDecoded(loaded.model, decoded);
     await preserveParents(client, modelId, expected);
 
+    // O estado colaborativo não conhece views/layout das views secundárias:
+    // mescla o que já está persistido antes de comparar ou aplicar.
+    const actual = await loadCanonicalSnapshot(client, modelId);
+    preserveExistingViews(expected, actual);
+
     if (mode === 'shadow') {
-      const actual = await loadCanonicalSnapshot(client, modelId);
       const divergences = compareProjected(expected, actual);
       for (const divergence of divergences) recordProjectionDivergence(divergence.kind);
       const report: ProjectionReport = {
@@ -230,8 +277,8 @@ export async function projectModel(
       throw err;
     }
 
-    const actual = await loadCanonicalSnapshot(client, modelId);
-    const divergences = compareProjected(expected, actual);
+    const applied = await loadCanonicalSnapshot(client, modelId);
+    const divergences = compareProjected(expected, applied);
     for (const divergence of divergences) recordProjectionDivergence(divergence.kind);
     const report: ProjectionReport = {
       modelId,
@@ -241,7 +288,7 @@ export async function projectModel(
       ok: divergences.length === 0,
       contentHash,
       expected: expected.stats,
-      actual: actual.stats,
+      actual: applied.stats,
       divergences,
       warnings: expected.warnings.map((warning) => warning.message),
     };

@@ -3,6 +3,8 @@ import { pool } from '../db.js';
 import type { CanonicalElementKind, CanonicalViewType } from './canonical.js';
 import { slugify, viewTypeFromC4Type } from './canonical.js';
 import { computeAutoLayout } from './autolayout.js';
+import { loadModelGraph } from './model-graph.js';
+import { renderDrawio } from './exporters.js';
 
 /**
  * Importação de workspaces do Structurizr (Onda 2, item 8).
@@ -425,6 +427,27 @@ export interface ImportResult {
 }
 
 /**
+ * Gera o XML draw.io inicial a partir do grafo já persistido. Sem ele, o
+ * preview e o editor draw.io abriam vazios para modelos importados (o XML só
+ * era gravado após uma edição manual no editor).
+ */
+export async function persistDrawioArtifact(modelId: string): Promise<void> {
+  try {
+    const graph = await loadModelGraph(modelId);
+    if (!graph || graph.elements.length === 0) return;
+    const xml = renderDrawio(graph);
+    await pool.query('UPDATE models SET drawio_xml = $1, updated_at = NOW() WHERE id = $2', [
+      xml,
+      modelId,
+    ]);
+  } catch (error) {
+    // O desenho é derivável do grafo; uma falha aqui não deve desfazer a
+    // importação, que já foi confirmada na transação.
+    console.error('[imports] falha ao gerar XML draw.io inicial:', error);
+  }
+}
+
+/**
  * Persiste o workspace importado. Em `replace`, o conteúdo anterior do modelo é
  * removido; em `merge`, elementos são casados por `identifier` e atualizados.
  */
@@ -662,6 +685,10 @@ export async function importWorkspaceIntoModel(
     await client.query('UPDATE models SET updated_at = NOW() WHERE id = $1', [modelId]);
 
     await client.query('COMMIT');
+
+    // Depois do COMMIT: `loadModelGraph` usa o pool e precisa enxergar o
+    // conteúdo persistido para gerar o desenho inicial.
+    await persistDrawioArtifact(modelId);
 
     return {
       modelId,

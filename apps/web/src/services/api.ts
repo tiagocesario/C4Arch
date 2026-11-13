@@ -33,7 +33,7 @@ function getToken(): string | null {
   return localStorage.getItem('c4arch_token');
 }
 
-async function req<T>(path: string, options?: RequestInit): Promise<T> {
+async function request(path: string, options?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const token = getToken();
   if (token) {
@@ -58,10 +58,20 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
     }
     throw new Error(msg);
   }
+  return res;
+}
+
+async function req<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await request(path, options);
   if (res.status === 204) {
     return undefined as T;
   }
   return (await res.json()) as T;
+}
+
+async function reqText(path: string, options?: RequestInit): Promise<string> {
+  const res = await request(path, options);
+  return res.text();
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +685,15 @@ export async function getDrawioEditorUrl(modelId: string, diagramType?: string):
 export async function openDrawioEditor(modelId: string, diagramType?: string): Promise<void> {
   const url = await getDrawioEditorUrl(modelId, diagramType);
   window.open(url, '_blank', 'noopener');
+}
+
+/**
+ * XML draw.io gerado pelo servidor a partir do grafo. Usado como fallback de
+ * preview/edição quando o modelo ainda não tem XML persistido (importações
+ * antigas ou modelos criados sem editor).
+ */
+export async function getModelDrawioXml(modelId: string): Promise<string> {
+  return reqText('/api/models/' + modelId + '/export/drawio');
 }
 
 /** Adiciona um novo tipo de diagrama ao mesmo modelo (sem criar novo modelo). */

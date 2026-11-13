@@ -6,6 +6,8 @@ import { pool } from '../db.js';
 import { regenerateModelDAS } from '../c4/das-service.js';
 import { parseDiagrams, resolveDiagramXml, withDiagramXml } from '../c4/diagrams.js';
 import { isC4ModelType } from '../c4/model-types.js';
+import { loadModelGraph } from '../c4/model-graph.js';
+import { renderDrawio } from '../c4/exporters.js';
 import {
   ASSET_MARKER_ID,
   ASSET_MARKER_KIND,
@@ -282,7 +284,16 @@ export class DrawioController {
         return res.status(400).json({ error: 'type de diagrama inválido' });
       }
       const title = String(model.title ?? 'Modelo');
-      const storedXml = resolveDiagramXml(model, diagramType) ?? '';
+      let storedXml = resolveDiagramXml(model, diagramType) ?? '';
+      if (!storedXml.trim()) {
+        // Modelos importados antes desta correção (ou criados por API) podem
+        // não ter XML salvo. Gera o desenho a partir do grafo para que a
+        // primeira edição não comece em branco.
+        const graph = await loadModelGraph(id);
+        if (graph && graph.elements.length > 0) {
+          storedXml = renderDrawio(graph);
+        }
+      }
       const xml = storedXml.trim() ? storedXml : emptyDiagramXml(id, `${title} (${diagramType})`);
 
       // O token da URL vale 5 min. A página recebe um token próprio, com escopo

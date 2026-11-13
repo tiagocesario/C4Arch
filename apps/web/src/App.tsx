@@ -30,6 +30,7 @@ import {
   openDrawioEditor,
   getDrawioEditorUrl,
   getDrawioPreviewUrl,
+  getModelDrawioXml,
   addModelDiagram,
   importModel,
 } from './services/api';
@@ -1024,10 +1025,15 @@ export default function App() {
     try {
       const detail = await getModel(target.id);
       setPreviewModel({ ...target, ...detail });
-      const xml =
+      let xml =
         dt === detail.c4Type
           ? detail.drawioXml
           : (detail.diagrams ?? []).find((d) => d.c4Type === dt)?.drawioXml;
+      if ((!xml || !xml.trim()) && (detail.elements.length > 0 || detail.edges.length > 0)) {
+        // Modelos importados do Structurizr podem não ter XML persistido; o
+        // servidor gera o desenho a partir do grafo canônico/legado.
+        xml = await getModelDrawioXml(target.id);
+      }
       if (!xml || !xml.trim()) {
         setPreviewError('Este tipo de diagrama ainda não possui um desenho salvo no draw.io.');
         return;

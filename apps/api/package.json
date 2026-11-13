@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
     "db:migrate": "tsx src/scripts/run-migrations.ts",
-    "test": "node --import tsx --test test/url.test.ts test/das.test.ts test/tokens.test.ts test/access.test.ts test/catalog-import.test.ts test/flags.test.ts test/migration-sql.test.ts test/canonical.test.ts test/diagram-layout.test.ts test/backfill.test.ts test/shadow.test.ts test/state.test.ts test/das-overrides.test.ts test/exporters.test.ts test/structurizr-import.test.ts test/autolayout.test.ts test/png.test.ts test/openapi.test.ts",
+    "test": "node --import tsx --test test/url.test.ts test/das.test.ts test/tokens.test.ts test/access.test.ts test/catalog-import.test.ts test/flags.test.ts test/migration-sql.test.ts test/canonical.test.ts test/diagram-layout.test.ts test/backfill.test.ts test/shadow.test.ts test/state.test.ts test/das-overrides.test.ts test/exporters.test.ts test/structurizr-import.test.ts test/projector.test.ts test/autolayout.test.ts test/png.test.ts test/openapi.test.ts",
     "test:schema": "node --import tsx --test test/schema.integration.test.ts",
     "test:m2": "node --import tsx --test test/canonical.test.ts test/diagram-layout.test.ts test/backfill.test.ts test/shadow.test.ts test/m2.integration.test.ts",
     "test:m3": "node --import tsx --test test/state.test.ts test/das-overrides.test.ts test/m3.integration.test.ts",

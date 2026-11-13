@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Y from 'yjs';
-import { applyOperation, type Operation } from '../src/sync.js';
+import {
+  applyOperation,
+  dedupeEdgesById,
+  hydrateDocFromApiSnapshot,
+  type Operation,
+} from '../src/sync.js';
 
 function newDoc(): Y.Doc {
   return new Y.Doc();
@@ -133,4 +138,63 @@ test('hydrateModel só popula um documento vazio', () => {
   // Segundo hydrate não sobrescreve o estado já existente.
   assert.equal(applyOperation(doc, hydrate), false);
   assert.equal(doc.getMap('elements').size, 1);
+});
+
+const EDGE_A = '11111111-1111-4111-8111-111111111111';
+const EDGE_B = '22222222-2222-4222-8222-222222222222';
+
+test('hidratação REST revalida o vazio e não duplica arestas semeadas', () => {
+  const doc = newDoc();
+  const cached = {
+    elements: [
+      { id: 'a', type: 'actor', title: 'Usuário' },
+      { id: 'b', type: 'system', title: 'Sistema' },
+    ],
+    edges: [
+      { id: EDGE_A, fromId: 'a', toId: 'b', label: 'Acessa' },
+      { id: EDGE_B, fromId: 'b', toId: 'a', label: 'Responde' },
+    ],
+  };
+
+  // Simula um hydrate concorrente que chegou enquanto o join aguardava a API.
+  assert.equal(
+    applyOperation(doc, {
+      op: 'hydrateModel',
+      modelId: 'm1',
+      data: cached,
+    }),
+    true
+  );
+  assert.equal(doc.getArray('edges').length, 2);
+
+  // A chamada REST que retorna depois não deve semear uma segunda vez.
+  assert.equal(hydrateDocFromApiSnapshot(doc, cached), false);
+  assert.equal(doc.getMap('elements').size, 2);
+  assert.equal(doc.getArray('edges').length, 2);
+});
+
+test('dedupeEdgesById remove cópias da mesma aresta e preserva paralelas distintas', () => {
+  const doc = newDoc();
+  applyOperation(doc, { op: 'createElement', modelId: 'm1', data: { id: 'a' } });
+  applyOperation(doc, { op: 'createElement', modelId: 'm1', data: { id: 'b' } });
+  applyOperation(doc, {
+    op: 'createEdge',
+    modelId: 'm1',
+    data: { id: EDGE_A, fromId: 'a', toId: 'b', label: 'Acessa' },
+  });
+  applyOperation(doc, {
+    op: 'createEdge',
+    modelId: 'm1',
+    data: { id: EDGE_B, fromId: 'a', toId: 'b', label: 'Outra relação' },
+  });
+  // Duplica a mesma aresta (mesmo id), como na corrida antiga.
+  doc.getArray('edges').push([doc.getArray('edges').get(0)]);
+
+  assert.equal(doc.getArray('edges').length, 3);
+  assert.equal(dedupeEdgesById(doc), 1);
+  assert.equal(doc.getArray('edges').length, 2);
+  assert.deepEqual(
+    doc.getArray('edges').toArray().map((edge) => (edge as Record<string, unknown>).id),
+    [EDGE_A, EDGE_B]
+  );
 });

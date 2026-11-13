@@ -48,7 +48,7 @@ export interface PresenceUser {
 const MAX_UNDO_STACK = 50;
 const PRESENCE_COLORS = ['#60a5fa', '#f472b6', '#34d399', '#fbbf24', '#a78bfa', '#fb7185', '#22d3ee'];
 
-interface CachedModel {
+export interface CachedModel {
   elements: Array<Record<string, unknown>>;
   edges: Array<Record<string, unknown>>;
 }
@@ -123,6 +123,63 @@ const toYjsEdge = (edge: Record<string, unknown>): Record<string, unknown> => {
     type: edge.type ?? 'call',
   };
 };
+
+function docIsEmpty(doc: Y.Doc): boolean {
+  return doc.getMap('elements').size === 0 && doc.getArray('edges').length === 0;
+}
+
+/**
+ * Semeia o documento com o snapshot REST. A checagem de vazio é refeita aqui,
+ * imediatamente antes da escrita: o `join` espera chamadas HTTP e, nesse meio
+ * tempo, um `hydrateModel` concorrente pode ter populado o CRDT. Sem a
+ * revalidação, as arestas eram inseridas duas vezes (estado durável + REST).
+ */
+export function hydrateDocFromApiSnapshot(doc: Y.Doc, cached: CachedModel): boolean {
+  if (!docIsEmpty(doc)) return false;
+
+  const elements = doc.getMap('elements');
+  const edges = doc.getArray('edges');
+
+  for (const element of cached.elements) {
+    const elementId = typeof element.id === 'string' ? element.id : '';
+    if (!elementId) continue;
+    elements.set(elementId, toYjsElement(element));
+  }
+  for (const edge of cached.edges) {
+    const normalized = toYjsEdge(edge);
+    if (!normalized.fromId || !normalized.toId) continue;
+    edges.push([normalized] as Array<unknown>);
+  }
+
+  return elements.size > 0 || edges.length > 0;
+}
+
+/**
+ * Remove cópias da mesma aresta (mesmo id). Documentos afetados pela corrida
+ * antiga de hidratação ficaram com o array duplicado; como os ids são os
+ * mesmos, a limpeza é segura e não afeta relações paralelas legítimas.
+ */
+export function dedupeEdgesById(doc: Y.Doc): number {
+  const edges = doc.getArray('edges');
+  const seen = new Set<string>();
+  const duplicates: number[] = [];
+
+  edges.toArray().forEach((value, index) => {
+    if (value == null || typeof value !== 'object') return;
+    const id = (value as Record<string, unknown>).id;
+    if (typeof id !== 'string' || !id) return;
+    if (seen.has(id)) {
+      duplicates.push(index);
+    } else {
+      seen.add(id);
+    }
+  });
+
+  for (let i = duplicates.length - 1; i >= 0; i -= 1) {
+    edges.delete(duplicates[i], 1);
+  }
+  return duplicates.length;
+}
 
 const serializeModel = (doc: Y.Doc, modelId: string): Record<string, unknown> => {  const elements: Array<Record<string, unknown>> = [];
   const elementsMap = doc.getMap('elements');
@@ -487,37 +544,32 @@ export function attachWebsocket(httpServer: Server) {
           });
 
 
-          const docEmpty = doc.getMap('elements').size === 0 && doc.getArray('edges').length === 0;
           const hydrationToken = sessionToken ?? apiToken;
-          if (docEmpty && flags.realtimePgState !== 'off') {
+          if (docIsEmpty(doc) && flags.realtimePgState !== 'off') {
             const durable = await getStateFromApi(modelId);
-            if (durable) {
+            // O estado durável pode ter chegado junto com um hydrate concorrente.
+            if (durable && docIsEmpty(doc)) {
               Y.applyUpdate(doc, durable);
             }
           }
 
           // Só hidrata do legado se, após aplicar o estado durável, ainda não
-          // houver nem elementos nem arestas. Checar apenas os elementos
-          // duplicaria arestas quando o estado durável tivesse só relações.
-          const stillEmpty =
-            doc.getMap('elements').size === 0 && doc.getArray('edges').length === 0;
-          if (stillEmpty && hydrationToken) {
+          // houver nem elementos nem arestas. O helper revalida o vazio depois
+          // do await para não duplicar arestas semeadas por um hydrateModel
+          // concorrente.
+          if (docIsEmpty(doc) && hydrationToken) {
             const cached = await getModelFromApi(modelId, hydrationToken);
-            if (cached) {
-              for (const element of cached.elements) {
-                const elementId = typeof element.id === 'string' ? element.id : '';
-                if (!elementId) continue;
-                doc.getMap('elements').set(elementId, toYjsElement(element));
-              }
-              for (const edge of cached.edges) {
-                const normalized = toYjsEdge(edge);
-                if (!normalized.fromId || !normalized.toId) continue;
-                doc.getArray('edges').push([normalized] as Array<unknown>);
-              }
+            if (cached && hydrateDocFromApiSnapshot(doc, cached)) {
               // Estado novo criado a partir do legado: persiste no primeiro
               // flush para que o projetor tenha uma base durável.
               if (flags.realtimePgState !== 'off') schedulePersist(modelId);
             }
+          }
+
+          // Cura documentos já corrompidos pela corrida antiga.
+          if (dedupeEdgesById(doc) > 0) {
+            broadcast(modelId, entry);
+            if (flags.realtimePgState !== 'off') schedulePersist(modelId);
           }
 
           ws.send(JSON.stringify({ type: 'state', modelId, model: serializeModel(doc, modelId) }));
