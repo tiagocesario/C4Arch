@@ -33,6 +33,8 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
   regenerado ao criar/editar o modelo, adicionar um tipo ou importar draw.io.
   No startup da API, a geração também é aplicada aos modelos antigos.
 - **Interoperabilidade:** importação de workspace Structurizr (JSON ou DSL) e
+  criação de modelos a partir de padrões Structurizr prontos (contexto,
+  containers, microserviços, componentes ou workspace em branco), com
   exportação para Structurizr JSON/DSL, C4-PlantUML, Mermaid, SVG, PNG, HTML e
   draw.io, com preview server-side e legenda.
 - **Colaboração em tempo real:** presença por view/sala, cursores, comentários

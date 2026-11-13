@@ -353,6 +353,33 @@ export function buildOpenApiDocument() {
           },
         },
       },
+      '/api/models/import/structurizr/templates': {
+        get: {
+          tags: ['imports'],
+          summary: 'Lista padrões de workspace Structurizr para criar modelos',
+          responses: {
+            '200': jsonResponse('Padrões disponíveis', {
+              type: 'object',
+              properties: {
+                templates: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      id: { type: 'string' },
+                      name: { type: 'string' },
+                      description: { type: 'string' },
+                      c4Type: { type: 'string' },
+                      format: { type: 'string', enum: ['dsl', 'json'] },
+                      content: { type: 'string' },
+                    },
+                  },
+                },
+              },
+            }),
+          },
+        },
+      },
       '/api/models/{id}': {
         get: {
           tags: ['models'],

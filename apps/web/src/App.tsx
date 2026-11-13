@@ -45,7 +45,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { PresenceBar } from './components/PresenceBar';
 import { StructurizrImportPanel } from './components/StructurizrImportPanel';
 import { VersionsPanel } from './components/VersionsPanel';
-import { autoLayoutViewModel, type ModelComment } from './services/collaboration';
+import { autoLayoutViewModel, importStructurizrWorkspace, listStructurizrTemplates, type ModelComment, type StructurizrTemplate } from './services/collaboration';
 import { inspectModel, type InspectionReport } from './services/api';
 import {
   listModelVersions,
@@ -193,6 +193,7 @@ export default function App() {
   const [newModelParentFilter, setNewModelParentFilter] = useState('');
   const [linkToExisting, setLinkToExisting] = useState(false);
   const [openDrawioAfterCreate, setOpenDrawioAfterCreate] = useState(true);
+  const [newModelStructurizrTemplateId, setNewModelStructurizrTemplateId] = useState('');
 
   const [showImportModels, setShowImportModels] = useState(false);
   const [importSource, setImportSource] = useState<ImportSource>('files');
@@ -234,6 +235,7 @@ export default function App() {
   const [showExport, setShowExport] = useState(false);
   const [showStructurizrImport, setShowStructurizrImport] = useState(false);
   const [structurizrTargetModelId, setStructurizrTargetModelId] = useState<string | null>(null);
+  const [structurizrTemplates, setStructurizrTemplates] = useState<StructurizrTemplate[]>([]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [modelComments, setModelComments] = useState<ModelComment[]>([]);
   const [presenceUsers, setPresenceUsers] = useState<ws.PresenceUser[]>([]);
@@ -685,6 +687,7 @@ export default function App() {
       }
       // Garante que o seletor de modelo pai mostre também os modelos recém-criados.
       await refreshModels();
+      await loadStructurizrTemplates();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return;
@@ -698,9 +701,18 @@ export default function App() {
     setNewModelParentFilter('');
     setLinkToExisting(false);
     setOpenDrawioAfterCreate(true);
+    setNewModelStructurizrTemplateId('');
     setCreatingModel(false);
     setCreateModelError(null);
     setShowCreateModel(true);
+  }
+
+  async function loadStructurizrTemplates() {
+    try {
+      setStructurizrTemplates(await listStructurizrTemplates());
+    } catch {
+      // A criação de modelos segue disponível mesmo sem o catálogo de padrões.
+    }
   }
 
   async function onCreateModelFromModal() {
@@ -718,8 +730,14 @@ export default function App() {
       return;
     }
 
-    // Abre a aba antes do await para não ser bloqueada como popup.
-    const popup = openDrawioAfterCreate ? window.open('about:blank', '_blank') : null;
+    const template = !linkParentId
+      ? structurizrTemplates.find((item) => item.id === newModelStructurizrTemplateId) ?? null
+      : null;
+
+    // Abre a aba antes do await para não ser bloqueada como popup. Modelos
+    // criados a partir de um padrão Structurizr abrem no canvas, não no draw.io.
+    const popup =
+      !template && openDrawioAfterCreate ? window.open('about:blank', '_blank') : null;
 
     setCreatingModel(true);
     try {
@@ -730,6 +748,27 @@ export default function App() {
         const updated = await addModelDiagram(linkParentId, newModelC4Type);
         setModels((previous) => previous.map((item) => (item.id === updated.id ? updated : item)));
         targetId = updated.id;
+      } else if (template) {
+        const currentOrgId = await ensureOrgId();
+        if (!currentOrgId) {
+          popup?.close();
+          setCreateModelError('Organização não encontrada. Faça login novamente.');
+          return;
+        }
+        // Reutiliza o mesmo pipeline de importação Structurizr (parser,
+        // persistência legada + canônica, views e autolayout).
+        const created = await importStructurizrWorkspace({
+          orgId: currentOrgId,
+          folderId: newModelFolderId,
+          parentId: null,
+          title,
+          content: template.content,
+          format: template.format,
+          c4Type: template.c4Type,
+        });
+        setShowCreateModel(false);
+        await handleStructurizrImported(created.id);
+        return;
       } else {
         const currentOrgId = await ensureOrgId();
         if (!currentOrgId) {
@@ -1188,6 +1227,9 @@ export default function App() {
     return !term || m.title.toLowerCase().includes(term);
   });
 
+  const selectedStructurizrTemplate =
+    structurizrTemplates.find((template) => template.id === newModelStructurizrTemplateId) ?? null;
+
   const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
   const activeViewKey = model?.c4Type ?? 'container';
@@ -1427,6 +1469,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setStructurizrTargetModelId(null);
+                      void loadStructurizrTemplates();
                       setShowStructurizrImport(true);
                     }}
                     style={buttonStyle}
@@ -1492,6 +1535,37 @@ export default function App() {
                       disabled={linkToExisting}
                       style={{ ...inputStyle, width: '100%', opacity: linkToExisting ? 0.6 : 1 }}
                     />
+                    {!linkToExisting && (
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
+                        <span>Padrão Structurizr (opcional)</span>
+                        <select
+                          value={newModelStructurizrTemplateId}
+                          onChange={(e) => {
+                            const id = e.target.value;
+                            setNewModelStructurizrTemplateId(id);
+                            const template = structurizrTemplates.find((item) => item.id === id);
+                            if (template) {
+                              setNewModelC4Type(template.c4Type as C4ModelType);
+                              if (!newModelTitle.trim()) setNewModelTitle(template.name);
+                            }
+                          }}
+                          aria-label="Padrão Structurizr do novo modelo"
+                          style={{ ...inputStyle, width: '100%' }}
+                        >
+                          <option value="">Modelo vazio (sem padrão)</option>
+                          {structurizrTemplates.map((template) => (
+                            <option key={template.id} value={template.id}>{template.name}</option>
+                          ))}
+                        </select>
+                        <span style={smallMuted}>
+                          {selectedStructurizrTemplate
+                            ? `${selectedStructurizrTemplate.description} O modelo é criado pelo mesmo pipeline de importação Structurizr.`
+                            : structurizrTemplates.length > 0
+                              ? 'Escolha um padrão para nascer com elementos, relações e views prontos.'
+                              : 'Nenhum padrão disponível no momento; o modelo será criado vazio.'}
+                        </span>
+                      </label>
+                    )}
                     <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
                       <input
                         type="checkbox"
@@ -1584,14 +1658,20 @@ export default function App() {
                         </select>
                       </>
                     )}
-                    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-                      <input
-                        type="checkbox"
-                        checked={openDrawioAfterCreate}
-                        onChange={(e) => setOpenDrawioAfterCreate(e.target.checked)}
-                      />
-                      Abrir draw.io após criar
-                    </label>
+                    {newModelStructurizrTemplateId ? (
+                      <span style={smallMuted}>
+                        O modelo será aberto no canvas com o conteúdo do padrão Structurizr.
+                      </span>
+                    ) : (
+                      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+                        <input
+                          type="checkbox"
+                          checked={openDrawioAfterCreate}
+                          onChange={(e) => setOpenDrawioAfterCreate(e.target.checked)}
+                        />
+                        Abrir draw.io após criar
+                      </label>
+                    )}
                     {createModelError && (
                       <div style={{ color: '#f87171', fontSize: 13 }}>{createModelError}</div>
                     )}
@@ -2206,6 +2286,7 @@ export default function App() {
           modelId={structurizrTargetModelId}
           orgId={orgId}
           c4Types={[...C4_MODEL_TYPES]}
+          templates={structurizrTemplates}
           onClose={() => setShowStructurizrImport(false)}
           onImported={(result) => void handleStructurizrImported(result.modelId)}
         />

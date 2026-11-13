@@ -1,7 +1,7 @@
 // Cliente das capacidades colaborativas e de interoperabilidade (Ondas 2/3):
 // views/layout, autolayout, comentários, exportação e importação Structurizr.
 
-const API = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
+const API = import.meta.env?.VITE_API_URL ?? 'http://localhost:4000';
 
 function getToken(): string | null {
   return localStorage.getItem('c4arch_token');
@@ -227,6 +227,22 @@ export interface StructurizrImportResult {
   relationships: number;
   views: number;
   skippedRelationships: number;
+}
+
+export interface StructurizrTemplate {
+  id: string;
+  name: string;
+  description: string;
+  c4Type: string;
+  format: 'dsl' | 'json';
+  content: string;
+}
+
+export async function listStructurizrTemplates(): Promise<StructurizrTemplate[]> {
+  const response = await request<{ templates?: StructurizrTemplate[] }>(
+    '/api/models/import/structurizr/templates'
+  );
+  return Array.isArray(response.templates) ? response.templates : [];
 }
 
 export async function importStructurizrWorkspace(input: {

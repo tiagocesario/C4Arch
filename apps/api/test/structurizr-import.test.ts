@@ -4,6 +4,8 @@ import {
   detectStructurizrFormat,
   parseStructurizrWorkspace,
 } from '../src/c4/structurizr-import.js';
+import { STRUCTURIZR_TEMPLATES } from '../src/c4/structurizr-templates.js';
+import { isC4ModelType } from '../src/c4/model-types.js';
 
 const jsonWorkspace = JSON.stringify({
   workspace: {
@@ -169,4 +171,43 @@ test('workspace vazio não falha', () => {
   assert.deepEqual(empty.elements, []);
   assert.deepEqual(empty.relationships, []);
   assert.deepEqual(empty.views, []);
+});
+
+test('padrões Structurizr são workspaces DSL válidos e referenciáveis', () => {
+  assert.ok(STRUCTURIZR_TEMPLATES.length >= 4);
+  assert.equal(new Set(STRUCTURIZR_TEMPLATES.map((template) => template.id)).size, STRUCTURIZR_TEMPLATES.length);
+
+  for (const template of STRUCTURIZR_TEMPLATES) {
+    assert.ok(isC4ModelType(template.c4Type), `${template.id}: c4Type inválido`);
+    assert.equal(template.format, 'dsl');
+    assert.notEqual(detectStructurizrFormat(template.content), 'json');
+
+    const workspace = parseStructurizrWorkspace(template.content, 'dsl');
+    const identifiers = new Set(workspace.elements.map((element) => element.identifier));
+
+    for (const relationship of workspace.relationships) {
+      assert.ok(
+        identifiers.has(relationship.sourceIdentifier) &&
+          identifiers.has(relationship.targetIdentifier),
+        `${template.id}: relação com elemento inexistente`
+      );
+    }
+    for (const view of workspace.views) {
+      if (view.scopeIdentifier) {
+        assert.ok(
+          identifiers.has(view.scopeIdentifier),
+          `${template.id}: view com escopo inexistente`
+        );
+      }
+    }
+
+    if (template.id === 'blank') {
+      assert.deepEqual(workspace.elements, []);
+      assert.deepEqual(workspace.views, []);
+    } else {
+      assert.ok(workspace.elements.length > 0, `${template.id}: sem elementos`);
+      assert.ok(workspace.relationships.length > 0, `${template.id}: sem relações`);
+      assert.ok(workspace.views.length > 0, `${template.id}: sem views`);
+    }
+  }
 });

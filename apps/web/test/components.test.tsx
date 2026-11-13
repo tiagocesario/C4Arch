@@ -17,11 +17,13 @@ const { InspectionsPanel } = await import('../src/components/InspectionsPanel');
 const { ImportModelsPanel } = await import('../src/components/ImportModelsPanel');
 const { DasEditor } = await import('../src/components/DasEditor');
 const { PresenceBar } = await import('../src/components/PresenceBar');
+const { StructurizrImportPanel } = await import('../src/components/StructurizrImportPanel');
 type ModelVersion = import('../src/services/api').ModelVersion;
 type InspectionReport = import('../src/services/api').InspectionReport;
 type PresenceUser = import('../src/services/ws').PresenceUser;
 type ImportResult = import('../src/components/ImportModelsPanel').ImportResult;
 type DasEditorSection = import('../src/components/DasEditor').DasEditorSection;
+type StructurizrTemplate = import('../src/services/collaboration').StructurizrTemplate;
 
 afterEach(() => cleanup());
 
@@ -303,4 +305,37 @@ test('PresenceBar alterna entre vazio e lista de usuários', () => {
   assert.ok(screen.getByText('2 online · view:container'));
   assert.ok(screen.getByText('Ana'));
   assert.ok(screen.getByText('Bruno'));
+});
+
+test('StructurizrImportPanel preenche o workspace a partir de um padrão', () => {
+  const templates: StructurizrTemplate[] = [
+    {
+      id: 'containers',
+      name: 'Sistema e containers',
+      description: 'Aplicação web, API e banco.',
+      c4Type: 'container',
+      format: 'dsl',
+      content: 'workspace "Sistema e containers" {\n  model {\n  }\n}',
+    },
+  ];
+
+  render(
+    <StructurizrImportPanel
+      modelId={null}
+      orgId="org-1"
+      templates={templates}
+      onClose={() => {}}
+      onImported={() => {}}
+    />
+  );
+
+  assert.ok(screen.getByText('Novo modelo a partir do Structurizr'));
+  const select = screen.getByLabelText('Padrão Structurizr') as HTMLSelectElement;
+  fireEvent.change(select, { target: { value: 'containers' } });
+
+  const workspace = screen.getByLabelText('Workspace Structurizr') as HTMLTextAreaElement;
+  assert.match(workspace.value, /Sistema e containers/);
+  assert.equal((screen.getByLabelText('Título') as HTMLInputElement).value, 'Sistema e containers');
+  assert.equal((screen.getByLabelText('Tipo C4') as HTMLSelectElement).value, 'container');
+  assert.ok(screen.getByText('Aplicação web, API e banco.'));
 });

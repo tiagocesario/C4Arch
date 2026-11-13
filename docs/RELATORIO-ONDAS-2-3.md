@@ -13,11 +13,11 @@ produção).
 |---|---|
 | Exportação | `exports.controller`, `exporters.ts` e `png.ts`: Structurizr JSON/DSL, C4-PlantUML, Mermaid, SVG, PNG, HTML e draw.io, sem dependências nativas |
 | Views e layout | `views.controller`, `views.routes` e `autolayout.ts`: CRUD de views canônicas e autolayout determinístico |
-| Importação | `imports.controller` e `structurizr-import.ts`: workspace Structurizr (JSON/DSL) com escopo C4, hierarquia e gravação legada + canônica |
+| Importação | `imports.controller` e `structurizr-import.ts`: workspace Structurizr (JSON/DSL) com escopo C4, hierarquia e gravação legada + canônica; `structurizr-templates.ts` oferece padrões prontos (contexto, containers, microserviços, componentes e workspace em branco) para criar modelos no mesmo pipeline |
 | Comentários | `comments.controller` e `comments.routes`: comentários gerais ou ancorados em elemento, com autorização por papel |
 | Colaboração | presença por view/sala, cursores, undo/redo por snapshots e hidratação inicial fora da pilha de undo |
 | Contrato | OpenAPI 3.1 em `/api/openapi.json`, Swagger UI em `/api/docs`, erros com `error`/`code` e `Idempotency-Key` |
-| Cliente tipado | `scripts/generate-client.mjs` gera `apps/web/src/services/generated-api.ts` (28 operações) |
+| Cliente tipado | `scripts/generate-client.mjs` gera `apps/web/src/services/generated-api.ts` (29 operações) |
 | Operação | migrações versionadas em `schema_migrations`, backup/restore, SBOM CycloneDX e auditoria por organização |
 | Worker | valida o schema em vez de criá-lo e faz apenas reparos de dados |
 | MCP | workspace `apps/mcp` com 12 ferramentas `c4_*` sobre stdio, consumindo a API HTTP |
@@ -37,7 +37,7 @@ existentes e cobre:
 - `components/DasEditor.tsx` — edição do DAS por seções, preview e PDF;
 - `components/CommentsPanel.tsx`, `ExportPanel.tsx`, `PresenceBar.tsx` e
   `StructurizrImportPanel.tsx` — colaboração, exportação, presença e importação
-  Structurizr;
+  Structurizr (com seleção de padrões ao criar um modelo novo);
 - `utils/` — Markdown, DAS, texto e rótulos C4;
 - `router.ts` — deep links (`#/catalog`, `#/models/:id`).
 

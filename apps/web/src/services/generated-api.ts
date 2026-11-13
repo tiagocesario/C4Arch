@@ -20,6 +20,7 @@ export const operations = {
   postApiModels: { method: 'POST', path: '/api/models', summary: "Cria um modelo", hasBody: true },
   postApiModelsImport: { method: 'POST', path: '/api/models/import', summary: "Importa draw.io XML de arquivo ou URL", hasBody: false },
   postApiModelsImportStructurizr: { method: 'POST', path: '/api/models/import/structurizr', summary: "Importa um workspace Structurizr (JSON ou DSL)", hasBody: true },
+  getApiModelsImportStructurizrTemplates: { method: 'GET', path: '/api/models/import/structurizr/templates', summary: "Lista padrões de workspace Structurizr para criar modelos", hasBody: false },
   getApiModelsId: { method: 'GET', path: '/api/models/{id}', summary: "Obtém um modelo com elementos e relações", hasBody: false },
   putApiModelsId: { method: 'PUT', path: '/api/models/{id}', summary: "Atualiza um modelo", hasBody: false },
   deleteApiModelsId: { method: 'DELETE', path: '/api/models/{id}', summary: "Exclui um modelo", hasBody: false },

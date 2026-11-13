@@ -2,6 +2,33 @@ import { test, expect, type Page } from '@playwright/test';
 
 const user = { id: 'user-1', email: 'ana@example.com', name: 'Ana' };
 const org = { id: 'org-1', name: 'Arquitetura', slug: 'arquitetura', role: 'owner' };
+const createdModel = {
+  id: 'model-1',
+  org_id: org.id,
+  folder_id: null,
+  parent_id: null,
+  title: 'Loja',
+  description: 'Modelo criado a partir de um padrão Structurizr',
+  status: 'draft',
+  c4_type: 'container',
+  c4_scope: null,
+  drawio_xml: null,
+  elements: [],
+  edges: [],
+  created_at: '2026-01-02T03:04:05.000Z',
+  updated_at: '2026-01-02T03:04:05.000Z',
+};
+
+const structurizrTemplates = [
+  {
+    id: 'containers',
+    name: 'Sistema e containers',
+    description: 'Aplicação web, API e banco de dados.',
+    c4Type: 'container',
+    format: 'dsl',
+    content: 'workspace "Sistema e containers" {\n  model {\n  }\n}',
+  },
+];
 
 /**
  * Mock da API usado pelos testes. Responde o suficiente para o bootstrap da
@@ -21,12 +48,32 @@ async function mockApi(page: Page): Promise<void> {
       });
     }
 
+    if (method === 'POST' && path === '/api/models/import/structurizr') {
+      return route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...createdModel,
+          import: {
+            modelId: createdModel.id,
+            mode: 'replace',
+            elements: 0,
+            relationships: 0,
+            views: 1,
+            skippedRelationships: 0,
+          },
+        }),
+      });
+    }
+
     const responses: Record<string, unknown> = {
       '/api/auth/me': { user, org },
       '/api/models': [],
       '/api/folders': [],
       '/api/apps': [],
       '/api/services': [],
+      '/api/models/import/structurizr/templates': { templates: structurizrTemplates },
+      '/api/models/model-1': createdModel,
     };
 
     if (method === 'GET' && path in responses) {
@@ -86,4 +133,25 @@ test('deep link abre o catálogo e a navegação atualiza o hash', async ({ page
 
   await page.getByRole('button', { name: 'Arquivos', exact: true }).click();
   await expect(page).toHaveURL(/#\/files$/);
+});
+
+test('cria modelo novo a partir de um padrão Structurizr', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem('c4arch_token', 'e2e-token');
+  });
+  await mockApi(page);
+
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Arquivos', exact: true })).toBeVisible();
+
+  await page.getByTitle('Tipo de item a criar').selectOption('model');
+  await page.getByRole('button', { name: '+ Novo modelo' }).click();
+
+  await page.getByPlaceholder('Título do modelo').fill('Loja');
+  await page.getByLabel('Padrão Structurizr do novo modelo').selectOption('containers');
+  await page.getByRole('button', { name: 'Criar', exact: true }).click();
+
+  await expect(page).toHaveURL(/#\/models\/model-1$/);
+  await expect(page.getByRole('button', { name: 'Voltar' })).toBeVisible();
 });

@@ -10,6 +10,7 @@ import {
   parseStructurizrWorkspace,
 } from '../c4/structurizr-import.js';
 import { isC4ModelType, type C4ModelType } from '../c4/model-types.js';
+import { STRUCTURIZR_TEMPLATES } from '../c4/structurizr-templates.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IMPORT_BYTES = 5_000_000;
@@ -46,6 +47,11 @@ function validateImportBody(body: Record<string, unknown>, res: Response): strin
 }
 
 export class ImportController {
+  /** Lista os padrões Structurizr disponíveis para criação de modelos. */
+  static async listTemplates(_req: AuthenticatedRequest, res: Response) {
+    return res.json({ templates: STRUCTURIZR_TEMPLATES });
+  }
+
   /** Importa um workspace Structurizr criando um novo modelo na organização. */
   static async importNew(req: AuthenticatedRequest, res: Response) {
     const body = (req.body ?? {}) as Record<string, unknown>;

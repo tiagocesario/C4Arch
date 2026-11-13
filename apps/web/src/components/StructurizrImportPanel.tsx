@@ -3,6 +3,7 @@ import {
   importStructurizrIntoModel,
   importStructurizrWorkspace,
   type StructurizrImportResult,
+  type StructurizrTemplate,
 } from '../services/collaboration';
 
 interface StructurizrImportPanelProps {
@@ -10,6 +11,8 @@ interface StructurizrImportPanelProps {
   modelId?: string | null;
   orgId: string;
   c4Types?: string[];
+  /** Padrões prontos exibidos ao criar um modelo novo. */
+  templates?: StructurizrTemplate[];
   onClose: () => void;
   onImported: (result: { modelId: string; import: StructurizrImportResult }) => void;
 }
@@ -39,6 +42,7 @@ export function StructurizrImportPanel({
   modelId,
   orgId,
   c4Types = ['system-context', 'container', 'component', 'system-landscape', 'dynamic', 'deployment'],
+  templates = [],
   onClose,
   onImported,
 }: StructurizrImportPanelProps) {
@@ -47,14 +51,29 @@ export function StructurizrImportPanel({
   const [c4Type, setC4Type] = useState('container');
   const [mode, setMode] = useState<'replace' | 'merge'>('replace');
   const [format, setFormat] = useState<'auto' | 'json' | 'dsl'>('auto');
+  const [templateId, setTemplateId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
+
+  const selectedTemplate = templates.find((template) => template.id === templateId) ?? null;
+
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const template = templates.find((item) => item.id === id);
+    if (!template) return;
+    setContent(template.content);
+    setFormat(template.format);
+    setC4Type(template.c4Type);
+    if (!title.trim()) setTitle(template.name);
+    setError(null);
+  };
 
   const loadFile = async (file: File) => {
     try {
       const text = await file.text();
       setContent(text);
+      setTemplateId('');
       if (!title.trim()) setTitle(file.name.replace(/\.(json|dsl)$/i, ''));
       if (/\.json$/i.test(file.name)) setFormat('json');
       else if (/\.dsl$/i.test(file.name)) setFormat('dsl');
@@ -136,6 +155,28 @@ export function StructurizrImportPanel({
 
         {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
+        {!modelId && templates.length > 0 && (
+          <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 10 }}>
+            Começar de um padrão Structurizr
+            <select
+              value={templateId}
+              onChange={(event) => applyTemplate(event.target.value)}
+              aria-label="Padrão Structurizr"
+              style={{ ...inputStyle, marginTop: 4 }}
+            >
+              <option value="">Nenhum (colar workspace ou escolher arquivo)</option>
+              {templates.map((template) => (
+                <option key={template.id} value={template.id}>{template.name}</option>
+              ))}
+            </select>
+            {selectedTemplate && (
+              <span style={{ display: 'block', marginTop: 4, color: '#7b8290' }}>
+                {selectedTemplate.description}
+              </span>
+            )}
+          </label>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
           <label style={{ fontSize: 12, color: '#9ca3af' }}>
             Título
@@ -206,9 +247,13 @@ export function StructurizrImportPanel({
 
         <textarea
           value={content}
-          onChange={(event) => setContent(event.target.value)}
+          onChange={(event) => {
+            setContent(event.target.value);
+            if (templateId) setTemplateId('');
+          }}
           rows={12}
           spellCheck={false}
+          aria-label="Workspace Structurizr"
           placeholder={'workspace "Minha arquitetura" {\n  model {\n    usuario = person "Usuário"\n    ...\n  }\n}'}
           style={{ ...inputStyle, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
         />
