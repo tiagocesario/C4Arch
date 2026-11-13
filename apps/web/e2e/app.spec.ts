@@ -34,8 +34,8 @@ const structurizrTemplates = [
  * Mock da API usado pelos testes. Responde o suficiente para o bootstrap da
  * sessão (auth/me + catálogo vazio) e para o POST de login.
  */
-async function mockApi(page: Page): Promise<void> {
-  await page.route('**/api/**', async (route) => {
+async function mockApi(target: Page | import('@playwright/test').BrowserContext): Promise<void> {
+  await target.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
     const method = request.method();
@@ -135,12 +135,12 @@ test('deep link abre o catálogo e a navegação atualiza o hash', async ({ page
   await expect(page).toHaveURL(/#\/files$/);
 });
 
-test('cria modelo novo a partir de um padrão Structurizr', async ({ page }) => {
-  await page.addInitScript(() => {
+test('cria modelo novo a partir de um padrão Structurizr', async ({ page, context }) => {
+  await context.addInitScript(() => {
     localStorage.clear();
     localStorage.setItem('c4arch_token', 'e2e-token');
   });
-  await mockApi(page);
+  await mockApi(context);
 
   await page.goto('/');
   await expect(page.getByRole('button', { name: 'Arquivos', exact: true })).toBeVisible();
@@ -150,8 +150,12 @@ test('cria modelo novo a partir de um padrão Structurizr', async ({ page }) => 
 
   await page.getByPlaceholder('Título do modelo').fill('Loja');
   await page.getByLabel('Padrão Structurizr do novo modelo').selectOption('containers');
-  await page.getByRole('button', { name: 'Criar', exact: true }).click();
 
-  await expect(page).toHaveURL(/#\/models\/model-1$/);
-  await expect(page.getByRole('button', { name: 'Voltar' })).toBeVisible();
+  const popupPromise = context.waitForEvent('page');
+  await page.getByRole('button', { name: 'Criar', exact: true }).click();
+  const editor = await popupPromise;
+  await editor.waitForLoadState('domcontentloaded');
+
+  await expect(editor).toHaveURL(/#\/models\/model-1$/);
+  await expect(editor.getByRole('button', { name: 'Voltar' })).toBeVisible();
 });

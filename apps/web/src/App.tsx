@@ -55,7 +55,7 @@ import {
   type ModelVersion,
 } from './services/api';
 import * as ws from './services/ws';
-import { parseHashRoute, replaceHashRoute } from './router';
+import { buildHashRoute, parseHashRoute, replaceHashRoute } from './router';
 import { escapeHtml, markdownToHtml } from './utils/markdown';
 import { buildDasFromSections, firstDiagramXml, parseDasSections } from './utils/das';
 import { nameFromImportUrl, normalizeText, stripFileExtension } from './utils/text';
@@ -110,6 +110,12 @@ const dangerButtonStyle: CSSProperties = {
 const smallMuted: CSSProperties = { fontSize: 12, color: '#7b8290' };
 
 const statusLabel: Record<ModelStatus, string> = { draft: 'Rascunho', final: 'Final' };
+
+/** URL absoluta do editor C4, usada para abrir o modelo em uma nova aba. */
+function c4EditorUrl(modelId: string): string {
+  const { origin, pathname } = window.location;
+  return `${origin}${pathname}${buildHashRoute('edit', modelId)}`;
+}
 
 /**
  * XML antigo gerado antes da correção de escape podia conter HTML cru no
@@ -752,9 +758,9 @@ export default function App() {
       : null;
 
     // Abre a aba antes do await para não ser bloqueada como popup. Modelos
-    // criados a partir de um padrão Structurizr abrem no canvas, não no draw.io.
+    // criados a partir de um padrão Structurizr abrem no canvas em uma nova aba.
     const popup =
-      !template && openDrawioAfterCreate ? window.open('about:blank', '_blank') : null;
+      template || openDrawioAfterCreate ? window.open('about:blank', '_blank') : null;
 
     setCreatingModel(true);
     try {
@@ -784,7 +790,25 @@ export default function App() {
           c4Type: template.c4Type,
         });
         setShowCreateModel(false);
-        await handleStructurizrImported(created.id);
+        setError(null);
+        // Abre o editor C4 em uma nova aba para usar toda a tela disponível;
+        // o app atual retorna para a lista de arquivos.
+        const editorUrl = c4EditorUrl(created.id);
+        setMode('files');
+        setSelectedId(null);
+        setModel(null);
+        if (popup && !popup.closed) {
+          popup.location.replace(editorUrl);
+          try {
+            popup.opener = null;
+          } catch {
+            // Alguns navegadores bloqueiam a alteração após a navegação.
+          }
+        } else {
+          // Fallback quando o navegador bloqueia popups.
+          await handleStructurizrImported(created.id);
+        }
+        await refreshModels();
         return;
       } else {
         const currentOrgId = await ensureOrgId();
@@ -1403,8 +1427,9 @@ export default function App() {
           onSubmit={loginUser}
         />
       ) : (
-        <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
-          <nav style={{ width: 180, padding: '12px 8px', borderRight: '1px solid #2a2f3a', display: 'flex', flexDirection: 'column', gap: '6px', background: '#111318' }}>
+        <div style={{ display: mode === 'edit' ? 'none' : 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          {mode !== 'edit' && (
+            <nav style={{ width: 180, padding: '12px 8px', borderRight: '1px solid #2a2f3a', display: 'flex', flexDirection: 'column', gap: '6px', background: '#111318' }}>
             <button onClick={() => setMode('files')} style={{ ...buttonStyle, background: mode === 'files' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Arquivos</button>
             <button onClick={() => setMode('catalog')} style={{ ...buttonStyle, background: mode === 'catalog' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Catálogo</button>
             {currentRole === 'owner' && (
@@ -1417,7 +1442,16 @@ export default function App() {
               <button onClick={() => setMode('domains')} style={{ ...buttonStyle, background: mode === 'domains' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Domínios SSO</button>
             )}
           </nav>
-          <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
+          )}
+          <div
+          style={{
+            flex: 1,
+            overflow: mode === 'edit' ? 'hidden' : 'auto',
+            minHeight: 0,
+            display: mode === 'edit' ? 'flex' : undefined,
+            flexDirection: mode === 'edit' ? 'column' : undefined,
+          }}
+        >
 
           {error && mode !== 'edit' && (
             <div style={{ padding: '8px 16px', color: '#f87171', borderBottom: '1px solid #2a2f3a' }}>
@@ -1682,7 +1716,7 @@ export default function App() {
                     )}
                     {newModelStructurizrTemplateId ? (
                       <span style={smallMuted}>
-                        O modelo será aberto no canvas com o conteúdo do padrão Structurizr.
+                        O modelo será aberto em uma nova aba no canvas, com o conteúdo do padrão Structurizr.
                       </span>
                     ) : (
                       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
@@ -2125,7 +2159,7 @@ export default function App() {
 
       {mode === 'edit' && selectedId && (
         <ReactFlowProvider>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {error && (
               <div style={{ padding: '8px 12px', color: '#f87171', background: '#1f2937', borderBottom: '1px solid #2a2f3a' }}>
                 {error}
@@ -2144,6 +2178,9 @@ export default function App() {
             <footer style={{ padding: '8px 12px', borderTop: '1px solid #2a2f3a', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', background: '#0f1115' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
                 <button onClick={() => { setMode('files'); setSelectedId(null); setModel(null); }} style={buttonStyle}>Voltar</button>
+                <button onClick={() => selectedId && window.open(c4EditorUrl(selectedId), '_blank', 'noopener')} style={buttonStyle} title="Abrir este editor em uma nova aba, em tela cheia">
+                  Abrir em nova aba
+                </button>
                 <PresenceBar users={presenceUsers} />
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>

@@ -192,10 +192,23 @@ export function Canvas({
         colorMode="dark"
         proOptions={{ hideAttribution: true }}
       />
-      <div style={{ position: 'absolute', top: 12, left: 12, font: '12px monospace', color: '#7b8290' }}>
-        WS: {wsConnected ? 'online' : 'offline'}
-        {readOnly ? ' · somente leitura' : ''}
-      </div>
+      {(!wsConnected || readOnly) && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            padding: '4px 8px',
+            background: 'rgba(17, 24, 39, 0.85)',
+            border: '1px solid #2a2f3a',
+            borderRadius: 6,
+            font: '12px monospace',
+            color: wsConnected ? '#9ca3af' : '#fbbf24',
+          }}
+        >
+          {!wsConnected ? 'Tempo real: reconectando…' : 'somente leitura'}
+        </div>
+      )}
     </div>
   );
 }
