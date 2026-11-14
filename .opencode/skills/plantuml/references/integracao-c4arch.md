@@ -90,7 +90,7 @@ Importa/substitui o conteúdo de um modelo existente.
 `GET /api/models/{id}/export/plantuml` gera `.puml` (`text/plain`). O formato
 também aparece em `GET /api/models/{id}/exports`.
 
-## Templates prontos
+### Pré-visualização\n\n`POST /api/plantuml/render` renderiza um diagrama PlantUML em SVG, usado pela\npré-visualização do painel de código. Recebe `{ \"content\": \"...\" }` e retorna\n`image/svg+xml`. Requer autenticação. Em Docker, o serviço `plantuml` (porta\n8080 interna) é usado; fora do Docker, configure\n`PLANTUML_RENDER_URL_TEMPLATE` (padrão: servidor público do PlantUML).\n\n## Templates prontos
 
 | `id` | Nome | `c4Type` | Conteúdo |
 | --- | --- | --- | --- |

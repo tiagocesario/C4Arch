@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   fetchModelExportText,
   importPlantUmlIntoModel,
+  renderPlantUmlPreview,
 } from '../services/collaboration';
 
 interface PlantUmlSourcePanelProps {
@@ -24,8 +25,7 @@ const buttonStyle = {
 
 /**
  * Mostra o modelo como código C4-PlantUML e permite reaplicar o texto no
- * modelo canônico. Fecha o ciclo visualização → edição → persistência sem
- * depender do editor visual.
+ * modelo canônico, com pré-visualização do desenho renderizado ao lado.
  */
 export function PlantUmlSourcePanel({
   modelId,
@@ -40,6 +40,9 @@ export function PlantUmlSourcePanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const dirty = source !== baseline;
 
@@ -62,6 +65,35 @@ export function PlantUmlSourcePanel({
     void loadSource();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
+
+  // Pré-visualização com debounce.
+  useEffect(() => {
+    if (!source.trim()) {
+      setPreviewUrl(null);
+      setPreviewError(null);
+      return;
+    }
+    setPreviewLoading(true);
+    setPreviewError(null);
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      try {
+        const url = await renderPlantUmlPreview(source);
+        if (!cancelled) setPreviewUrl(url);
+      } catch (err) {
+        if (!cancelled) {
+          setPreviewError(err instanceof Error ? err.message : String(err));
+          setPreviewUrl(null);
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 700);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(handle);
+    };
+  }, [source]);
 
   async function applySource() {
     if (!canEdit || saving) return;
@@ -111,7 +143,7 @@ export function PlantUmlSourcePanel({
           border: '1px solid #2a2f3a',
           borderRadius: 10,
           padding: 16,
-          width: 'min(1000px, 96vw)',
+          width: 'min(1280px, 96vw)',
           height: '88vh',
           display: 'flex',
           flexDirection: 'column',
@@ -119,11 +151,11 @@ export function PlantUmlSourcePanel({
         }}
         onClick={(event) => event.stopPropagation()}
       >
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <h3 style={{ margin: 0 }}>PlantUML · {modelTitle}</h3>
             <span style={{ fontSize: 12, color: '#9ca3af' }}>
-              Código C4-PlantUML do modelo. Edite e aplique para atualizar o canvas.
+              Código C4-PlantUML do modelo. Edite e aplique para atualizar o canvas. A pré-visualização renderiza o diagrama.
             </span>
           </div>
           <button onClick={close} style={buttonStyle}>Fechar</button>
@@ -132,31 +164,69 @@ export function PlantUmlSourcePanel({
         {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
         {status && <div style={{ color: '#4ade80', fontSize: 12 }}>{status}</div>}
 
-        <textarea
-          value={source}
-          onChange={(event) => {
-            setSource(event.target.value);
-            setStatus(null);
-          }}
-          readOnly={!canEdit || loading}
-          spellCheck={false}
-          aria-label="Código PlantUML do modelo"
-          placeholder={'@startuml\n!include <C4/C4_Container>\nPerson(usuario, "Usuário")\n@enduml'}
-          style={{
-            flex: 1,
-            minHeight: 0,
-            width: '100%',
-            resize: 'none',
-            fontFamily: 'Consolas, monospace',
-            fontSize: 12,
-            lineHeight: 1.5,
-            color: '#e5e7eb',
-            background: '#0f1115',
-            border: '1px solid #374151',
-            borderRadius: 8,
-            padding: 10,
-          }}
-        />
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>Código</span>
+            <textarea
+              value={source}
+              onChange={(event) => {
+                setSource(event.target.value);
+                setStatus(null);
+              }}
+              readOnly={!canEdit || loading}
+              spellCheck={false}
+              aria-label="Código PlantUML do modelo"
+              placeholder={'@startuml\n!include <C4/C4_Container>\nPerson(usuario, "Usuário")\n@enduml'}
+              style={{
+                flex: 1,
+                minHeight: 0,
+                width: '100%',
+                resize: 'none',
+                fontFamily: 'Consolas, monospace',
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: '#e5e7eb',
+                background: '#0f1115',
+                border: '1px solid #374151',
+                borderRadius: 8,
+                padding: 10,
+              }}
+            />
+          </div>
+
+          <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>Pré-visualização</span>
+            <div
+              style={{
+                flex: 1,
+                minHeight: 0,
+                background: '#0f1115',
+                border: '1px solid #374151',
+                borderRadius: 8,
+                padding: 8,
+                overflow: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {previewLoading && <span style={{ fontSize: 12, color: '#9ca3af' }}>Renderizando...</span>}
+              {!previewLoading && previewError && (
+                <span style={{ fontSize: 12, color: '#f87171' }}>{previewError}</span>
+              )}
+              {!previewLoading && !previewError && previewUrl && (
+                <img
+                  src={previewUrl}
+                  alt="Pré-visualização do diagrama PlantUML"
+                  style={{ maxWidth: '100%', maxHeight: '100%' }}
+                />
+              )}
+              {!previewLoading && !previewError && !previewUrl && (
+                <span style={{ fontSize: 12, color: '#9ca3af' }}>Sem conteúdo para renderizar.</span>
+              )}
+            </div>
+          </div>
+        </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: '#9ca3af' }}>

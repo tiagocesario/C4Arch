@@ -165,6 +165,7 @@ import auditRouter from './routes/audit.routes.js';
 import internalRouter from './routes/internal.routes.js';
 import exportsRouter from './routes/exports.routes.js';
 import importsRouter from './routes/imports.routes.js';
+import plantumlRouter from './routes/plantuml.routes.js';
 import viewsRouter from './routes/views.routes.js';
 import commentsRouter from './routes/comments.routes.js';
 
@@ -172,6 +173,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/orgs', orgsRouter);
 // Importação PlantUML precisa vir antes do CRUD de modelos para que
 // `/api/models/import/plantuml` não caia em `/:id`.
+app.use('/api/plantuml', plantumlRouter);
 app.use('/api/models', importsRouter);
 app.use('/api/models', modelsRouter);
 app.use('/api/models', elementsRouter);

@@ -74,6 +74,7 @@ services:
       - VERSION_HASH=${VERSION_HASH:-off}
       - REALTIME_PG_STATE=${REALTIME_PG_STATE:-off}
       - PROJECTOR_SHADOW=${PROJECTOR_SHADOW:-off}
+      - PLANTUML_RENDER_URL_TEMPLATE=${PLANTUML_RENDER_URL_TEMPLATE:-http://plantuml:8080/svg/{encoded}}
       - API_TOKEN_REALTIME=${API_TOKEN_REALTIME:-}
       - METRICS_ENABLED=${METRICS_ENABLED:-true}
       - STORAGE_DRIVER=${STORAGE_DRIVER:-drive}
@@ -174,6 +175,14 @@ services:
         condition: service_healthy
       storage-init:
         condition: service_completed_successfully
+
+  plantuml:
+    image: plantuml/plantuml-server:jetty
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:8080:8080"
 
 volumes:
   pgdata:

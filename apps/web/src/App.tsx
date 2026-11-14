@@ -1605,9 +1605,9 @@ export default function App() {
                       placeholder="Descrição (opcional)"
                       value={newModelDescription}
                       onChange={(e) => setNewModelDescription(e.target.value)}
-                      rows={3}
+                      rows={5}
                       disabled={linkToExisting}
-                      style={{ ...inputStyle, width: '100%', resize: 'vertical', opacity: linkToExisting ? 0.6 : 1 }}
+                      style={{ ...inputStyle, width: '100%', minHeight: 110, resize: 'vertical', opacity: linkToExisting ? 0.6 : 1 }}
                     />
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
                       <span>Tipo de diagrama C4</span>
@@ -2610,7 +2610,7 @@ export default function App() {
               placeholder="Descrição curta (aparece no objeto C4)"
               value={assetDraft.description}
               onChange={(e) => setAssetDraft({ ...assetDraft, description: e.target.value })}
-              rows={3}
+              rows={5}
               style={{ ...inputStyle, width: '100%', resize: 'vertical' }}
             />
             {assetDraft.kind === 'service' && (
@@ -2739,7 +2739,7 @@ export default function App() {
               placeholder="Descrição (opcional)"
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
-              rows={3}
+              rows={5}
               style={{ ...inputStyle, width: '100%', resize: 'vertical' }}
             />
             <select

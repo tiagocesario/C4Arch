@@ -213,7 +213,28 @@ export async function fetchModelExportText(
   return blob.text();
 }
 
-/** URL de objeto para preview (SVG/PNG) autenticado. */
+export async function renderPlantUmlPreview(content: string): Promise<string> {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers.Authorization = 'Bearer ' + token;
+  const res = await fetch(API + '/api/plantuml/render', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok) {
+    let message = 'Falha ao renderizar PlantUML: ' + res.status;
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body?.error) message = body.error;
+    } catch {
+      // resposta sem JSON
+    }
+    throw new Error(message);
+  }
+  const svg = await res.text();
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
 export async function fetchModelPreview(
   modelId: string,
   format: 'svg' | 'png',
