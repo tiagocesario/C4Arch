@@ -173,6 +173,41 @@ test('hidratação REST revalida o vazio e não duplica arestas semeadas', () =>
   assert.equal(doc.getArray('edges').length, 2);
 });
 
+test('replaceModel substitui o estado existente e adiciona o novo snapshot', () => {
+  const doc = newDoc();
+  applyOperation(doc, { op: 'createElement', modelId: 'm1', data: { id: 'antigo', title: 'Antigo' } });
+  applyOperation(doc, {
+    op: 'createEdge',
+    modelId: 'm1',
+    data: { id: EDGE_A, fromId: 'antigo', toId: 'antigo', label: 'loop' },
+  });
+
+  assert.equal(
+    applyOperation(doc, {
+      op: 'replaceModel',
+      modelId: 'm1',
+      data: {
+        elements: [
+          { id: 'novo-a', type: 'actor', title: 'Usuário' },
+          { id: 'novo-b', type: 'system', title: 'Sistema' },
+        ],
+        edges: [{ id: EDGE_B, fromId: 'novo-a', toId: 'novo-b', label: 'Acessa' }],
+      },
+    }),
+    true
+  );
+
+  assert.equal(doc.getMap('elements').has('antigo'), false);
+  assert.deepEqual(
+    Array.from(doc.getMap('elements').keys()).sort(),
+    ['novo-a', 'novo-b']
+  );
+  assert.equal(doc.getArray('edges').length, 1);
+  const edge = doc.getArray('edges').get(0) as Record<string, unknown>;
+  assert.equal(edge.id, EDGE_B);
+  assert.equal(edge.fromId, 'novo-a');
+});
+
 test('dedupeEdgesById remove cópias da mesma aresta e preserva paralelas distintas', () => {
   const doc = newDoc();
   applyOperation(doc, { op: 'createElement', modelId: 'm1', data: { id: 'a' } });

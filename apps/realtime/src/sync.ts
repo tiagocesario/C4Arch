@@ -14,7 +14,8 @@ export type OperationType =
   | 'updateEdge'
   | 'deleteEdge'
   | 'updateModel'
-  | 'hydrateModel';
+  | 'hydrateModel'
+  | 'replaceModel';
 
 export interface Operation {
   op: OperationType;
@@ -894,6 +895,44 @@ export function applyOperation(doc: Y.Doc, op: Operation): boolean {
       }
 
       return seeded;
+    }
+
+    case 'replaceModel': {
+      // Substituição atômica usada quando o modelo é reimportado (por exemplo,
+      // ao aplicar um novo código PlantUML). Diferente de `hydrateModel`, pode
+      // sobrescrever o CRDT existente.
+      const data = op.data ?? {};
+      const rawElements = Array.isArray(data.elements) ? data.elements : [];
+      const rawEdges = Array.isArray(data.edges) ? data.edges : [];
+      let changed = false;
+
+      for (const key of Array.from(elements.keys())) {
+        elements.delete(key);
+        changed = true;
+      }
+      if (edges.length > 0) {
+        edges.delete(0, edges.length);
+        changed = true;
+      }
+
+      for (const raw of rawElements) {
+        if (raw == null || typeof raw !== 'object') continue;
+        const element = raw as Record<string, unknown>;
+        const id = typeof element.id === 'string' ? element.id : '';
+        if (!id) continue;
+        elements.set(id, toYjsElement(element));
+        changed = true;
+      }
+
+      for (const raw of rawEdges) {
+        if (raw == null || typeof raw !== 'object') continue;
+        const edge = toYjsEdge(raw as Record<string, unknown>);
+        if (!edge.fromId || !edge.toId) continue;
+        edges.push([edge] as Array<unknown>);
+        changed = true;
+      }
+
+      return changed;
     }
 
     case 'updateModel': {

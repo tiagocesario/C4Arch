@@ -25,8 +25,8 @@ const structurizrTemplates = [
     name: 'Sistema e containers',
     description: 'Aplicação web, API e banco de dados.',
     c4Type: 'container',
-    format: 'dsl',
-    content: 'workspace "Sistema e containers" {\n  model {\n  }\n}',
+    format: 'plantuml',
+    content: '@startuml\ntitle Sistema e containers\n@enduml',
   },
 ];
 

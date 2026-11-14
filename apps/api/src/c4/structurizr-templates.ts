@@ -1,9 +1,9 @@
 import type { C4ModelType } from './model-types.js';
 
 /**
- * Padrões prontos de workspace Structurizr usados na criação de modelos.
+ * Padrões prontos de diagramas C4-PlantUML usados na criação de modelos.
  *
- * O conteúdo é DSL aceita pelo importador (`structurizr-import.ts`) e cobre
+ * O conteúdo é C4-PlantUML aceito pelo importador (`plantuml-import.ts`) e cobre
  * contexto, containers, microserviços e componentes. Os modelos são criados
  * pelo mesmo endpoint de importação, sem duplicar a lógica de persistência.
  */
@@ -12,178 +12,140 @@ export interface StructurizrTemplate {
   name: string;
   description: string;
   c4Type: C4ModelType;
-  format: 'dsl' | 'json';
+  format: 'plantuml';
   content: string;
 }
 
-const systemContext = `workspace "Contexto do sistema" "Visão de contexto com pessoas e sistemas externos" {
-  model {
-    usuario = person "Usuário" "Pessoa que utiliza o sistema"
-    administrador = person "Administrador" "Pessoa que administra o sistema"
-    sistema = softwareSystem "Sistema" "Sistema em desenvolvimento"
-    externo = softwareSystem "Sistema externo" "Serviço de terceiros"
+const systemContext = `@startuml
+!include <C4/C4_Context>
+title Contexto do sistema
+Person(usuario, "Usuário", "Pessoa que utiliza o sistema")
+Person(administrador, "Administrador", "Pessoa que administra o sistema")
+System(sistema, "Sistema", "Sistema em desenvolvimento")
+System_Ext(externo, "Sistema externo", "Serviço de terceiros")
+Rel(usuario, sistema, "Utiliza")
+Rel(administrador, sistema, "Administra")
+Rel(sistema, externo, "Integra com", "HTTPS")
+@enduml`;
 
-    usuario -> sistema "Utiliza"
-    administrador -> sistema "Administra"
-    sistema -> externo "Integra com" "HTTPS"
+const containers = `@startuml
+!include <C4/C4_Container>
+title Sistema e containers
+Person(usuario, "Usuário", "Pessoa que utiliza o sistema")
+System_Boundary(sistema, "Sistema") {
+  Container(web, "Aplicação Web", "React", "Interface do usuário")
+  Container(api, "API", "Node.js", "Regras de negócio")
+  ContainerDb(banco, "Banco de dados", "PostgreSQL", "Persistência")
+}
+Rel(usuario, web, "Acessa", "HTTPS")
+Rel(web, api, "Chama", "REST")
+Rel(api, banco, "Lê e grava", "SQL")
+@enduml`;
+
+const microservices = `@startuml
+!include <C4/C4_Container>
+title Microserviços
+Person(cliente, "Cliente", "Pessoa que utiliza a plataforma")
+System_Boundary(plataforma, "Plataforma") {
+  Container(gateway, "API Gateway", "Kong", "Entrada única da plataforma")
+  Container(pedidos, "Serviço de Pedidos", "Node.js", "Ciclo de vida de pedidos")
+  Container(pagamentos, "Serviço de Pagamentos", "Java", "Cobrança e conciliação")
+  Container(estoque, "Serviço de Estoque", "Go", "Disponibilidade de produtos")
+  ContainerQueue(fila, "Mensageria", "RabbitMQ", "Eventos assíncronos")
+  ContainerDb(banco, "Banco de dados", "PostgreSQL", "Persistência")
+}
+Rel(cliente, gateway, "Acessa", "HTTPS")
+Rel(gateway, pedidos, "Roteia", "HTTP")
+Rel(gateway, pagamentos, "Roteia", "HTTP")
+Rel(pedidos, fila, "Publica eventos", "AMQP")
+Rel(pagamentos, fila, "Publica eventos", "AMQP")
+Rel(fila, estoque, "Consome eventos", "AMQP")
+Rel(pedidos, banco, "Lê e grava", "SQL")
+Rel(pagamentos, banco, "Lê e grava", "SQL")
+@enduml`;
+
+const components = `@startuml
+!include <C4/C4_Component>
+title Containers e componentes
+Person(usuario, "Usuário", "Pessoa que utiliza o sistema")
+System_Boundary(sistema, "Sistema") {
+  Container(web, "Aplicação Web", "React", "Interface do usuário") {
+    Component(paginas, "Páginas", "React", "Telas e navegação")
+    Component(estado, "Estado", "React Query", "Gerenciamento de estado")
   }
-
-  views {
-    systemContext sistema "Contexto do sistema" {
-      include *
-    }
+  Container(api, "API", "Node.js", "Regras de negócio") {
+    Component(rotas, "Rotas", "Express", "Entrada HTTP")
+    Component(servicos, "Serviços", "TypeScript", "Regras de negócio")
+    Component(repositorios, "Repositórios", "Knex", "Acesso a dados")
   }
-}`;
+  ContainerDb(banco, "Banco de dados", "PostgreSQL", "Persistência")
+}
+Rel(usuario, web, "Acessa", "HTTPS")
+Rel(paginas, estado, "Usa")
+Rel(web, api, "Chama", "REST")
+Rel(rotas, servicos, "Delega")
+Rel(servicos, repositorios, "Usa")
+Rel(repositorios, banco, "Lê e grava", "SQL")
+@enduml`;
 
-const containers = `workspace "Sistema e containers" "Contexto e containers de uma aplicação web" {
-  model {
-    usuario = person "Usuário" "Pessoa que utiliza o sistema"
+const blank = `@startuml
+!include <C4/C4_Container>
+title Novo modelo
+@enduml`;
 
-    sistema = softwareSystem "Sistema" "Sistema em desenvolvimento" {
-      web = container "Aplicação Web" "Interface do usuário" "React"
-      api = container "API" "Regras de negócio" "Node.js"
-      banco = container "Banco de dados" "Persistência" "PostgreSQL"
-    }
+type TemplateFormat = StructurizrTemplate['format'];
 
-    usuario -> web "Acessa" "HTTPS"
-    web -> api "Chama" "REST"
-    api -> banco "Lê e grava" "SQL"
-  }
-
-  views {
-    systemContext sistema "Contexto do sistema" {
-      include *
-    }
-    container sistema "Containers do sistema" {
-      include *
-    }
-  }
-}`;
-
-const microservices = `workspace "Microserviços" "Arquitetura de referência em microserviços" {
-  model {
-    cliente = person "Cliente" "Pessoa que utiliza a plataforma"
-
-    plataforma = softwareSystem "Plataforma" "Conjunto de serviços independentes" {
-      gateway = container "API Gateway" "Entrada única da plataforma" "Kong"
-      pedidos = container "Serviço de Pedidos" "Ciclo de vida de pedidos" "Node.js"
-      pagamentos = container "Serviço de Pagamentos" "Cobrança e conciliação" "Java"
-      estoque = container "Serviço de Estoque" "Disponibilidade de produtos" "Go"
-      fila = container "Mensageria" "Eventos assíncronos" "RabbitMQ"
-      banco = container "Banco de dados" "Persistência" "PostgreSQL"
-    }
-
-    cliente -> gateway "Acessa" "HTTPS"
-    gateway -> pedidos "Roteia" "HTTP"
-    gateway -> pagamentos "Roteia" "HTTP"
-    pedidos -> fila "Publica eventos" "AMQP"
-    pagamentos -> fila "Publica eventos" "AMQP"
-    fila -> estoque "Consome eventos" "AMQP"
-    pedidos -> banco "Lê e grava" "SQL"
-    pagamentos -> banco "Lê e grava" "SQL"
-  }
-
-  views {
-    systemContext plataforma "Contexto da plataforma" {
-      include *
-    }
-    container plataforma "Containers da plataforma" {
-      include *
-    }
-    dynamic plataforma "Fluxo de pedido" {
-      include *
-    }
-  }
-}`;
-
-const components = `workspace "Containers e componentes" "Detalhamento de containers e componentes" {
-  model {
-    usuario = person "Usuário" "Pessoa que utiliza o sistema"
-
-    sistema = softwareSystem "Sistema" "Sistema em desenvolvimento" {
-      web = container "Aplicação Web" "Interface do usuário" "React" {
-        paginas = component "Páginas" "Telas e navegação" "React"
-        estado = component "Estado" "Gerenciamento de estado" "React Query"
-      }
-      api = container "API" "Regras de negócio" "Node.js" {
-        rotas = component "Rotas" "Entrada HTTP" "Express"
-        servicos = component "Serviços" "Regras de negócio" "TypeScript"
-        repositorios = component "Repositórios" "Acesso a dados" "Knex"
-      }
-      banco = container "Banco de dados" "Persistência" "PostgreSQL"
-    }
-
-    usuario -> web "Acessa" "HTTPS"
-    paginas -> estado "Usa"
-    web -> api "Chama" "REST"
-    rotas -> servicos "Delega"
-    servicos -> repositorios "Usa"
-    repositorios -> banco "Lê e grava" "SQL"
-  }
-
-  views {
-    systemContext sistema "Contexto do sistema" {
-      include *
-    }
-    container sistema "Containers do sistema" {
-      include *
-    }
-    component api "Componentes da API" {
-      include *
-    }
-  }
-}`;
-
-const blank = `workspace "Novo workspace" "Workspace Structurizr em branco" {
-  model {
-  }
-
-  views {
-  }
-}`;
+const toTemplate = (
+  id: string,
+  name: string,
+  description: string,
+  c4Type: C4ModelType,
+  content: string
+): StructurizrTemplate => ({
+  id,
+  name,
+  description,
+  c4Type,
+  format: 'plantuml' as TemplateFormat,
+  content,
+});
 
 export const STRUCTURIZR_TEMPLATES: StructurizrTemplate[] = [
-  {
-    id: 'system-context',
-    name: 'Contexto do sistema',
-    description: 'Pessoas, sistema principal e sistemas externos com visão de contexto.',
-    c4Type: 'system-context',
-    format: 'dsl',
-    content: systemContext,
-  },
-  {
-    id: 'containers',
-    name: 'Sistema e containers',
-    description: 'Aplicação web, API e banco de dados com visões de contexto e containers.',
-    c4Type: 'container',
-    format: 'dsl',
-    content: containers,
-  },
-  {
-    id: 'microservices',
-    name: 'Microserviços',
-    description:
-      'API gateway, serviços independentes, mensageria e banco, com visões de contexto, containers e fluxo dinâmico.',
-    c4Type: 'container',
-    format: 'dsl',
-    content: microservices,
-  },
-  {
-    id: 'components',
-    name: 'Containers e componentes',
-    description: 'Componentes internos da web e da API, com visões de contexto, containers e componentes.',
-    c4Type: 'component',
-    format: 'dsl',
-    content: components,
-  },
-  {
-    id: 'blank',
-    name: 'Workspace em branco',
-    description: 'Workspace Structurizr vazio para modelar a arquitetura do zero.',
-    c4Type: 'container',
-    format: 'dsl',
-    content: blank,
-  },
+  toTemplate(
+    'system-context',
+    'Contexto do sistema',
+    'Pessoas, sistema principal e sistemas externos com visão de contexto.',
+    'system-context',
+    systemContext
+  ),
+  toTemplate(
+    'containers',
+    'Sistema e containers',
+    'Aplicação web, API e banco de dados com visões de contexto e containers.',
+    'container',
+    containers
+  ),
+  toTemplate(
+    'microservices',
+    'Microserviços',
+    'API gateway, serviços independentes, mensageria e banco, com visões de contexto, containers e fluxo dinâmico.',
+    'container',
+    microservices
+  ),
+  toTemplate(
+    'components',
+    'Containers e componentes',
+    'Componentes internos da web e da API, com visões de contexto, containers e componentes.',
+    'component',
+    components
+  ),
+  toTemplate(
+    'blank',
+    'Modelo em branco',
+    'Modelo PlantUML vazio para modelar a arquitetura do zero.',
+    'container',
+    blank
+  ),
 ];
 
 export function findStructurizrTemplate(id: string): StructurizrTemplate | null {

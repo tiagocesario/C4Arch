@@ -39,6 +39,7 @@ import { AppHeader } from './components/AppHeader';
 import { CommentsPanel } from './components/CommentsPanel';
 import { DasEditor } from './components/DasEditor';
 import { ExportPanel } from './components/ExportPanel';
+import { PlantUmlSourcePanel } from './components/PlantUmlSourcePanel';
 import { ImportModelsPanel } from './components/ImportModelsPanel';
 import type { ImportResult, ImportSource } from './components/ImportModelsPanel';
 import { InspectionsPanel } from './components/InspectionsPanel';
@@ -256,6 +257,7 @@ export default function App() {
   // Colaboração, comentários e interoperabilidade (Ondas 2/3).
   const [showComments, setShowComments] = useState(false);
   const [showExport, setShowExport] = useState(false);
+  const [showPlantUml, setShowPlantUml] = useState(false);
   const [showStructurizrImport, setShowStructurizrImport] = useState(false);
   const [structurizrTargetModelId, setStructurizrTargetModelId] = useState<string | null>(null);
   const [structurizrTemplates, setStructurizrTemplates] = useState<StructurizrTemplate[]>([]);
@@ -1411,6 +1413,27 @@ export default function App() {
     }
   }
 
+  async function handlePlantUmlApplied() {
+    if (!selectedId) return;
+    try {
+      const detail = await getModel(selectedId);
+      setModel(detail);
+      // O canvas lê o documento colaborativo; substitui o snapshot para que a
+      // edição em PlantUML apareça imediatamente para todos os clientes.
+      ws.sendOp({
+        type: 'patch',
+        modelId: selectedId,
+        patch: {
+          op: 'replaceModel',
+          data: { elements: detail.elements, edges: detail.edges },
+        },
+      });
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
   async function handleStructurizrImported(importedModelId: string) {
     setShowStructurizrImport(false);
     try {
@@ -2234,6 +2257,9 @@ export default function App() {
                 >
                   Comentários ({modelComments.filter((comment) => !comment.resolved).length})
                 </button>
+                <button onClick={() => setShowPlantUml(true)} style={buttonStyle} title="Ver e editar o modelo como código C4-PlantUML">
+                  PlantUML
+                </button>
                 <button onClick={() => setShowExport(true)} style={buttonStyle}>
                   Exportar
                 </button>
@@ -2348,6 +2374,16 @@ export default function App() {
           report={inspectionReport}
           loading={inspectionsLoading}
           onClose={() => setShowInspections(false)}
+        />
+      )}
+
+      {showPlantUml && selectedId && model && (
+        <PlantUmlSourcePanel
+          modelId={selectedId}
+          modelTitle={model.title}
+          canEdit={isWriter}
+          onClose={() => setShowPlantUml(false)}
+          onApplied={() => void handlePlantUmlApplied()}
         />
       )}
 

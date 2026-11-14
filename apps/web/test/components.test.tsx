@@ -314,8 +314,8 @@ test('StructurizrImportPanel preenche o workspace a partir de um padrão', () =>
       name: 'Sistema e containers',
       description: 'Aplicação web, API e banco.',
       c4Type: 'container',
-      format: 'dsl',
-      content: 'workspace "Sistema e containers" {\n  model {\n  }\n}',
+      format: 'plantuml',
+      content: '@startuml\ntitle Sistema e containers\n@enduml',
     },
   ];
 

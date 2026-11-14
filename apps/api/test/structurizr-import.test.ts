@@ -6,6 +6,7 @@ import {
 } from '../src/c4/structurizr-import.js';
 import { STRUCTURIZR_TEMPLATES } from '../src/c4/structurizr-templates.js';
 import { isC4ModelType } from '../src/c4/model-types.js';
+import { detectPlantUmlFormat, parsePlantUmlWorkspace } from '../src/c4/plantuml-import.js';
 
 const jsonWorkspace = JSON.stringify({
   workspace: {
@@ -173,16 +174,16 @@ test('workspace vazio não falha', () => {
   assert.deepEqual(empty.views, []);
 });
 
-test('padrões Structurizr são workspaces DSL válidos e referenciáveis', () => {
+test('padrões PlantUML são diagramas válidos e referenciáveis', () => {
   assert.ok(STRUCTURIZR_TEMPLATES.length >= 4);
   assert.equal(new Set(STRUCTURIZR_TEMPLATES.map((template) => template.id)).size, STRUCTURIZR_TEMPLATES.length);
 
   for (const template of STRUCTURIZR_TEMPLATES) {
     assert.ok(isC4ModelType(template.c4Type), `${template.id}: c4Type inválido`);
-    assert.equal(template.format, 'dsl');
-    assert.notEqual(detectStructurizrFormat(template.content), 'json');
+    assert.equal(template.format, 'plantuml');
+    assert.equal(detectPlantUmlFormat(template.content), true);
 
-    const workspace = parseStructurizrWorkspace(template.content, 'dsl');
+    const workspace = parsePlantUmlWorkspace(template.content);
     const identifiers = new Set(workspace.elements.map((element) => element.identifier));
 
     for (const relationship of workspace.relationships) {
@@ -203,7 +204,7 @@ test('padrões Structurizr são workspaces DSL válidos e referenciáveis', () =
 
     if (template.id === 'blank') {
       assert.deepEqual(workspace.elements, []);
-      assert.deepEqual(workspace.views, []);
+      assert.ok(workspace.views.length >= 1);
     } else {
       assert.ok(workspace.elements.length > 0, `${template.id}: sem elementos`);
       assert.ok(workspace.relationships.length > 0, `${template.id}: sem relações`);

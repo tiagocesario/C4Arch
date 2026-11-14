@@ -98,7 +98,7 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
       continue;
     }
 
-    const macroMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*$/.exec(line);
+    const macroMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s*\((.*)\)\s*\{?\s*$/.exec(line);
     if (macroMatch) {
       const macro = macroMatch[1].toLowerCase();
       const kind = KIND_BY_MACRO[macro];

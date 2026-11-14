@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   downloadModelExport,
+  fetchModelExportText,
   fetchModelPreview,
   listExportFormats,
   type ExportFormatInfo,
@@ -28,6 +29,7 @@ export function ExportPanel({ modelId, modelTitle, onClose }: ExportPanelProps) 
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [legend, setLegend] = useState(true);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [codePreview, setCodePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -85,6 +87,30 @@ export function ExportPanel({ modelId, modelTitle, onClose }: ExportPanelProps) 
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [modelId, selected, theme, legend, supportsPreview]);
+
+  useEffect(() => {
+    const textFormat = selected === 'plantuml' || selected === 'mermaid';
+    if (!textFormat) {
+      setCodePreview(null);
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    setError(null);
+    fetchModelExportText(modelId, selected, { theme, legend })
+      .then((text) => {
+        if (active) setCodePreview(text);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [modelId, selected, theme, legend]);
 
   const download = async () => {
     if (!selectedFormat || downloading) return;
@@ -207,7 +233,25 @@ export function ExportPanel({ modelId, modelTitle, onClose }: ExportPanelProps) 
                   style={{ maxWidth: '100%', maxHeight: '52vh', objectFit: 'contain' }}
                 />
               )}
-              {!loading && !previewUrl && (
+              {!loading && codePreview !== null && (
+                <pre
+                  style={{
+                    margin: 0,
+                    width: '100%',
+                    height: '100%',
+                    overflow: 'auto',
+                    textAlign: 'left',
+                    alignSelf: 'flex-start',
+                    fontFamily: 'Consolas, monospace',
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: theme === 'dark' ? '#e5e7eb' : '#1f2937',
+                  }}
+                >
+                  {codePreview}
+                </pre>
+              )}
+              {!loading && !previewUrl && codePreview === null && (
                 <span style={{ color: '#9ca3af', fontSize: 13, textAlign: 'center' }}>
                   {supportsPreview
                     ? 'Preview indisponível.'

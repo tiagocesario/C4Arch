@@ -203,6 +203,16 @@ export async function downloadModelExport(
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
+/** Conteúdo textual do formato exportado (PlantUML, Mermaid, etc.). */
+export async function fetchModelExportText(
+  modelId: string,
+  format: string,
+  options: { theme?: 'light' | 'dark'; legend?: boolean } = {}
+): Promise<string> {
+  const blob = await requestBlob(exportPath(modelId, format, options));
+  return blob.text();
+}
+
 /** URL de objeto para preview (SVG/PNG) autenticado. */
 export async function fetchModelPreview(
   modelId: string,
@@ -234,7 +244,7 @@ export interface StructurizrTemplate {
   name: string;
   description: string;
   c4Type: string;
-  format: 'dsl' | 'json';
+  format: 'plantuml';
   content: string;
 }
 
