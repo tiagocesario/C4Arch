@@ -149,7 +149,7 @@ test('cria modelo novo a partir de um padrão Structurizr', async ({ page, conte
   await page.getByRole('button', { name: '+ Novo modelo' }).click();
 
   await page.getByPlaceholder('Título do modelo').fill('Loja');
-  await page.getByLabel('Padrão Structurizr do novo modelo').selectOption('containers');
+  await page.getByLabel('Padrão PlantUML do novo modelo').selectOption('containers');
 
   const popupPromise = context.waitForEvent('page');
   await page.getByRole('button', { name: 'Criar', exact: true }).click();

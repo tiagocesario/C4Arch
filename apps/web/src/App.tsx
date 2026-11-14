@@ -1546,9 +1546,9 @@ export default function App() {
                       setShowStructurizrImport(true);
                     }}
                     style={buttonStyle}
-                    title="Criar um modelo a partir de um workspace Structurizr (JSON ou DSL)"
+                    title="Criar um modelo a partir de um diagrama PlantUML"
                   >
-                    Structurizr
+                    PlantUML
                   </button>
                 )}
               </div>
@@ -1610,7 +1610,7 @@ export default function App() {
                     />
                     {!linkToExisting && (
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
-                        <span>Padrão Structurizr (opcional)</span>
+                        <span>Padrão PlantUML (opcional)</span>
                         <select
                           value={newModelStructurizrTemplateId}
                           onChange={(e) => {
@@ -1622,7 +1622,7 @@ export default function App() {
                               if (!newModelTitle.trim()) setNewModelTitle(template.name);
                             }
                           }}
-                          aria-label="Padrão Structurizr do novo modelo"
+                          aria-label="Padrão PlantUML do novo modelo"
                           style={{ ...inputStyle, width: '100%' }}
                         >
                           <option value="">Modelo vazio (sem padrão)</option>
@@ -1632,7 +1632,7 @@ export default function App() {
                         </select>
                         <span style={smallMuted}>
                           {selectedStructurizrTemplate
-                            ? `${selectedStructurizrTemplate.description} O modelo é criado pelo mesmo pipeline de importação Structurizr.`
+                            ? `${selectedStructurizrTemplate.description} O modelo é criado pelo mesmo pipeline de importação PlantUML.`
                             : structurizrTemplates.length > 0
                               ? 'Escolha um padrão para nascer com elementos, relações e views prontos.'
                               : 'Nenhum padrão disponível no momento; o modelo será criado vazio.'}
@@ -1733,7 +1733,7 @@ export default function App() {
                     )}
                     {newModelStructurizrTemplateId ? (
                       <span style={smallMuted}>
-                        O modelo será aberto em uma nova aba no canvas, com o conteúdo do padrão Structurizr.
+                        O modelo será aberto em uma nova aba no canvas, com o conteúdo do padrão PlantUML.
                       </span>
                     ) : (
                       <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
@@ -2031,9 +2031,9 @@ export default function App() {
                                   setShowStructurizrImport(true);
                                 }}
                                 style={buttonStyle}
-                                title="Adicionar novos objetos ao modelo a partir de um workspace Structurizr"
+                                title="Adicionar novos objetos ao modelo a partir de um diagrama PlantUML"
                               >
-                                Adicionar objetos (Structurizr)
+                                Adicionar objetos (PlantUML)
                               </button>
                             )}
                             {isWriter && (
@@ -2249,7 +2249,7 @@ export default function App() {
                       }}
                       style={buttonStyle}
                     >
-                      Adicionar objetos (Structurizr)
+                      Adicionar objetos (PlantUML)
                     </button>
                     <button
                       onClick={() => { if (model) openEditModel(model); }}

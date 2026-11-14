@@ -143,12 +143,12 @@ export function StructurizrImportPanel({
       >
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h3 style={{ margin: 0 }}>
-            {modelId ? 'Importar Structurizr no modelo' : 'Novo modelo a partir do Structurizr'}
+            {modelId ? 'Importar PlantUML no modelo' : 'Novo modelo a partir do PlantUML'}
           </h3>
           <button onClick={onClose} style={buttonStyle}>Fechar</button>
         </header>
         <p style={{ color: '#9ca3af', fontSize: 13 }}>
-          Aceita workspace JSON ou DSL. Relações, hierarquia e views são convertidas para o
+          Aceita diagramas C4-PlantUML. Relações, hierarquia e views são convertidas para o
           modelo canônico; posições ausentes recebem autolayout.
         </p>
 
@@ -156,11 +156,11 @@ export function StructurizrImportPanel({
 
         {!modelId && templates.length > 0 && (
           <label style={{ display: 'block', fontSize: 12, color: '#9ca3af', marginBottom: 10 }}>
-            Começar de um padrão Structurizr
+            Começar de um padrão PlantUML
             <select
               value={templateId}
               onChange={(event) => applyTemplate(event.target.value)}
-              aria-label="Padrão Structurizr"
+              aria-label="Padrão PlantUML"
               style={{ ...inputStyle, marginTop: 4 }}
             >
               <option value="">Nenhum (colar workspace ou escolher arquivo)</option>
@@ -251,8 +251,8 @@ export function StructurizrImportPanel({
           }}
           rows={12}
           spellCheck={false}
-          aria-label="Workspace Structurizr"
-          placeholder={'workspace "Minha arquitetura" {\n  model {\n    usuario = person "Usuário"\n    ...\n  }\n}'}
+          aria-label="Diagrama PlantUML"
+          placeholder={'@startuml\n!include <C4/C4_Container>\nPerson(usuario, "Usuário")\nContainer(api, "API", "Node.js")\nRel(usuario, api, "usa")\n@enduml'}
           style={{ ...inputStyle, fontFamily: 'Consolas, monospace', resize: 'vertical' }}
         />
 

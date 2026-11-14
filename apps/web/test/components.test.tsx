@@ -329,11 +329,11 @@ test('StructurizrImportPanel preenche o workspace a partir de um padrão', () =>
     />
   );
 
-  assert.ok(screen.getByText('Novo modelo a partir do Structurizr'));
-  const select = screen.getByLabelText('Padrão Structurizr') as HTMLSelectElement;
+  assert.ok(screen.getByText('Novo modelo a partir do PlantUML'));
+  const select = screen.getByLabelText('Padrão PlantUML') as HTMLSelectElement;
   fireEvent.change(select, { target: { value: 'containers' } });
 
-  const workspace = screen.getByLabelText('Workspace Structurizr') as HTMLTextAreaElement;
+  const workspace = screen.getByLabelText('Diagrama PlantUML') as HTMLTextAreaElement;
   assert.match(workspace.value, /Sistema e containers/);
   assert.equal((screen.getByLabelText('Título') as HTMLInputElement).value, 'Sistema e containers');
   assert.equal((screen.getByLabelText('Tipo C4') as HTMLSelectElement).value, 'container');
