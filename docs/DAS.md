@@ -3,7 +3,7 @@
 > **Versão:** 1.2.0
 > **Status:** Aprovado (MVP em estabilização)
 > **Licença:** MIT
-> **Baseado em:** `docs/DAS-template.md`, `docs/PRD.md`, `docs/PDR.md`, `docs/SECURITY.md`, `docs/ADR/`
+> **Baseado em:** `docs/DAS-template.md`, `docs/PRD.md`, `docs/SECURITY.md`, `docs/ADR/`
 > **Data:** 06/11/2026
 
 ---

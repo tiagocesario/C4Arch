@@ -119,7 +119,7 @@ essa promessa não se sustenta.
 - Contexto, container e componente deixam de divergir: são visões do mesmo
   conjunto de elementos.
 - O DAS deixa de depender de heurísticas sobre XML para saber o que existe.
-- Fica possível validar arquitetura, exportar para Structurizr/PlantUML/Mermaid
+- Fica possível validar arquitetura, exportar para PlantUML/Mermaid
   e calcular dependências com semântica confiável.
 - O catálogo de apps/serviços pode referenciar elementos canônicos por ID, em
   vez de depender de marcadores no XML.
@@ -151,7 +151,7 @@ essa promessa não se sustenta.
 
 ## Plano de adoção
 
-O detalhamento está em `docs/PLANO-MIGRACAO-ONDA-1.md`. Resumo:
+Plano de adoção:
 
 1. Criar as tabelas canônicas e `model_state` sem alterar comportamento.
 2. Fazer backfill best-effort dos modelos existentes.
@@ -169,4 +169,3 @@ O detalhamento está em `docs/PLANO-MIGRACAO-ONDA-1.md`. Resumo:
 - `apps/worker/src/index.ts` (`syncSnapshots`)
 - `docs/ADR/ADR-0018-multi-diagrama-mesmo-modelo.md`
 - `docs/ADR/ADR-0019-importacao-modelos-das-automatico.md`
-- `docs/PLANO-MIGRACAO-ONDA-1.md`

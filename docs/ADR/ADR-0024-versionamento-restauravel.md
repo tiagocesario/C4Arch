@@ -210,7 +210,7 @@ PATCH /api/models/:id/versions/:version       → edita label/descrição
 
 ## Plano de adoção
 
-Detalhado em `docs/PLANO-MIGRACAO-ONDA-1.md`:
+Plano de adoção:
 
 1. Criar `model_state`, colunas novas em `model_versions` e migrar o schema para
    a API (M1).
@@ -232,6 +232,3 @@ Detalhado em `docs/PLANO-MIGRACAO-ONDA-1.md`:
 - `docs/ADR/ADR-0002-storage-adapter.md`
 - `docs/ADR/ADR-0010-realtime-merge-parcial.md`
 - `docs/ADR/ADR-0021-modelo-canonico-fonte-unica.md`
-- `docs/PLANO-MIGRACAO-ONDA-1.md`
-- Structurizr — workspace versions:
-  <https://docs.structurizr.com/server/workspace-versions>

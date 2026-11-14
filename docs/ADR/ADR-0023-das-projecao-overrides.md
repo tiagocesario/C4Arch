@@ -183,7 +183,7 @@ documento.
 
 ## Plano de adoção
 
-Detalhado em `docs/PLANO-MIGRACAO-ONDA-1.md`:
+Plano de adoção:
 
 1. Criar `model_das_overrides` e as colunas de metadados em `models` (M1).
 2. Extrair chaves estáveis das seções do template atual (M2).
@@ -202,4 +202,3 @@ Detalhado em `docs/PLANO-MIGRACAO-ONDA-1.md`:
 - `docs/DAS-template.md`
 - `docs/ADR/ADR-0019-importacao-modelos-das-automatico.md`
 - `docs/ADR/ADR-0021-modelo-canonico-fonte-unica.md`
-- `docs/PLANO-MIGRACAO-ONDA-1.md`

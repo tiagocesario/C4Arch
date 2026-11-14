@@ -3,7 +3,6 @@
 - **Versão:** 0.4.0 (revisada em 06/11/2026)
 - **Status:** MVP em estabilização
 - **Licença:** MIT
-- **Substitui:** `docs/PDR.md` (mantido como registro histórico)
 
 ## 1. Visão
 

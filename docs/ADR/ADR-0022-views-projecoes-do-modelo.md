@@ -138,7 +138,7 @@ desenho solto**.
      gerado a partir da view canônica (ou do XML legado, se a view ainda não
      existir).
    - Novas rotas (`/model`, `/views`, `/views/:viewId/layout`) são aditivas e
-     documentadas em `docs/PLANO-MIGRACAO-ONDA-1.md`.
+     documentadas em `apps/api/src/openapi.ts`.
 
 8. **Views padrão são criadas automaticamente** para modelos novos:
 
@@ -161,7 +161,7 @@ desenho solto**.
 - O DAS pode gerar seções por view com escopo confiável.
 - Validação fica possível: view vazia, elemento fora de todas as views, view de
   container apontando para escopo inexistente.
-- Exportação para Structurizr/PlantUML/Mermaid ganha uma estrutura clara
+- Exportação para PlantUML/Mermaid ganha uma estrutura clara
   (modelo + views + layout).
 
 ### Negativas e riscos
@@ -187,12 +187,12 @@ desenho solto**.
 - **Guardar o modelo inteiro dentro de cada view:** duplica dados e volta ao
   problema atual com outro nome.
 - **Adotar o DSL do Structurizr como formato interno:** descaracteriza a UX
-  visual e cria dependência conceitual desnecessária. O DSL pode ser suportado
-  como import/export na Onda 2.
+  visual e cria dependência conceitual desnecessária. A interoperabilidade é
+  feita via C4-PlantUML.
 
 ## Plano de adoção
 
-Detalhado em `docs/PLANO-MIGRACAO-ONDA-1.md`:
+Plano de adoção:
 
 1. Criar `model_views` e `model_view_layout` (M1).
 2. Backfill: uma view por `c4Type` existente, com `include` amplo e layout
@@ -210,5 +210,3 @@ Detalhado em `docs/PLANO-MIGRACAO-ONDA-1.md`:
 - `docs/ADR/ADR-0017-vinculo-tipos-diagrama.md`
 - `docs/ADR/ADR-0018-multi-diagrama-mesmo-modelo.md`
 - `docs/ADR/ADR-0021-modelo-canonico-fonte-unica.md`
-- `docs/PLANO-MIGRACAO-ONDA-1.md`
-- Structurizr — views: <https://docs.structurizr.com/dsl/views>

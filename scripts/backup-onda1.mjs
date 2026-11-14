@@ -102,7 +102,7 @@ function main() {
     gitCommit: gitCommit(),
     database: { file: 'db.dump', bytes: dbDump.length, format: 'pg_dump -Fc' },
     storage: { file: 'storage.tar.gz', bytes: storageBytes, status: storageStatus },
-    notes: 'Backup obrigatório antes do M1 (schema canônico). Ver docs/M0-CHECKLIST.md.',
+    notes: 'Backup obrigatório antes de migrações do schema canônico.',
   };
   writeFileSync(join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 

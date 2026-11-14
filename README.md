@@ -83,17 +83,10 @@ c4arch/
 ├── package.json
 └── docs/
     ├── PRD.md          # PRD canônico e atualizado
-    ├── PDR.md          # visão original (legado)
-    ├── ANALISE-STRUCTURIZR.md
-    ├── PLANO-MIGRACAO-ONDA-1.md
-    ├── M0-CHECKLIST.md
-    ├── M1-CHECKLIST.md
-    ├── M2-CHECKLIST.md
-    ├── M3-CHECKLIST.md
-    ├── M4-CHECKLIST.md
-    ├── M5-CHECKLIST.md
-    ├── M6-CHECKLIST.md
-    ├── RELATORIO-ONDAS-2-3.md
+    ├── DAS.md          # Documento de Arquitetura de Soluções
+    ├── DAS-template.md # Template usado para gerar o DAS
+    ├── SECURITY.md     # Segurança e riscos residuais
+    ├── UX-DAS-EDITOR.md
     └── ADR/
 ```
 
@@ -101,40 +94,22 @@ c4arch/
 
 - `docs/PRD.md` — Product Requirements Document (visão, requisitos, fluxos,
   contratos e critérios de aceite).
-- `docs/PDR.md` — Product Design Review original, mantido como registro histórico.
 - `docs/DAS.md` — Documento de Arquitetura de Soluções (visão, containers,
   componentes, modelo de dados, segurança e deploy), com as imagens do desenho
   draw.io.
-- `docs/ANALISE-STRUCTURIZR.md` — estudo comparativo com o Structurizr, lacunas
-  do C4Arch, melhorias recomendadas e roadmap em três ondas.
-- `docs/PLANO-MIGRACAO-ONDA-1.md` — plano detalhado da Onda 1: schema canônico,
-  endpoints, UI, fases de rollout, testes, critérios de aceite e rollback.
-- `docs/M0-CHECKLIST.md` — checklist e evidências da preparação (flags, backup,
-  telemetria, CI e higiene do Git).
-- `docs/M1-CHECKLIST.md` — checklist e evidências do schema canônico (DDL,
-  verificação e rollback).
-- `docs/M2-CHECKLIST.md` — checklist e evidências do backfill e da leitura em
-  sombra (mapeamento, CLIs, testes e rollback).
-- `docs/M3-CHECKLIST.md` — checklist e evidências da escrita canônica, do DAS
-  com overrides, do projetor, das versões por hash e do restore.
-- `docs/M4-CHECKLIST.md` — checklist e evidências da UI (painel de versões e
-  ativação de flags).
-- `docs/M5-CHECKLIST.md` — checklist e evidências do cutover (leitura canônica,
-  dual-write e reconciliação diária).
-- `docs/M6-CHECKLIST.md` — checklist e evidências da operação contínua
-  (worker, retenção, observabilidade e higiene de migrações).
-- `docs/RELATORIO-ONDAS-2-3.md` — relatório de entrega das Ondas 2 e 3:
-  exportação/interoperabilidade, views, importação PlantUML, colaboração,
-  contrato, MCP, split do frontend, correções e validação executada.
+- `docs/DAS-template.md` — template usado para gerar o DAS dos modelos.
+- `docs/SECURITY.md` — modelo de ameaças, configuração de segurança e riscos
+  residuais.
+- `docs/UX-DAS-EDITOR.md` — decisões de UX do editor de DAS.
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
   Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
   `models.diagrams` e persistência de tela no F5), `ADR-0019` (importação de
   modelos por arquivo/Drive/URL e DAS automático) e `ADR-0020` (hardening de
   importação, grupos de acesso e exportação do DAS).
-  Decisões propostas para a Onda 1: `ADR-0021` (modelo canônico e fonte única de
-  verdade), `ADR-0022` (views como projeções do modelo), `ADR-0023` (DAS como
-  projeção com overrides) e `ADR-0024` (versionamento restaurável e persistência
-  do estado colaborativo).
+  Decisões da Onda 1: `ADR-0021` (modelo canônico e fonte única de verdade),
+  `ADR-0022` (views como projeções do modelo), `ADR-0023` (DAS como projeção
+  com overrides) e `ADR-0024` (versionamento restaurável e persistência do
+  estado colaborativo).
 
 ## Login de desenvolvimento
 
