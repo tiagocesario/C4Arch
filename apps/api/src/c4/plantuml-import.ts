@@ -1,10 +1,13 @@
 /**
  * Importação de diagramas C4-PlantUML.
  */
-import type { ImportedElement, ImportedRelationship, ImportedView, ImportedWorkspace } from './structurizr-import.js';
+import type {
+  ImportedElement,
+  ImportedRelationship,
+  ImportedView,
+  ImportedWorkspace,
+} from './model-import.js';
 import type { CanonicalElementKind, CanonicalViewType } from './canonical.js';
-
-export type PlantUmlFormat = 'plantuml';
 
 const KIND_BY_MACRO: Record<string, CanonicalElementKind> = {
   person: 'person',
@@ -65,6 +68,21 @@ function normalizeAlias(value: string | undefined): string {
   return unquote(value).trim();
 }
 
+/**
+ * Extrai o título do diagrama. PlantUML aceita `title Texto`, `title "Texto"`
+ * e `title("Texto")`; a forma com aspas preserva espaços e pontuação.
+ */
+function parseTitle(line: string): string | null {
+  const quoted = /^title\s*\(?\s*"([^"]*)"\s*\)?$/i.exec(line);
+  if (quoted) return quoted[1].trim() || null;
+  const plain = /^title\s+(.+)$/i.exec(line);
+  if (plain) {
+    const value = plain[1].trim();
+    return value.startsWith('"') ? null : value || null;
+  }
+  return null;
+}
+
 function detectViewType(content: string): CanonicalViewType {
   const lower = content.toLowerCase();
   if (lower.includes('c4_component')) return 'component';
@@ -84,7 +102,6 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
   const relationships: ImportedRelationship[] = [];
   const identifiers = new Set<string>();
   let name: string | null = null;
-  let description: string | null = null;
 
   const lines = content.split(/\r?\n/);
   for (const rawLine of lines) {
@@ -92,9 +109,9 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
     if (!line || line.startsWith("'")) continue;
     if (line.toLowerCase().startsWith('@') || line.toLowerCase().startsWith('!')) continue;
 
-    const titleMatch = /^(?:title|Title)\s*\(?\s*"([^"]*)"\s*\)?/.exec(line);
-    if (titleMatch) {
-      name = titleMatch[1];
+    const diagramTitle = parseTitle(line);
+    if (diagramTitle) {
+      name = diagramTitle;
       continue;
     }
 
@@ -155,7 +172,7 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
 
   return {
     name,
-    description,
+    description: null,
     elements,
     relationships,
     views: [view],

@@ -8,7 +8,7 @@ const createdModel = {
   folder_id: null,
   parent_id: null,
   title: 'Loja',
-  description: 'Modelo criado a partir de um padrão Structurizr',
+  description: 'Modelo criado a partir de um padrão PlantUML',
   status: 'draft',
   c4_type: 'container',
   c4_scope: null,
@@ -19,7 +19,7 @@ const createdModel = {
   updated_at: '2026-01-02T03:04:05.000Z',
 };
 
-const structurizrTemplates = [
+const plantUmlTemplates = [
   {
     id: 'containers',
     name: 'Sistema e containers',
@@ -48,7 +48,7 @@ async function mockApi(target: Page | import('@playwright/test').BrowserContext)
       });
     }
 
-    if (method === 'POST' && path === '/api/models/import/structurizr') {
+    if (method === 'POST' && path === '/api/models/import/plantuml') {
       return route.fulfill({
         status: 201,
         contentType: 'application/json',
@@ -72,7 +72,7 @@ async function mockApi(target: Page | import('@playwright/test').BrowserContext)
       '/api/folders': [],
       '/api/apps': [],
       '/api/services': [],
-      '/api/models/import/structurizr/templates': { templates: structurizrTemplates },
+      '/api/models/import/plantuml/templates': { templates: plantUmlTemplates },
       '/api/models/model-1': createdModel,
     };
 
@@ -135,7 +135,7 @@ test('deep link abre o catálogo e a navegação atualiza o hash', async ({ page
   await expect(page).toHaveURL(/#\/files$/);
 });
 
-test('cria modelo novo a partir de um padrão Structurizr', async ({ page, context }) => {
+test('cria modelo novo a partir de um padrão PlantUML', async ({ page, context }) => {
   await context.addInitScript(() => {
     localStorage.clear();
     localStorage.setItem('c4arch_token', 'e2e-token');

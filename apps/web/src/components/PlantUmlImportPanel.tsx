@@ -1,20 +1,20 @@
 import { useRef, useState } from 'react';
 import {
-  importStructurizrIntoModel,
-  importStructurizrWorkspace,
-  type StructurizrImportResult,
-  type StructurizrTemplate,
+  importPlantUmlIntoModel,
+  importPlantUmlWorkspace,
+  type PlantUmlImportResult,
+  type PlantUmlTemplate,
 } from '../services/collaboration';
 
-interface StructurizrImportPanelProps {
+interface PlantUmlImportPanelProps {
   /** Quando ausente, cria um novo modelo na organização. */
   modelId?: string | null;
   orgId: string;
   c4Types?: string[];
   /** Padrões prontos exibidos ao criar um modelo novo. */
-  templates?: StructurizrTemplate[];
+  templates?: PlantUmlTemplate[];
   onClose: () => void;
-  onImported: (result: { modelId: string; import: StructurizrImportResult }) => void;
+  onImported: (result: { modelId: string; import: PlantUmlImportResult }) => void;
 }
 
 const inputStyle = {
@@ -38,19 +38,18 @@ const buttonStyle = {
   fontSize: 13,
 };
 
-export function StructurizrImportPanel({
+export function PlantUmlImportPanel({
   modelId,
   orgId,
   c4Types = ['system-context', 'container', 'component', 'system-landscape', 'dynamic', 'deployment'],
   templates = [],
   onClose,
   onImported,
-}: StructurizrImportPanelProps) {
+}: PlantUmlImportPanelProps) {
   const [content, setContent] = useState('');
   const [title, setTitle] = useState('');
   const [c4Type, setC4Type] = useState('container');
   const [mode, setMode] = useState<'replace' | 'merge'>('replace');
-  const [format, setFormat] = useState<'auto' | 'plantuml'>('auto');
   const [templateId, setTemplateId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +62,6 @@ export function StructurizrImportPanel({
     const template = templates.find((item) => item.id === id);
     if (!template) return;
     setContent(template.content);
-    setFormat('auto');
     setC4Type(template.c4Type);
     if (!title.trim()) setTitle(template.name);
     setError(null);
@@ -74,8 +72,7 @@ export function StructurizrImportPanel({
       const text = await file.text();
       setContent(text);
       setTemplateId('');
-      if (!title.trim()) setTitle(file.name.replace(/\.(json|dsl|puml|plantuml)$/i, ''));
-      if (/\.puml$/i.test(file.name) || /\.plantuml$/i.test(file.name)) setFormat('plantuml');
+      if (!title.trim()) setTitle(file.name.replace(/\.(puml|plantuml|txt)$/i, ''));
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -87,11 +84,9 @@ export function StructurizrImportPanel({
     setBusy(true);
     setError(null);
     try {
-      const resolvedFormat = format === 'auto' ? undefined : format;
       if (modelId) {
-        const result = await importStructurizrIntoModel(modelId, {
+        const result = await importPlantUmlIntoModel(modelId, {
           content,
-          format: resolvedFormat,
           mode,
           title: title.trim() || undefined,
           c4Type,
@@ -99,12 +94,11 @@ export function StructurizrImportPanel({
         onImported({ modelId, import: result.import });
       } else {
         if (!orgId) throw new Error('Organização não selecionada');
-        const created = await importStructurizrWorkspace({
+        const created = await importPlantUmlWorkspace({
           orgId,
           content,
           title: title.trim() || undefined,
           c4Type,
-          format: resolvedFormat,
         });
         onImported({ modelId: created.id, import: created.import });
       }
@@ -148,8 +142,8 @@ export function StructurizrImportPanel({
           <button onClick={onClose} style={buttonStyle}>Fechar</button>
         </header>
         <p style={{ color: '#9ca3af', fontSize: 13 }}>
-          Aceita diagramas C4-PlantUML. Relações, hierarquia e views são convertidas para o
-          modelo canônico; posições ausentes recebem autolayout.
+          Aceita diagramas C4-PlantUML. Elementos, relações e views são convertidos
+          para o modelo canônico; posições ausentes recebem autolayout.
         </p>
 
         {error && <div style={{ color: '#f87171', fontSize: 12, marginBottom: 8 }}>{error}</div>}
@@ -163,7 +157,7 @@ export function StructurizrImportPanel({
               aria-label="Padrão PlantUML"
               style={{ ...inputStyle, marginTop: 4 }}
             >
-              <option value="">Nenhum (colar workspace ou escolher arquivo)</option>
+              <option value="">Nenhum (colar diagrama ou escolher arquivo)</option>
               {templates.map((template) => (
                 <option key={template.id} value={template.id}>{template.name}</option>
               ))}
@@ -182,7 +176,7 @@ export function StructurizrImportPanel({
             <input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Detectado do workspace"
+              placeholder="Detectado do diagrama"
               style={{ ...inputStyle, marginTop: 4 }}
             />
           </label>
@@ -196,17 +190,6 @@ export function StructurizrImportPanel({
               {c4Types.map((type) => (
                 <option key={type} value={type}>{type}</option>
               ))}
-            </select>
-          </label>
-          <label style={{ fontSize: 12, color: '#9ca3af' }}>
-            Formato
-            <select
-              value={format}
-              onChange={(event) => setFormat(event.target.value as typeof format)}
-              style={{ ...inputStyle, marginTop: 4 }}
-            >
-              <option value="auto">Detectar</option>
-              <option value="plantuml">PlantUML</option>
             </select>
           </label>
           {modelId && (
@@ -231,7 +214,7 @@ export function StructurizrImportPanel({
           <input
             ref={fileInput}
             type="file"
-            accept=".json,.dsl,.puml,.plantuml,.txt,application/json,text/plain"
+            accept=".puml,.plantuml,.txt,text/plain"
             style={{ display: 'none' }}
             onChange={(event) => {
               const file = event.target.files?.[0];

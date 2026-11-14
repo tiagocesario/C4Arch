@@ -17,13 +17,13 @@ const { InspectionsPanel } = await import('../src/components/InspectionsPanel');
 const { ImportModelsPanel } = await import('../src/components/ImportModelsPanel');
 const { DasEditor } = await import('../src/components/DasEditor');
 const { PresenceBar } = await import('../src/components/PresenceBar');
-const { StructurizrImportPanel } = await import('../src/components/StructurizrImportPanel');
+const { PlantUmlImportPanel } = await import('../src/components/PlantUmlImportPanel');
 type ModelVersion = import('../src/services/api').ModelVersion;
 type InspectionReport = import('../src/services/api').InspectionReport;
 type PresenceUser = import('../src/services/ws').PresenceUser;
 type ImportResult = import('../src/components/ImportModelsPanel').ImportResult;
 type DasEditorSection = import('../src/components/DasEditor').DasEditorSection;
-type StructurizrTemplate = import('../src/services/collaboration').StructurizrTemplate;
+type PlantUmlTemplate = import('../src/services/collaboration').PlantUmlTemplate;
 
 afterEach(() => cleanup());
 
@@ -307,8 +307,8 @@ test('PresenceBar alterna entre vazio e lista de usuários', () => {
   assert.ok(screen.getByText('Bruno'));
 });
 
-test('StructurizrImportPanel preenche o workspace a partir de um padrão', () => {
-  const templates: StructurizrTemplate[] = [
+test('PlantUmlImportPanel preenche o diagrama a partir de um padrão', () => {
+  const templates: PlantUmlTemplate[] = [
     {
       id: 'containers',
       name: 'Sistema e containers',
@@ -320,7 +320,7 @@ test('StructurizrImportPanel preenche o workspace a partir de um padrão', () =>
   ];
 
   render(
-    <StructurizrImportPanel
+    <PlantUmlImportPanel
       modelId={null}
       orgId="org-1"
       templates={templates}

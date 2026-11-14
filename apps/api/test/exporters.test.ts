@@ -9,8 +9,6 @@ import {
   renderHtml,
   renderMermaid,
   renderPlantUml,
-  renderStructurizrDsl,
-  renderStructurizrJson,
   renderSvg,
 } from '../src/c4/exporters.js';
 import type { ModelGraph } from '../src/c4/model-graph.js';
@@ -134,41 +132,6 @@ test('renderPlantUml escolhe C4_Component quando há componentes', () => {
   assert.match(plantuml, /Container\(e2, "API", "Node\.js"/);
   assert.match(plantuml, /Rel\(e2, e3, "processa pagamento"/);
   assert.match(plantuml, /@enduml/);
-});
-
-test('renderStructurizrJson produz workspace consumível', () => {
-  const json = JSON.parse(renderStructurizrJson(sampleGraph())) as Record<string, any>;
-  assert.equal(json.name, 'Loja Online');
-  assert.equal(json.model.people.length, 1);
-  assert.ok(json.model.softwareSystems.length >= 1);
-  const host = json.model.softwareSystems[0];
-  assert.equal(host.name, 'Loja');
-  assert.equal(host.containers[0].name, 'API');
-  assert.equal(host.containers[0].components[0].name, 'Pagamentos');
-  assert.ok(Array.isArray(json.model.people[0].relationships));
-  assert.equal(json.model.people[0].relationships[0].description, 'usa');
-  assert.equal(json.model.people[0].relationships[0].technology, undefined);
-  assert.ok(json.views.systemLandscapeViews.length > 0);
-  assert.ok(json.views.containerViews.length > 0);
-});
-
-test('renderStructurizrJson cria sistema sintético sem software system', () => {
-  const graph = sampleGraph();
-  graph.elements = graph.elements.filter((element) => element.type !== 'system' && element.type !== 'actor');
-  graph.edges = [];
-  const json = JSON.parse(renderStructurizrJson(graph)) as Record<string, any>;
-  assert.equal(json.model.people.length, 0);
-  assert.equal(json.model.softwareSystems[0].name, 'Loja Online');
-});
-
-test('renderStructurizrDsl gera hierarquia e relações', () => {
-  const dsl = renderStructurizrDsl(sampleGraph());
-  assert.match(dsl, /^workspace "Loja Online"/);
-  assert.match(dsl, /cliente = person "Cliente"/);
-  assert.match(dsl, /api = container "API"/);
-  assert.match(dsl, /pagamentos = component "Pagamentos"/);
-  assert.match(dsl, /cliente -> loja "usa"/);
-  assert.match(dsl, /views \{/);
 });
 
 test('renderDrawio inclui IDs estáveis e arestas conectadas', () => {

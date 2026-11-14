@@ -5,16 +5,12 @@ import { getModelAccess, getOrgRole, isWriterRole } from '../auth/access.js';
 import { recordAudit } from '../c4/audit.js';
 import { regenerateModelDAS } from '../c4/das-service.js';
 import {
-  detectStructurizrFormat,
   importWorkspaceIntoModel,
-  parseStructurizrWorkspace,
-} from '../c4/structurizr-import.js';
-import {
-  detectPlantUmlFormat,
-  parsePlantUmlWorkspace,
-} from '../c4/plantuml-import.js';
+  type ImportedWorkspace,
+} from '../c4/model-import.js';
+import { detectPlantUmlFormat, parsePlantUmlWorkspace } from '../c4/plantuml-import.js';
 import { isC4ModelType, type C4ModelType } from '../c4/model-types.js';
-import { STRUCTURIZR_TEMPLATES } from '../c4/structurizr-templates.js';
+import { PLANTUML_TEMPLATES } from '../c4/plantuml-templates.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IMPORT_BYTES = 5_000_000;
@@ -36,11 +32,11 @@ function validateImportBody(body: Record<string, unknown>, res: Response): strin
     return null;
   }
   if (Buffer.byteLength(content, 'utf8') > MAX_IMPORT_BYTES) {
-    res.status(413).json({ error: 'Conteúdo do workspace muito grande' });
+    res.status(413).json({ error: 'Conteúdo do diagrama muito grande' });
     return null;
   }
-  if (body.format !== undefined && body.format !== 'json' && body.format !== 'dsl' && body.format !== 'plantuml') {
-    res.status(400).json({ error: 'format deve ser "json" ou "dsl"' });
+  if (body.format !== undefined && body.format !== 'plantuml') {
+    res.status(400).json({ error: 'format deve ser "plantuml"' });
     return null;
   }
   if (body.mode !== undefined && body.mode !== 'replace' && body.mode !== 'merge') {
@@ -50,30 +46,23 @@ function validateImportBody(body: Record<string, unknown>, res: Response): strin
   return content;
 }
 
-/** Detecta o formato e faz o parse do workspace. Retorna null se inválido. */
-function parseImportedWorkspace(content: string): { workspace: any; kind: 'structurizr' | 'plantuml' } | null {
-  if (detectPlantUmlFormat(content)) {
-    try {
-      return { workspace: parsePlantUmlWorkspace(content), kind: 'plantuml' };
-    } catch {
-      return null;
-    }
-  }
+/** Valida e converte um diagrama C4-PlantUML no workspace canônico. */
+function parseImportedWorkspace(content: string): ImportedWorkspace | null {
+  if (!detectPlantUmlFormat(content)) return null;
   try {
-    const format = detectStructurizrFormat(content);
-    return { workspace: parseStructurizrWorkspace(content, format), kind: 'structurizr' };
+    return parsePlantUmlWorkspace(content);
   } catch {
     return null;
   }
 }
 
 export class ImportController {
-  /** Lista os padrões Structurizr disponíveis para criação de modelos. */
+  /** Lista os padrões PlantUML disponíveis para criação de modelos. */
   static async listTemplates(_req: AuthenticatedRequest, res: Response) {
-    return res.json({ templates: STRUCTURIZR_TEMPLATES });
+    return res.json({ templates: PLANTUML_TEMPLATES });
   }
 
-  /** Importa um workspace Structurizr criando um novo modelo na organização. */
+  /** Importa um diagrama PlantUML criando um novo modelo na organização. */
   static async importNew(req: AuthenticatedRequest, res: Response) {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const orgId = body.orgId;
@@ -112,18 +101,17 @@ export class ImportController {
         }
       }
 
-      const parsed = parseImportedWorkspace(content);
-      if (!parsed) {
-        return res.status(400).json({ error: 'Workspace inválido (Structurizr ou PlantUML/C4)' });
+      const workspace = parseImportedWorkspace(content);
+      if (!workspace) {
+        return res.status(400).json({ error: 'Diagrama PlantUML inválido' });
       }
-      const { workspace, kind } = parsed;
 
       const c4Type = (body.c4Type as C4ModelType | undefined) ?? 'container';
       const title =
         cleanTitle(body.title) ??
         cleanTitle(body.name) ??
         cleanTitle(workspace.name) ??
-        (kind === 'plantuml' ? 'Modelo importado do PlantUML' : 'Modelo importado do Structurizr');
+        'Modelo importado do PlantUML';
 
       const created = await pool.query(
         `INSERT INTO models (org_id, title, description, status, folder_id, c4_type, c4_scope, parent_id)
@@ -151,11 +139,11 @@ export class ImportController {
         orgId,
         actorId: req.user!.id,
         actorEmail: req.user!.email,
-        action: kind === 'plantuml' ? 'model.import.plantuml' : 'model.import.structurizr',
+        action: 'model.import.plantuml',
         entityType: 'model',
         entityId: model.id,
         metadata: {
-          format: kind,
+          format: 'plantuml',
           elements: result.elements,
           relationships: result.relationships,
         },
@@ -164,11 +152,11 @@ export class ImportController {
       return res.status(201).json({ ...model, import: result });
     } catch (err) {
       console.error('[imports] importNew error', err);
-      return res.status(500).json({ error: 'Erro ao importar workspace Structurizr' });
+      return res.status(500).json({ error: 'Erro ao importar diagrama PlantUML' });
     }
   }
 
-  /** Importa um workspace Structurizr para um modelo existente. */
+  /** Importa um diagrama PlantUML para um modelo existente. */
   static async importIntoModel(req: AuthenticatedRequest, res: Response) {
     const { id } = req.params;
     if (!isUuid(id)) return res.status(404).json({ error: 'Modelo não encontrado' });
@@ -186,28 +174,26 @@ export class ImportController {
         return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
       }
 
-      const parsed = parseImportedWorkspace(content);
-      if (!parsed) {
-        return res.status(400).json({ error: 'Workspace inválido (Structurizr ou PlantUML/C4)' });
+      const workspace = parseImportedWorkspace(content);
+      if (!workspace) {
+        return res.status(400).json({ error: 'Diagrama PlantUML inválido' });
       }
-      const { workspace, kind } = parsed;
 
       const result = await importWorkspaceIntoModel(id, workspace, {
         mode: body.mode === 'merge' ? 'merge' : 'replace',
         title: cleanTitle(body.title),
         c4Type: typeof body.c4Type === 'string' ? body.c4Type : null,
-        fileName: typeof body.fileName === 'string' ? body.fileName : null,
       });
       const das = await regenerateModelDAS(id);
       await recordAudit({
         orgId: (model.org_id as string) ?? null,
         actorId: req.user!.id,
         actorEmail: req.user!.email,
-        action: kind === 'plantuml' ? 'model.import.plantuml' : 'model.import.structurizr',
+        action: 'model.import.plantuml',
         entityType: 'model',
         entityId: id,
         metadata: {
-          format: kind,
+          format: 'plantuml',
           mode: result.mode,
           elements: result.elements,
           relationships: result.relationships,
@@ -217,7 +203,7 @@ export class ImportController {
       return res.json({ ok: true, das_content: das, import: result });
     } catch (err) {
       console.error('[imports] importIntoModel error', err);
-      return res.status(500).json({ error: 'Erro ao importar workspace Structurizr' });
+      return res.status(500).json({ error: 'Erro ao importar diagrama PlantUML' });
     }
   }
 }

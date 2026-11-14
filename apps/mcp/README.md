@@ -41,8 +41,8 @@ Build: `npm run build --workspace=apps/mcp`.
 | `c4_inspect_model` | Inspections de arquitetura |
 | `c4_list_views` | Views canônicas/derivadas |
 | `c4_auto_layout` | Recalcula layout de uma view (`LR`/`TB`) |
-| `c4_export_model` | Exporta em Structurizr, PlantUML, Mermaid, SVG, PNG, HTML ou draw.io |
-| `c4_import_structurizr` | Importa workspace JSON/DSL criando um modelo |
+| `c4_export_model` | Exporta em PlantUML, Mermaid, SVG, PNG, HTML ou draw.io |
+| `c4_import_plantuml` | Importa um diagrama C4-PlantUML criando um modelo |
 | `c4_list_comments` | Lista comentários |
 | `c4_create_comment` | Cria comentário geral ou por elemento |
 

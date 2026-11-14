@@ -1,5 +1,5 @@
 // Cliente das capacidades colaborativas e de interoperabilidade (Ondas 2/3):
-// views/layout, autolayout, comentários, exportação e importação Structurizr.
+// views/layout, autolayout, comentários, exportação e importação PlantUML.
 
 const API = import.meta.env?.VITE_API_URL ?? 'http://localhost:4000';
 
@@ -227,10 +227,10 @@ export async function fetchModelPreview(
 }
 
 // ---------------------------------------------------------------------------
-// Importação Structurizr
+// Importação PlantUML
 // ---------------------------------------------------------------------------
 
-export interface StructurizrImportResult {
+export interface PlantUmlImportResult {
   modelId: string;
   mode: 'replace' | 'merge';
   elements: number;
@@ -239,7 +239,7 @@ export interface StructurizrImportResult {
   skippedRelationships: number;
 }
 
-export interface StructurizrTemplate {
+export interface PlantUmlTemplate {
   id: string;
   name: string;
   description: string;
@@ -248,40 +248,37 @@ export interface StructurizrTemplate {
   content: string;
 }
 
-export async function listStructurizrTemplates(): Promise<StructurizrTemplate[]> {
-  const response = await request<{ templates?: StructurizrTemplate[] }>(
-    '/api/models/import/structurizr/templates'
+export async function listPlantUmlTemplates(): Promise<PlantUmlTemplate[]> {
+  const response = await request<{ templates?: PlantUmlTemplate[] }>(
+    '/api/models/import/plantuml/templates'
   );
   return Array.isArray(response.templates) ? response.templates : [];
 }
 
-export async function importStructurizrWorkspace(input: {
+export async function importPlantUmlWorkspace(input: {
   orgId: string;
   content: string;
   title?: string;
-  description?: string | null;
   c4Type?: string;
   folderId?: string | null;
   parentId?: string | null;
-  format?: 'json' | 'dsl' | 'plantuml';
-}): Promise<{ id: string; import: StructurizrImportResult }> {
-  return request('/api/models/import/structurizr', {
+}): Promise<{ id: string; import: PlantUmlImportResult }> {
+  return request('/api/models/import/plantuml', {
     method: 'POST',
     body: JSON.stringify(input),
   });
 }
 
-export async function importStructurizrIntoModel(
+export async function importPlantUmlIntoModel(
   modelId: string,
   input: {
     content: string;
-    format?: 'json' | 'dsl' | 'plantuml';
     mode?: 'replace' | 'merge';
     title?: string;
     c4Type?: string;
   }
-): Promise<{ ok: boolean; das_content?: string; import: StructurizrImportResult }> {
-  return request(`/api/models/${modelId}/import/structurizr`, {
+): Promise<{ ok: boolean; das_content?: string; import: PlantUmlImportResult }> {
+  return request(`/api/models/${modelId}/import/plantuml`, {
     method: 'POST',
     body: JSON.stringify(input),
   });

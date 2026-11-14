@@ -153,16 +153,15 @@ const TOOLS: ToolDefinition[] = [
     },
   },
   {
-    name: 'c4_import_structurizr',
-    description: 'Importa um workspace Structurizr (JSON ou DSL) criando um novo modelo.',
+    name: 'c4_import_plantuml',
+    description: 'Importa um diagrama C4-PlantUML criando um novo modelo.',
     inputSchema: {
       type: 'object',
       properties: {
         orgId: { type: 'string' },
-        content: { type: 'string', description: 'Conteúdo do workspace JSON ou DSL' },
+        content: { type: 'string', description: 'Conteúdo do diagrama C4-PlantUML' },
         title: { type: 'string' },
         c4Type: { type: 'string' },
-        format: { type: 'string', enum: ['json', 'dsl'] },
         folderId: { type: 'string' },
         parentId: { type: 'string' },
       },
@@ -303,15 +302,14 @@ async function runTool(name: string, args: Record<string, unknown>): Promise<unk
         '*/*'
       );
     }
-    case 'c4_import_structurizr': {
+    case 'c4_import_plantuml': {
       const orgId = requireString(args, 'orgId');
       const content = requireString(args, 'content');
-      return callApi('POST', '/api/models/import/structurizr', {
+      return callApi('POST', '/api/models/import/plantuml', {
         orgId,
         content,
         title: typeof args.title === 'string' ? args.title : undefined,
         c4Type: typeof args.c4Type === 'string' ? args.c4Type : undefined,
-        format: args.format === 'json' || args.format === 'dsl' ? args.format : undefined,
         folderId: typeof args.folderId === 'string' ? args.folderId : undefined,
         parentId: typeof args.parentId === 'string' ? args.parentId : undefined,
       });

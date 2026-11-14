@@ -16,8 +16,9 @@ test('OpenAPI é 3.1 e tem metadados', () => {
 test('OpenAPI documenta exportação, importação, views e comentários', () => {
   const required = [
     '/api/openapi.json',
-    '/api/models/import/structurizr',
-    '/api/models/{id}/import/structurizr',
+    '/api/models/import/plantuml',
+    '/api/models/import/plantuml/templates',
+    '/api/models/{id}/import/plantuml',
     '/api/models/{id}/exports',
     '/api/models/{id}/export/{format}',
     '/api/models/{id}/preview',

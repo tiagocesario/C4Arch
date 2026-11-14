@@ -132,7 +132,7 @@ function snapshotFromDecoded(
 /**
  * O Yjs carrega apenas elementos/arestas, não views nem layout por view. Sem
  * esta mesclagem, `applyCanonicalSnapshot(..., { prune: true })` apagava todas
- * as views importadas do Structurizr e o layout delas, deixando somente a view
+ * as views importadas do PlantUML e o layout delas, deixando somente a view
  * primária sintética. Views existentes são preservadas; para a view primária,
  * o snapshot derivado continua sendo a fonte do layout.
  */

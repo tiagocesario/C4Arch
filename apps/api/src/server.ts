@@ -67,8 +67,8 @@ app.use((req, res, next) => {
   const isLargeXmlRoute =
     req.method === 'POST' &&
     (req.path === '/api/models/import' ||
-      req.path === '/api/models/import/structurizr' ||
-      /^\/api\/models\/[^/]+\/import\/structurizr\/?$/.test(req.path) ||
+      req.path === '/api/models/import/plantuml' ||
+      /^\/api\/models\/[^/]+\/import\/plantuml\/?$/.test(req.path) ||
       /^\/api\/models\/[^/]+\/drawio\/import\/?$/.test(req.path));
   if (isLargeXmlRoute) {
     return largeXmlJson(req, res, next);
@@ -170,8 +170,8 @@ import commentsRouter from './routes/comments.routes.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/orgs', orgsRouter);
-// Importação Structurizr precisa vir antes do CRUD de modelos para que
-// `/api/models/import/structurizr` não caia em `/:id`.
+// Importação PlantUML precisa vir antes do CRUD de modelos para que
+// `/api/models/import/plantuml` não caia em `/:id`.
 app.use('/api/models', importsRouter);
 app.use('/api/models', modelsRouter);
 app.use('/api/models', elementsRouter);

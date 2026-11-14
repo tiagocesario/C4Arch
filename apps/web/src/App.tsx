@@ -45,9 +45,9 @@ import type { ImportResult, ImportSource } from './components/ImportModelsPanel'
 import { InspectionsPanel } from './components/InspectionsPanel';
 import { LoginScreen } from './components/LoginScreen';
 import { PresenceBar } from './components/PresenceBar';
-import { StructurizrImportPanel } from './components/StructurizrImportPanel';
+import { PlantUmlImportPanel } from './components/PlantUmlImportPanel';
 import { VersionsPanel } from './components/VersionsPanel';
-import { autoLayoutViewModel, importStructurizrWorkspace, listStructurizrTemplates, type ModelComment, type StructurizrTemplate } from './services/collaboration';
+import { autoLayoutViewModel, importPlantUmlWorkspace, listPlantUmlTemplates, type ModelComment, type PlantUmlTemplate } from './services/collaboration';
 import { inspectModel, type InspectionReport } from './services/api';
 import {
   listModelVersions,
@@ -217,7 +217,7 @@ export default function App() {
   const [newModelParentFilter, setNewModelParentFilter] = useState('');
   const [linkToExisting, setLinkToExisting] = useState(false);
   const [openDrawioAfterCreate, setOpenDrawioAfterCreate] = useState(true);
-  const [newModelStructurizrTemplateId, setNewModelStructurizrTemplateId] = useState('');
+  const [newModelPlantUmlTemplateId, setNewModelPlantUmlTemplateId] = useState('');
 
   const [showImportModels, setShowImportModels] = useState(false);
   const [importSource, setImportSource] = useState<ImportSource>('files');
@@ -258,9 +258,9 @@ export default function App() {
   const [showComments, setShowComments] = useState(false);
   const [showExport, setShowExport] = useState(false);
   const [showPlantUml, setShowPlantUml] = useState(false);
-  const [showStructurizrImport, setShowStructurizrImport] = useState(false);
-  const [structurizrTargetModelId, setStructurizrTargetModelId] = useState<string | null>(null);
-  const [structurizrTemplates, setStructurizrTemplates] = useState<StructurizrTemplate[]>([]);
+  const [showPlantUmlImport, setShowPlantUmlImport] = useState(false);
+  const [plantUmlTargetModelId, setPlantUmlTargetModelId] = useState<string | null>(null);
+  const [plantUmlTemplates, setPlantUmlTemplates] = useState<PlantUmlTemplate[]>([]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [modelComments, setModelComments] = useState<ModelComment[]>([]);
   const [presenceUsers, setPresenceUsers] = useState<ws.PresenceUser[]>([]);
@@ -712,7 +712,7 @@ export default function App() {
       }
       // Garante que o seletor de modelo pai mostre também os modelos recém-criados.
       await refreshModels();
-      await loadStructurizrTemplates();
+      await loadPlantUmlTemplates();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       return;
@@ -726,15 +726,15 @@ export default function App() {
     setNewModelParentFilter('');
     setLinkToExisting(false);
     setOpenDrawioAfterCreate(true);
-    setNewModelStructurizrTemplateId('');
+    setNewModelPlantUmlTemplateId('');
     setCreatingModel(false);
     setCreateModelError(null);
     setShowCreateModel(true);
   }
 
-  async function loadStructurizrTemplates() {
+  async function loadPlantUmlTemplates() {
     try {
-      setStructurizrTemplates(await listStructurizrTemplates());
+      setPlantUmlTemplates(await listPlantUmlTemplates());
     } catch {
       // A criação de modelos segue disponível mesmo sem o catálogo de padrões.
     }
@@ -756,11 +756,11 @@ export default function App() {
     }
 
     const template = !linkParentId
-      ? structurizrTemplates.find((item) => item.id === newModelStructurizrTemplateId) ?? null
+      ? plantUmlTemplates.find((item) => item.id === newModelPlantUmlTemplateId) ?? null
       : null;
 
     // Abre a aba antes do await para não ser bloqueada como popup. Modelos
-    // criados a partir de um padrão Structurizr abrem no canvas em uma nova aba.
+    // criados a partir de um padrão PlantUML abrem no canvas em uma nova aba.
     const popup =
       template || openDrawioAfterCreate ? window.open('about:blank', '_blank') : null;
 
@@ -780,15 +780,14 @@ export default function App() {
           setCreateModelError('Organização não encontrada. Faça login novamente.');
           return;
         }
-        // Reutiliza o mesmo pipeline de importação Structurizr (parser,
+        // Reutiliza o mesmo pipeline de importação PlantUML (parser,
         // persistência legada + canônica, views e autolayout).
-        const created = await importStructurizrWorkspace({
+        const created = await importPlantUmlWorkspace({
           orgId: currentOrgId,
           folderId: newModelFolderId,
           parentId: null,
           title,
           content: template.content,
-          format: template.format,
           c4Type: template.c4Type,
         });
         setShowCreateModel(false);
@@ -808,7 +807,7 @@ export default function App() {
           }
         } else {
           // Fallback quando o navegador bloqueia popups.
-          await handleStructurizrImported(created.id);
+          await handlePlantUmlImported(created.id);
         }
         await refreshModels();
         return;
@@ -1072,7 +1071,7 @@ export default function App() {
           ? detail.drawioXml
           : (detail.diagrams ?? []).find((d) => d.c4Type === dt)?.drawioXml;
       if (!isValidDrawioXml(xml) && (detail.elements.length > 0 || detail.edges.length > 0)) {
-        // Modelos importados do Structurizr podem não ter XML persistido ou ter
+        // Modelos importados do PlantUML podem não ter XML persistido ou ter
         // um XML antigo inválido; o servidor gera o desenho a partir do grafo.
         xml = await getModelDrawioXml(target.id);
       }
@@ -1094,14 +1093,14 @@ export default function App() {
     await loadPreviewDiagram(target, dt);
   }
 
-  /** Modelos criados/importados via Structurizr abrem no editor C4 (tela #/models/:id). */
+  /** Modelos criados/importados via PlantUML abrem no editor C4 (tela #/models/:id). */
   async function openModelViewer(item: Model) {
     try {
       const detail = await getModel(item.id);
-      const isStructurizr = (detail.elements ?? []).some(
+      const isPlantUml = (detail.elements ?? []).some(
         (element) => (element.metadata as Record<string, unknown> | null)?.importIdentifier != null
       );
-      if (isStructurizr) {
+      if (isPlantUml) {
         window.open(c4EditorUrl(item.id), '_blank', 'noopener');
         return;
       }
@@ -1292,8 +1291,8 @@ export default function App() {
     return !term || m.title.toLowerCase().includes(term);
   });
 
-  const selectedStructurizrTemplate =
-    structurizrTemplates.find((template) => template.id === newModelStructurizrTemplateId) ?? null;
+  const selectedPlantUmlTemplate =
+    plantUmlTemplates.find((template) => template.id === newModelPlantUmlTemplateId) ?? null;
 
   const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
@@ -1434,8 +1433,8 @@ export default function App() {
     }
   }
 
-  async function handleStructurizrImported(importedModelId: string) {
-    setShowStructurizrImport(false);
+  async function handlePlantUmlImported(importedModelId: string) {
+    setShowPlantUmlImport(false);
     try {
       const [detail, list] = await Promise.all([getModel(importedModelId), listModels()]);
       setModels(list);
@@ -1564,9 +1563,9 @@ export default function App() {
                 {isWriter && (
                   <button
                     onClick={() => {
-                      setStructurizrTargetModelId(null);
-                      void loadStructurizrTemplates();
-                      setShowStructurizrImport(true);
+                      setPlantUmlTargetModelId(null);
+                      void loadPlantUmlTemplates();
+                      setShowPlantUmlImport(true);
                     }}
                     style={buttonStyle}
                     title="Criar um modelo a partir de um diagrama PlantUML"
@@ -1635,11 +1634,11 @@ export default function App() {
                       <label style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
                         <span>Padrão PlantUML (opcional)</span>
                         <select
-                          value={newModelStructurizrTemplateId}
+                          value={newModelPlantUmlTemplateId}
                           onChange={(e) => {
                             const id = e.target.value;
-                            setNewModelStructurizrTemplateId(id);
-                            const template = structurizrTemplates.find((item) => item.id === id);
+                            setNewModelPlantUmlTemplateId(id);
+                            const template = plantUmlTemplates.find((item) => item.id === id);
                             if (template) {
                               setNewModelC4Type(template.c4Type as C4ModelType);
                               if (!newModelTitle.trim()) setNewModelTitle(template.name);
@@ -1649,14 +1648,14 @@ export default function App() {
                           style={{ ...inputStyle, width: '100%' }}
                         >
                           <option value="">Modelo vazio (sem padrão)</option>
-                          {structurizrTemplates.map((template) => (
+                          {plantUmlTemplates.map((template) => (
                             <option key={template.id} value={template.id}>{template.name}</option>
                           ))}
                         </select>
                         <span style={smallMuted}>
-                          {selectedStructurizrTemplate
-                            ? `${selectedStructurizrTemplate.description} O modelo é criado pelo mesmo pipeline de importação PlantUML.`
-                            : structurizrTemplates.length > 0
+                          {selectedPlantUmlTemplate
+                            ? `${selectedPlantUmlTemplate.description} O modelo é criado pelo mesmo pipeline de importação PlantUML.`
+                            : plantUmlTemplates.length > 0
                               ? 'Escolha um padrão para nascer com elementos, relações e views prontos.'
                               : 'Nenhum padrão disponível no momento; o modelo será criado vazio.'}
                         </span>
@@ -1754,7 +1753,7 @@ export default function App() {
                         </select>
                       </>
                     )}
-                    {newModelStructurizrTemplateId ? (
+                    {newModelPlantUmlTemplateId ? (
                       <span style={smallMuted}>
                         O modelo será aberto em uma nova aba no canvas, com o conteúdo do padrão PlantUML.
                       </span>
@@ -2049,9 +2048,9 @@ export default function App() {
                             {isWriter && (
                               <button
                                 onClick={() => {
-                                  setStructurizrTargetModelId(item.id);
-                                  void loadStructurizrTemplates();
-                                  setShowStructurizrImport(true);
+                                  setPlantUmlTargetModelId(item.id);
+                                  void loadPlantUmlTemplates();
+                                  setShowPlantUmlImport(true);
                                 }}
                                 style={buttonStyle}
                                 title="Adicionar novos objetos ao modelo a partir de um diagrama PlantUML"
@@ -2270,8 +2269,8 @@ export default function App() {
                     </button>
                     <button
                       onClick={() => {
-                        setStructurizrTargetModelId(selectedId);
-                        setShowStructurizrImport(true);
+                        setPlantUmlTargetModelId(selectedId);
+                        setShowPlantUmlImport(true);
                       }}
                       style={buttonStyle}
                     >
@@ -2406,14 +2405,14 @@ export default function App() {
         />
       )}
 
-      {showStructurizrImport && (
-        <StructurizrImportPanel
-          modelId={structurizrTargetModelId}
+      {showPlantUmlImport && (
+        <PlantUmlImportPanel
+          modelId={plantUmlTargetModelId}
           orgId={orgId}
           c4Types={[...C4_MODEL_TYPES]}
-          templates={structurizrTemplates}
-          onClose={() => setShowStructurizrImport(false)}
-          onImported={(result) => void handleStructurizrImported(result.modelId)}
+          templates={plantUmlTemplates}
+          onClose={() => setShowPlantUmlImport(false)}
+          onImported={(result) => void handlePlantUmlImported(result.modelId)}
         />
       )}
 

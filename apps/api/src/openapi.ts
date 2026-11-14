@@ -124,7 +124,7 @@ export function buildOpenApiDocument() {
       title: 'C4Arch API',
       version: '0.1.0',
       description:
-        'API do C4Arch: modelo C4 canônico, DAS, colaboração em tempo real, exportação e importação Structurizr.',
+        'API do C4Arch: modelo C4 canônico, DAS, colaboração em tempo real, exportação e importação PlantUML.',
       license: { name: 'MIT' },
     },
     servers: [
@@ -320,10 +320,10 @@ export function buildOpenApiDocument() {
           },
         },
       },
-      '/api/models/import/structurizr': {
+      '/api/models/import/plantuml': {
         post: {
           tags: ['imports'],
-          summary: 'Importa um workspace Structurizr (JSON ou DSL)',
+          summary: 'Importa um diagrama C4-PlantUML',
           parameters: [idempotencyHeader],
           requestBody: {
             required: true,
@@ -339,24 +339,24 @@ export function buildOpenApiDocument() {
                     title: { type: 'string' },
                     c4Type: { type: 'string' },
                     content: { type: 'string' },
-                    format: { type: 'string', enum: ['json', 'dsl'] },
+                    format: { type: 'string', enum: ['plantuml'] },
                   },
                 },
               },
             },
           },
           responses: {
-            '201': jsonResponse('Workspace importado', {
+            '201': jsonResponse('Diagrama importado', {
               allOf: [{ $ref: '#/components/schemas/Model' }, { type: 'object', properties: { import: { $ref: '#/components/schemas/ImportResult' } } }],
             }),
             '400': errorResponse('Workspace inválido'),
           },
         },
       },
-      '/api/models/import/structurizr/templates': {
+      '/api/models/import/plantuml/templates': {
         get: {
           tags: ['imports'],
-          summary: 'Lista padrões de workspace Structurizr para criar modelos',
+          summary: 'Lista padrões C4-PlantUML para criar modelos',
           responses: {
             '200': jsonResponse('Padrões disponíveis', {
               type: 'object',
@@ -370,7 +370,7 @@ export function buildOpenApiDocument() {
                       name: { type: 'string' },
                       description: { type: 'string' },
                       c4Type: { type: 'string' },
-                      format: { type: 'string', enum: ['dsl', 'json'] },
+                      format: { type: 'string', enum: ['plantuml'] },
                       content: { type: 'string' },
                     },
                   },
@@ -493,10 +493,10 @@ export function buildOpenApiDocument() {
           responses: { '200': { description: 'Preview' } },
         },
       },
-      '/api/models/{id}/import/structurizr': {
+      '/api/models/{id}/import/plantuml': {
         post: {
           tags: ['imports'],
-          summary: 'Importa/substitui o conteúdo do modelo com um workspace Structurizr',
+          summary: 'Importa/substitui o conteúdo do modelo com um diagrama C4-PlantUML',
           parameters: [idParameter, idempotencyHeader],
           requestBody: {
             required: true,
@@ -507,7 +507,7 @@ export function buildOpenApiDocument() {
                   required: ['content'],
                   properties: {
                     content: { type: 'string' },
-                    format: { type: 'string', enum: ['json', 'dsl'] },
+                    format: { type: 'string', enum: ['plantuml'] },
                     mode: { type: 'string', enum: ['replace', 'merge'] },
                     title: { type: 'string' },
                     c4Type: { type: 'string' },

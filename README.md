@@ -32,11 +32,11 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
   de todos os tipos de diagrama do modelo (inventário, elementos e conexões) e
   regenerado ao criar/editar o modelo, adicionar um tipo ou importar draw.io.
   No startup da API, a geração também é aplicada aos modelos antigos.
-- **Interoperabilidade:** importação de workspace Structurizr (JSON ou DSL) e
-  criação de modelos a partir de padrões Structurizr prontos (contexto,
-  containers, microserviços, componentes ou workspace em branco), com
-  exportação para Structurizr JSON/DSL, C4-PlantUML, Mermaid, SVG, PNG, HTML e
-  draw.io, com preview server-side e legenda.
+- **Interoperabilidade:** importação de diagramas C4-PlantUML e criação de
+  modelos a partir de padrões PlantUML prontos (contexto, containers,
+  microserviços, componentes ou modelo em branco), com exportação para
+  C4-PlantUML, Mermaid, SVG, PNG, HTML e draw.io, com preview server-side e
+  legenda.
 - **Colaboração em tempo real:** presença por view/sala, cursores, comentários
   gerais ou ancorados em elementos, undo/redo por sessão e atualização do canvas
   via WebSocket + Yjs.
@@ -124,7 +124,7 @@ c4arch/
 - `docs/M6-CHECKLIST.md` — checklist e evidências da operação contínua
   (worker, retenção, observabilidade e higiene de migrações).
 - `docs/RELATORIO-ONDAS-2-3.md` — relatório de entrega das Ondas 2 e 3:
-  exportação/interoperabilidade, views, importação Structurizr, colaboração,
+  exportação/interoperabilidade, views, importação PlantUML, colaboração,
   contrato, MCP, split do frontend, correções e validação executada.
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
   Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
@@ -206,7 +206,7 @@ npm run sbom                  # gera sbom.json (CycloneDX)
 
 O build do frontend executa `tsc --noEmit` no código React antes do Vite;
 erros de tipo quebram o build. Os testes da API cobrem validação anti-SSRF,
-parsing do draw.io para o DAS, exportadores, importação Structurizr, autolayout,
+parsing do draw.io para o DAS, exportadores, importação PlantUML, autolayout,
 PNG, OpenAPI e escopo dos tokens; os do realtime cobrem merge parcial, exclusão
 em cascata, hidratação do CRDT e pilha de undo/redo. Na web, os testes de
 componente (React Testing Library + jsdom) cobrem header/login, painéis de

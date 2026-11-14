@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   fetchModelExportText,
-  importStructurizrIntoModel,
+  importPlantUmlIntoModel,
 } from '../services/collaboration';
 
 interface PlantUmlSourcePanelProps {
@@ -69,9 +69,8 @@ export function PlantUmlSourcePanel({
     setError(null);
     setStatus(null);
     try {
-      const result = await importStructurizrIntoModel(modelId, {
+      const result = await importPlantUmlIntoModel(modelId, {
         content: source,
-        format: 'plantuml',
         mode: 'replace',
       });
       setBaseline(source);

@@ -3,11 +3,11 @@ import type { C4ModelType } from './model-types.js';
 /**
  * Padrões prontos de diagramas C4-PlantUML usados na criação de modelos.
  *
- * O conteúdo é C4-PlantUML aceito pelo importador (`plantuml-import.ts`) e cobre
- * contexto, containers, microserviços e componentes. Os modelos são criados
- * pelo mesmo endpoint de importação, sem duplicar a lógica de persistência.
+ * O conteúdo é aceito pelo importador (`plantuml-import.ts`) e cobre contexto,
+ * containers, microserviços e componentes. Os modelos são criados pelo mesmo
+ * endpoint de importação, sem duplicar a lógica de persistência.
  */
-export interface StructurizrTemplate {
+export interface PlantUmlTemplate {
   id: string;
   name: string;
   description: string;
@@ -93,24 +93,22 @@ const blank = `@startuml
 title Novo modelo
 @enduml`;
 
-type TemplateFormat = StructurizrTemplate['format'];
-
 const toTemplate = (
   id: string,
   name: string,
   description: string,
   c4Type: C4ModelType,
   content: string
-): StructurizrTemplate => ({
+): PlantUmlTemplate => ({
   id,
   name,
   description,
   c4Type,
-  format: 'plantuml' as TemplateFormat,
+  format: 'plantuml',
   content,
 });
 
-export const STRUCTURIZR_TEMPLATES: StructurizrTemplate[] = [
+export const PLANTUML_TEMPLATES: PlantUmlTemplate[] = [
   toTemplate(
     'system-context',
     'Contexto do sistema',
@@ -147,7 +145,3 @@ export const STRUCTURIZR_TEMPLATES: StructurizrTemplate[] = [
     blank
   ),
 ];
-
-export function findStructurizrTemplate(id: string): StructurizrTemplate | null {
-  return STRUCTURIZR_TEMPLATES.find((template) => template.id === id) ?? null;
-}
