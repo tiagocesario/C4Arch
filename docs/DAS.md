@@ -255,7 +255,9 @@ flowchart TB
 
 #### Realtime (`apps/realtime`)
 
-- `sync.ts` (Yjs, merge parcial, snapshots atômicos, hidratação da API).
+- `sync.ts` (Yjs, merge parcial, snapshots atômicos, hidratação da API e
+  processamento serial das mensagens de cada conexão, garantindo que `patch`
+  enviado logo após `join` veja o modelo já associado).
 
 ### 7.2 Diagrama de componentes (draw.io)
 

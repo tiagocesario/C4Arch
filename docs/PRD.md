@@ -110,7 +110,10 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 3. A API valida organização, pasta, título e status.
 4. O modelo é criado como `draft` e aberto no editor.
 5. Se a opção estiver marcada, o draw.io é aberto em uma nova aba.
-6. Ao marcar **Vincular a um modelo existente**, o título deixa de ser
+6. Ao escolher um **padrão PlantUML**, o modelo nasce com elementos, relações
+   e views do template e abre em uma nova aba no canvas já com o painel
+   **PlantUML** (código + pré-visualização) aberto.
+7. Ao marcar **Vincular a um modelo existente**, o título deixa de ser
    obrigatório: o tipo de diagrama escolhido é anexado ao **mesmo modelo** via
    `POST /api/models/:id/diagrams`, herdando a pasta e sem criar novo modelo.
 
@@ -222,7 +225,7 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 | RF-22 | Hierarquia de pastas em árvore, movimentação para pai/raiz e prevenção de ciclos | Entregue |
 | RF-23 | Importar um ou vários modelos de arquivo/pasta local, Google Drive (link público de arquivo) ou outra URL, com detecção de tipo e relatório por item | Entregue |
 | RF-24 | Gerar e regenerar o DAS automaticamente a partir de todos os tipos de diagrama do modelo, incluindo modelos antigos no startup | Entregue |
-| RF-25 | Importar/exportar C4-PlantUML, criar modelos a partir de templates e pré-visualizar o SVG renderizado no painel de código | Entregue |
+| RF-25 | Importar/exportar C4-PlantUML, criar modelos a partir de templates e pré-visualizar o SVG renderizado no painel de código, que abre automaticamente em modelos criados/importados via PlantUML | Entregue |
 
 ## 7. Requisitos não funcionais
 

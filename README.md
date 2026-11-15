@@ -36,10 +36,10 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
   modelos a partir de padrões PlantUML prontos (contexto, containers,
   microserviços, componentes ou modelo em branco), com exportação para
   C4-PlantUML, Mermaid, SVG, PNG, HTML e draw.io, com preview server-side e
-  legenda.
-- **Colaboração em tempo real:** presença por view/sala, cursores, comentários
-  gerais ou ancorados em elementos, undo/redo por sessão e atualização do canvas
-  via WebSocket + Yjs.
+  legenda. Modelos criados/importados via PlantUML abrem já com o painel de
+  código e pré-visualização PlantUML.
+- **Colaboração em tempo real:** presença por view/sala, cursores e atualização
+  do canvas via WebSocket + Yjs.
 - **Contrato estável:** OpenAPI 3.1 em `/api/openapi.json`, Swagger UI em
   `/api/docs`, erros padronizados (`error`/`code`) e idempotência opcional via
   header `Idempotency-Key`.

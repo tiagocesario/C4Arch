@@ -446,7 +446,10 @@ export function attachWebsocket(httpServer: Server) {
       }
     });
 
-    ws.on('message', async (raw: Buffer) => {
+    // Serializa o processamento por conexão: `join` é assíncrono (consulta o
+    // papel no Postgres) e um `patch` enviado logo depois poderia ser tratado
+    // antes de `modelId` ser atribuído, gerando "modelId e patch obrigatórios".
+    const handleMessage = async (raw: Buffer): Promise<void> => {
       if (!(await authReady)) {
         ws.close(1008, 'unauthorized');
         return;
@@ -705,6 +708,11 @@ export function attachWebsocket(httpServer: Server) {
         default:
           ws.send(JSON.stringify({ type: 'error', error: 'tipo de mensagem desconhecido' }));
       }
+    };
+
+    let messageQueue: Promise<void> = Promise.resolve();
+    ws.on('message', (raw: Buffer) => {
+      messageQueue = messageQueue.then(() => handleMessage(raw)).catch(() => undefined);
     });
 
     ws.on('close', async () => {

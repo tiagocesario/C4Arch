@@ -26,7 +26,6 @@ import {
   updateService,
   deleteService,
   listServiceDependencies,
-  importDrawio,
   openDrawioEditor,
   getDrawioEditorUrl,
   getDrawioPreviewUrl,
@@ -36,7 +35,6 @@ import {
 } from './services/api';
 import { Canvas } from './components/Canvas';
 import { AppHeader } from './components/AppHeader';
-import { CommentsPanel } from './components/CommentsPanel';
 import { DasEditor } from './components/DasEditor';
 import { ExportPanel } from './components/ExportPanel';
 import { PlantUmlSourcePanel } from './components/PlantUmlSourcePanel';
@@ -47,7 +45,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { PresenceBar } from './components/PresenceBar';
 import { PlantUmlImportPanel } from './components/PlantUmlImportPanel';
 import { VersionsPanel } from './components/VersionsPanel';
-import { autoLayoutViewModel, importPlantUmlWorkspace, listPlantUmlTemplates, type ModelComment, type PlantUmlTemplate } from './services/collaboration';
+import { autoLayoutViewModel, importPlantUmlWorkspace, listPlantUmlTemplates, type PlantUmlTemplate } from './services/collaboration';
 import { inspectModel, type InspectionReport } from './services/api';
 import {
   listModelVersions,
@@ -113,9 +111,28 @@ const smallMuted: CSSProperties = { fontSize: 12, color: '#7b8290' };
 const statusLabel: Record<ModelStatus, string> = { draft: 'Rascunho', final: 'Final' };
 
 /** URL absoluta do editor C4, usada para abrir o modelo em uma nova aba. */
-function c4EditorUrl(modelId: string): string {
+function c4EditorUrl(modelId: string, options: { plantuml?: boolean } = {}): string {
   const { origin, pathname } = window.location;
-  return `${origin}${pathname}${buildHashRoute('edit', modelId)}`;
+  const query = options.plantuml ? '?plantuml=1' : '';
+  return `${origin}${pathname}${query}${buildHashRoute('edit', modelId)}`;
+}
+
+/**
+ * Consome o sinal `?plantuml=1` usado ao abrir um modelo criado/importado via
+ * PlantUML. O parâmetro é removido da URL para não reabrir o painel ao
+ * recarregar a página.
+ */
+function consumePlantUmlRequest(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('plantuml') !== '1') return false;
+  params.delete('plantuml');
+  const query = params.toString();
+  window.history.replaceState(
+    {},
+    '',
+    window.location.pathname + (query ? `?${query}` : '') + window.location.hash
+  );
+  return true;
 }
 
 /**
@@ -254,15 +271,12 @@ export default function App() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
-  // Colaboração, comentários e interoperabilidade (Ondas 2/3).
-  const [showComments, setShowComments] = useState(false);
+  // Colaboração e interoperabilidade (Ondas 2/3).
   const [showExport, setShowExport] = useState(false);
   const [showPlantUml, setShowPlantUml] = useState(false);
   const [showPlantUmlImport, setShowPlantUmlImport] = useState(false);
   const [plantUmlTargetModelId, setPlantUmlTargetModelId] = useState<string | null>(null);
   const [plantUmlTemplates, setPlantUmlTemplates] = useState<PlantUmlTemplate[]>([]);
-  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
-  const [modelComments, setModelComments] = useState<ModelComment[]>([]);
   const [presenceUsers, setPresenceUsers] = useState<ws.PresenceUser[]>([]);
   const [autoLayoutBusy, setAutoLayoutBusy] = useState(false);
 
@@ -546,8 +560,6 @@ export default function App() {
   }, [selectedId]);
 
   useEffect(() => {
-    setSelectedElementId(null);
-    setModelComments([]);
     setPresenceUsers([]);
   }, [selectedId]);
 
@@ -583,7 +595,13 @@ export default function App() {
       if (!hash || hash === '#' || hash === '#/') return;
       const route = parseHashRoute(hash);
       if (route.modelId) {
-        void openModel(route.modelId);
+        // Modelos abertos a partir de um padrão PlantUML chegam com
+        // `?plantuml=1` e devem exibir a configuração PlantUML já na primeira
+        // visualização (código + pré-visualização).
+        const showPlantUmlSource = consumePlantUmlRequest();
+        void openModel(route.modelId).then(() => {
+          if (showPlantUmlSource) setShowPlantUml(true);
+        });
       } else {
         setMode(route.mode);
       }
@@ -794,7 +812,7 @@ export default function App() {
         setError(null);
         // Abre o editor C4 em uma nova aba para usar toda a tela disponível;
         // o app atual retorna para a lista de arquivos.
-        const editorUrl = c4EditorUrl(created.id);
+        const editorUrl = c4EditorUrl(created.id, { plantuml: true });
         setMode('files');
         setSelectedId(null);
         setModel(null);
@@ -1101,7 +1119,7 @@ export default function App() {
         (element) => (element.metadata as Record<string, unknown> | null)?.importIdentifier != null
       );
       if (isPlantUml) {
-        window.open(c4EditorUrl(item.id), '_blank', 'noopener');
+        window.open(c4EditorUrl(item.id, { plantuml: true }), '_blank', 'noopener');
         return;
       }
     } catch {
@@ -1297,11 +1315,6 @@ export default function App() {
   const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
   const activeViewKey = model?.c4Type ?? 'container';
-  const commentedElementIds = useMemo(
-    () =>
-      [...new Set(modelComments.map((comment) => comment.elementId).filter((id): id is string => !!id))],
-    [modelComments]
-  );
 
   const dasParsed = useMemo(() => parseDasSections(dasContent), [dasContent]);
   const dasSectionItems = useMemo(
@@ -2224,38 +2237,14 @@ export default function App() {
               edges={model?.edges ?? []}
               onRenameElement={onSaveElementTitle}
               readOnly={!isWriter}
-              onSelectElement={setSelectedElementId}
-              commentedElementIds={commentedElementIds}
             />
             <footer style={{ padding: '8px 12px', borderTop: '1px solid #2a2f3a', display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', background: '#0f1115' }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
                 <button onClick={() => { setMode('files'); setSelectedId(null); setModel(null); }} style={buttonStyle}>Voltar</button>
-                <button onClick={() => selectedId && window.open(c4EditorUrl(selectedId), '_blank', 'noopener')} style={buttonStyle} title="Abrir este editor em uma nova aba, em tela cheia">
-                  Abrir em nova aba
-                </button>
                 <PresenceBar users={presenceUsers} />
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 {!isWriter && <span style={{ ...smallMuted, alignSelf: 'center' }}>Somente leitura</span>}
-                {isWriter && (
-                  <>
-                    <button onClick={() => ws.undo()} style={buttonStyle} title="Desfazer (última alteração)">
-                      Desfazer
-                    </button>
-                    <button onClick={() => ws.redo()} style={buttonStyle} title="Refazer">
-                      Refazer
-                    </button>
-                  </>
-                )}
-                <button
-                  onClick={() => setShowComments(true)}
-                  style={{
-                    ...buttonStyle,
-                    borderColor: modelComments.some((comment) => !comment.resolved) ? '#fbbf24' : '#374151',
-                  }}
-                >
-                  Comentários ({modelComments.filter((comment) => !comment.resolved).length})
-                </button>
                 <button onClick={() => setShowPlantUml(true)} style={buttonStyle} title="Ver e editar o modelo como código C4-PlantUML">
                   PlantUML
                 </button>
@@ -2268,30 +2257,11 @@ export default function App() {
                       {autoLayoutBusy ? 'Organizando...' : 'Auto layout'}
                     </button>
                     <button
-                      onClick={() => {
-                        setPlantUmlTargetModelId(selectedId);
-                        setShowPlantUmlImport(true);
-                      }}
-                      style={buttonStyle}
-                    >
-                      Adicionar objetos (PlantUML)
-                    </button>
-                    <button
                       onClick={() => { if (model) openEditModel(model); }}
                       style={buttonStyle}
                       disabled={!model}
                     >
                       Editar modelo
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (!selectedId) return;
-                        const xml = window.prompt('XML draw.io:');
-                        if (xml) importDrawio(selectedId, xml).catch((err) => setError(err.message));
-                      }}
-                      style={{ ...buttonStyle, background: '#4f46e5', color: '#fff' }}
-                    >
-                      Importar draw.io
                     </button>
                     <button
                       onClick={() => { if (selectedId) openDrawio(selectedId); }}
@@ -2391,17 +2361,6 @@ export default function App() {
           modelId={selectedId}
           modelTitle={model.title}
           onClose={() => setShowExport(false)}
-        />
-      )}
-
-      {showComments && selectedId && (
-        <CommentsPanel
-          modelId={selectedId}
-          selectedElementId={selectedElementId}
-          elements={(model?.elements ?? []).map((element) => ({ id: element.id, title: element.title }))}
-          isWriter={isWriter}
-          onClose={() => setShowComments(false)}
-          onCommentsChange={setModelComments}
         />
       )}
 

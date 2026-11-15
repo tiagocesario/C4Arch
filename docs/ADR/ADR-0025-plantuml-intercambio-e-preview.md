@@ -41,6 +41,9 @@ pré-visualização é renderizada no servidor, nunca no navegador:
   segunda fonte de verdade.
 - **Edição** (`apps/web/src/components/PlantUmlSourcePanel.tsx`): o painel exibe
   o fonte exportado, permite editar e aplicar (`replace`) de volta no modelo.
+  Modelos criados ou importados via PlantUML abrem com esse painel já visível:
+  a URL do editor recebe `?plantuml=1`, consumido no primeiro carregamento e
+  removido da barra de endereços para não reabrir o painel a cada F5.
 - **Pré-visualização** (`POST /api/plantuml/render`): a API codifica o fonte no
   formato de URL do PlantUML (`deflate` raw + base64 próprio, implementado em
   `apps/api/src/c4/plantuml-render.ts`) e busca o SVG em um servidor PlantUML

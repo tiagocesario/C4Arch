@@ -66,6 +66,14 @@ async function mockApi(target: Page | import('@playwright/test').BrowserContext)
       });
     }
 
+    if (method === 'GET' && path === '/api/models/model-1/export/plantuml') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/plain; charset=utf-8',
+        body: '@startuml\ntitle Loja\n@enduml',
+      });
+    }
+
     const responses: Record<string, unknown> = {
       '/api/auth/me': { user, org },
       '/api/models': [],
@@ -158,4 +166,26 @@ test('cria modelo novo a partir de um padrão PlantUML', async ({ page, context 
 
   await expect(editor).toHaveURL(/#\/models\/model-1$/);
   await expect(editor.getByRole('button', { name: 'Voltar' })).toBeVisible();
+  // O painel PlantUML abre já na primeira visualização do modelo criado.
+  await expect(editor.getByRole('heading', { name: 'PlantUML · Loja' })).toBeVisible();
+  await expect(editor.getByLabel('Código PlantUML do modelo')).toHaveValue(/@startuml/);
+});
+
+test('editor mantém apenas os botões essenciais no rodapé', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem('c4arch_token', 'e2e-token');
+  });
+  await mockApi(page);
+
+  await page.goto('/#/models/model-1');
+  await expect(page.getByRole('button', { name: 'Voltar' })).toBeVisible();
+
+  for (const name of ['PlantUML', 'Exportar', 'Auto layout', 'Editar modelo', 'Abrir draw.io', 'Versões', 'Inspeções', 'Excluir']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  for (const name of ['Abrir em nova aba', 'Desfazer', 'Refazer', 'Adicionar objetos (PlantUML)', 'Importar draw.io']) {
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+  }
+  await expect(page.getByRole('button', { name: /^Comentários/ })).toHaveCount(0);
 });
