@@ -26,7 +26,7 @@ services:
     security_opt:
       - no-new-privileges:true
     # Não expõe a porta do banco para o host em produção.
-    ports: []
+    ports: !reset []
 
   api:
     restart: always
@@ -55,9 +55,10 @@ services:
       - VERSION_HASH=${VERSION_HASH:-off}
       - REALTIME_PG_STATE=${REALTIME_PG_STATE:-off}
       - PROJECTOR_SHADOW=${PROJECTOR_SHADOW:-off}
+      - PLANTUML_RENDER_URL_TEMPLATE=${PLANTUML_RENDER_URL_TEMPLATE:-http://plantuml:8080/svg/{encoded}}
       - API_TOKEN_REALTIME=${API_TOKEN_REALTIME:-}
       - METRICS_ENABLED=${METRICS_ENABLED:-false}
-    ports: []
+    ports: !reset []
 
   web:
     restart: always
@@ -94,7 +95,7 @@ services:
       - WS_ALLOW_ANONYMOUS=false
       - REALTIME_PG_STATE=${REALTIME_PG_STATE:-off}
       - TELEMETRY_VERBOSE=${TELEMETRY_VERBOSE:-false}
-    ports: []
+    ports: !reset []
 
   worker:
     restart: always
@@ -117,5 +118,11 @@ services:
       - PROJECTOR_SHADOW=${PROJECTOR_SHADOW:-off}
       - API_URL=http://api:4000
       - API_TOKEN_REALTIME=${API_TOKEN_REALTIME:-}
+
+  plantuml:
+    restart: always
+    # A renderização é consumida apenas pela API na rede interna; não publique
+    # a porta 8080 no host em produção.
+    ports: !reset []
 
 # Volumes são herdados do docker-compose.yaml.

@@ -199,6 +199,7 @@ flowchart TB
   W -->|WSS /ws Yjs patch| R[Realtime<br/>Node.js + ws + Yjs<br/>:4001]
   A -->|TCP SQL| DB[(PostgreSQL 16<br/>:5432)]
   R -->|snapshots| ST[(storage<br/>c4arch_storage)]
+  A -->|GET /svg/{encoded}| PU[PlantUML Server<br/>:8080]
   W -->|embed 1&proto=json| D[draw.io embed<br/>HTTPS]
   A -->|biblioteca c4arch data URL| D
 ```
@@ -211,6 +212,7 @@ flowchart TB
 | API | Node.js + Express + TypeScript | Regras de negócio, REST, auth, RBAC | 4000 |
 | Realtime | Node.js + ws + Yjs | Edição colaborativa (CRDT) por modelo | 4001 |
 | Worker | Node.js | Versões/sincronização (futuro) | — |
+| PlantUML Server | `plantuml/plantuml-server:jetty` | Renderização de pré-visualização PlantUML (SVG) | 8080 (interna) |
 | DB | PostgreSQL 16 | Fonte de verdade | 5432 |
 | storage-init | shell | Inicializa permissões do volume `storage` | — |
 
@@ -222,6 +224,7 @@ flowchart TB
 | Web | Realtime | WSS | Yjs patch | JWT (query) |
 | Web | draw.io | HTTPS embed | postMessage | token escopado (5 min) |
 | API | DB | TCP | SQL | credenciais env |
+| API | PlantUML Server | HTTP | SVG (`/svg/{encoded}`) | rede interna (sem auth) |
 | Realtime | API | HTTP | JSON | token de serviço (opcional) |
 | API → Web (biblioteca) | draw.io | data URL | XML `<mxlibrary>` | token escopado |
 
@@ -235,7 +238,8 @@ flowchart TB
 
 - Controllers: `AuthController`, `ModelController`, `ElementController`,
   `EdgeController`, `FolderController`, `AppController`, `ServiceController`,
-  `DrawioController`, `GroupController`, `UserController`.
+  `DrawioController`, `GroupController`, `UserController`,
+  `PlantumlController`.
 - Middlewares: `verifyToken`, `verifyDrawioAccess`.
 - Acesso/RBAC: `auth/access.ts` (owner/editor/viewer + grupos).
 - Geração de DAS: `c4/das.ts` (`generateDAS`, `regenerateModelDAS`,
@@ -408,6 +412,12 @@ Referência: `docs/ADR/`. Principais:
 | 0017 | Vínculo de novos tipos de diagrama a um modelo existente (`parent_id`, legado) | Substituída parcialmente pela 0018 |
 | 0018 | Multi-diagrama no mesmo modelo (`models.diagrams`) e persistência da tela no F5 | Adotada |
 | 0019 | Importação de modelos por arquivo/pasta/Drive/URL e geração automática de DAS | Adotada |
+| 0020 | Hardening de importação, grupos de acesso e exportação do DAS | Adotada |
+| 0021 | Modelo canônico como fonte única de verdade | Adotada |
+| 0022 | Views como projeções do modelo | Adotada |
+| 0023 | DAS como projeção com overrides | Adotada |
+| 0024 | Versionamento restaurável e persistência do estado colaborativo | Adotada |
+| 0025 | PlantUML como formato de intercâmbio e pré-visualização server-side | Adotada |
 
 ---
 
@@ -415,12 +425,13 @@ Referência: `docs/ADR/`. Principais:
 
 ### 12.1 Topologia
 
-Serviços: `db`, `api`, `web`, `realtime`, `worker`, `storage-init`.
+Serviços: `db`, `api`, `web`, `realtime`, `worker`, `plantuml`, `storage-init`.
 
 ### 12.2 Variáveis de ambiente
 
 Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
-`BIND_ADDR`, `ALLOW_REGISTRATION`, `SEED_DEMO`.
+`BIND_ADDR`, `ALLOW_REGISTRATION`, `SEED_DEMO` e
+`PLANTUML_RENDER_URL_TEMPLATE` (renderizador da pré-visualização PlantUML).
 
 ### 12.3 Portas
 
@@ -430,6 +441,7 @@ Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
 | api | 4000 |
 | realtime | 4001 |
 | db | 5432 |
+| plantuml | 8080 |
 
 ### 12.4 Volumes
 
@@ -482,6 +494,7 @@ Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
 | 1.0.0 | 06/11/2026 | Time C4Arch | Versão inicial do DAS preenchida com base na documentação e no desenho draw.io |
 | 1.1.0 | 06/11/2026 | Time C4Arch | Importação em lote (arquivo/pasta/Drive/URL), DAS automático para todos os tipos de diagrama e backfill de modelos antigos |
 | 1.2.0 | 06/11/2026 | Time C4Arch | DAS coerente com os desenhos draw.io: parser de objetos/comprimidos/placeholders, enriquecimento por apps/serviços e formatação em tabelas na pré-visualização/PDF |
+| 1.3.0 | 14/11/2026 | Time C4Arch | Intercâmbio por C4-PlantUML (importação, exportação e templates), painel de código com pré-visualização renderizada pela API e serviço `plantuml` no Compose (ADR-0025) |
 
 ---
 

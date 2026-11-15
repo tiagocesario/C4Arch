@@ -66,20 +66,26 @@ export function PlantUmlSourcePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
 
-  // Pré-visualização com debounce.
+  // Pré-visualização com debounce; requisições antigas são abortadas.
   useEffect(() => {
     if (!source.trim()) {
       setPreviewUrl(null);
       setPreviewError(null);
+      setPreviewLoading(false);
       return;
     }
-    setPreviewLoading(true);
-    setPreviewError(null);
     let cancelled = false;
+    const controller = new AbortController();
     const handle = window.setTimeout(async () => {
+      setPreviewLoading(true);
+      setPreviewError(null);
       try {
-        const url = await renderPlantUmlPreview(source);
-        if (!cancelled) setPreviewUrl(url);
+        const url = await renderPlantUmlPreview(source, controller.signal);
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+        } else {
+          setPreviewUrl(url);
+        }
       } catch (err) {
         if (!cancelled) {
           setPreviewError(err instanceof Error ? err.message : String(err));
@@ -91,9 +97,16 @@ export function PlantUmlSourcePanel({
     }, 700);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(handle);
     };
   }, [source]);
+
+  // Libera a URL de objeto da pré-visualização ao substituí-la ou desmontar.
+  useEffect(() => {
+    if (!previewUrl) return;
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
 
   async function applySource() {
     if (!canEdit || saving) return;

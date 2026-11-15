@@ -213,7 +213,14 @@ export async function fetchModelExportText(
   return blob.text();
 }
 
-export async function renderPlantUmlPreview(content: string): Promise<string> {
+/**
+ * Renderiza o fonte PlantUML no servidor e devolve uma URL de objeto para o
+ * `<img>` da pré-visualização. Quem chama deve revogar a URL ao descartá-la.
+ */
+export async function renderPlantUmlPreview(
+  content: string,
+  signal?: AbortSignal
+): Promise<string> {
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (token) headers.Authorization = 'Bearer ' + token;
@@ -221,6 +228,7 @@ export async function renderPlantUmlPreview(content: string): Promise<string> {
     method: 'POST',
     headers,
     body: JSON.stringify({ content }),
+    signal,
   });
   if (!res.ok) {
     let message = 'Falha ao renderizar PlantUML: ' + res.status;
@@ -233,7 +241,7 @@ export async function renderPlantUmlPreview(content: string): Promise<string> {
     throw new Error(message);
   }
   const svg = await res.text();
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  return URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
 }
 export async function fetchModelPreview(
   modelId: string,

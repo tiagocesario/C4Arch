@@ -380,6 +380,35 @@ export function buildOpenApiDocument() {
           },
         },
       },
+      '/api/plantuml/render': {
+        post: {
+          tags: ['exports'],
+          summary: 'Renderiza um diagrama PlantUML em SVG para pré-visualização',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['content'],
+                  properties: {
+                    content: { type: 'string', description: 'Fonte PlantUML completa' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'SVG renderizado',
+              content: { 'image/svg+xml': { schema: { type: 'string' } } },
+            },
+            '400': errorResponse('Conteúdo ausente'),
+            '413': errorResponse('Conteúdo muito grande'),
+            '502': errorResponse('Falha no servidor PlantUML'),
+          },
+        },
+      },
       '/api/models/{id}': {
         get: {
           tags: ['models'],

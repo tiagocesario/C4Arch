@@ -155,6 +155,11 @@ Ameaças tratadas nesta revisão:
   autosave do draw.io) e mais restrito em `/api/auth/login` e
   `/api/auth/register` (10 req/15 min por IP).
 - `/healthz` verifica a conexão com o PostgreSQL.
+- `POST /api/plantuml/render` exige JWT, limita o fonte a 100 kB (mesmo teto do
+  parser JSON), aborta a chamada ao servidor PlantUML após 15 s e só acessa a
+  URL definida em `PLANTUML_RENDER_URL_TEMPLATE` (não aceita URL do cliente).
+  Em Docker a renderização ocorre na rede interna; em produção o serviço
+  `plantuml` não publica porta no host.
 - Handler final de erros não vaza stack trace; 404 padronizado.
 - `TRUST_PROXY=true` só deve ser usado atrás de proxy confiável.
 - A exportação do DAS para PDF escapa título, URL de preview e Markdown antes de
@@ -183,8 +188,12 @@ Ameaças tratadas nesta revisão:
 - `init: true`, `security_opt: no-new-privileges:true` e `cap_drop: ALL` nos
   serviços de aplicação.
 - Healthchecks em API, web e realtime; `depends_on` com `service_healthy`.
+- `plantuml` usa a imagem oficial `plantuml/plantuml-server:jetty` e é consumido
+  apenas pela API na rede interna; em produção não publica porta no host e não
+  recebe volume nem acesso ao banco.
 - Em produção: `read_only: true`, `tmpfs: /tmp` e nenhuma porta de banco/API/WS
-  publicada no host (apenas o web, atrás de reverse proxy).
+  publicada no host (apenas o web, atrás de reverse proxy). As portas são
+  removidas com `!reset []` no Compose de produção.
 - Em desenvolvimento: portas publicadas em `127.0.0.1` por padrão (`BIND_ADDR`).
 
 ## Configuração
@@ -203,6 +212,7 @@ Variáveis relevantes (ver `.env.example`):
 | `TRUST_PROXY` | `false` | Confia no primeiro proxy para IP/rate limit. |
 | `WS_ALLOW_ANONYMOUS` | `false` | Desliga autenticação do WebSocket. Só dev. |
 | `BIND_ADDR` | `127.0.0.1` | Endereço de bind das portas em dev. |
+| `PLANTUML_RENDER_URL_TEMPLATE` | `http://plantuml:8080/svg/{encoded}` no Compose; servidor público fora do Docker | URL do renderizador PlantUML; precisa conter `{encoded}`. |
 | `GOOGLE_CLIENT_ID` | vazio | Habilita login com Google. |
 | `GOOGLE_CLIENT_SECRET` | vazio | Segredo OAuth do Google. |
 | `GOOGLE_CALLBACK_URL` | `http://localhost:4000/api/auth/google/callback` | Callback OAuth. |
@@ -219,12 +229,16 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 - `npm audit --audit-level=low` na raiz e nos quatro workspaces: 0 vulnerabilidades.
 - Build/typecheck de API, realtime, worker e web.
 - Testes automatizados (`node --test` + `tsx`):
-  - API: 20 testes — faixas privadas IPv4/IPv6, IPv4 mapeado, rejeição de
+  - API: 113 testes — faixas privadas IPv4/IPv6, IPv4 mapeado, rejeição de
     protocolos/hosts internos, normalização do Google Drive, leitura limitada do
-    corpo, parsing do draw.io (objetos/arestas/entidades), escopo dos tokens e
-    regras de papel (`owner` vs `editor`/`viewer`).
-  - Realtime: 6 testes — merge parcial de elemento, update em inexistente, exclusão
-    em cascata de arestas, update/delete de aresta e hidratação única do CRDT.
+    corpo, parsing do draw.io (objetos/arestas/entidades), escopo dos tokens,
+    regras de papel (`owner` vs `editor`/`viewer`), exportadores, importação
+    PlantUML, encoder/round-trip da renderização PlantUML e contrato OpenAPI.
+  - Realtime: 9 testes — merge parcial de elemento, update em inexistente,
+    exclusão em cascata de arestas, update/delete de aresta e hidratação única
+    do CRDT.
+  - Web: 24 testes — header/login, painéis de versões/inspeções, importação,
+    editor do DAS, presença, rotas e templates PlantUML.
 - Varredura por SQL interpolado, `eval`, `innerHTML`/`dangerouslySetInnerHTML`,
   `.env` versionado e literais de segredo no código.
 - Testes manuais de API: login, `401` sem token, `403`/`404` para recurso de
@@ -247,6 +261,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
   5.2–5.5 após adicionar container/componente/código, e backfill no startup.
 - Fluxo de UI validado com navegador: abertura do modal, importação de dois
   arquivos, tipos inferidos e modelos visíveis após refresh.
+- Renderização PlantUML validada ponta a ponta: endpoint autenticado, rejeição
+  de corpo vazio (`400`), excesso de tamanho (`413`), template inválido (`500`) e
+  indisponibilidade do renderizador (`502`), além de SVG válido retornado pelo
+  container `plantuml/plantuml-server:jetty`.
 
 Ferramentas SAST/DAST (Trivy, Semgrep, Gitleaks, Docker Scout) não estão
 instaladas no ambiente; quando disponíveis, devem ser adicionadas ao CI.
@@ -261,6 +279,11 @@ instaladas no ambiente; quando disponíveis, devem ser adicionadas ao CI.
   próprio contador. Para escala horizontal, use store compartilhado (Redis).
 - **CSP da API:** o Helmet está com CSP desabilitada nas respostas JSON; a CSP
   específica é aplicada na página HTML do draw.io.
+- **Pré-visualização PlantUML:** depende do serviço `plantuml`; se ele estiver
+  indisponível ou exceder 15 s, a API responde `502` e o painel mostra o erro,
+  sem alterar o modelo canônico. A imagem oficial roda como root e não é
+  endurecida com `read_only`/`cap_drop` como os serviços de aplicação; mantenha
+  o container isolado na rede interna e sem porta publicada em produção.
 - **Segredos em variáveis de ambiente:** continuam visíveis para quem tem acesso
   ao runtime do container. Para produção madura, use Docker secrets/Vault.
 - **Senha temporária de convite:** contas criadas pela gestão de usuários

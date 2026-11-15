@@ -171,9 +171,9 @@ import commentsRouter from './routes/comments.routes.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/orgs', orgsRouter);
+app.use('/api/plantuml', plantumlRouter);
 // Importação PlantUML precisa vir antes do CRUD de modelos para que
 // `/api/models/import/plantuml` não caia em `/:id`.
-app.use('/api/plantuml', plantumlRouter);
 app.use('/api/models', importsRouter);
 app.use('/api/models', modelsRouter);
 app.use('/api/models', elementsRouter);

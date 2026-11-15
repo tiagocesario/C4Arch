@@ -1,5 +1,5 @@
 # C4Arch — Compose local de desenvolvimento.
-# Levanta: postgres, api, web, realtime, worker.
+# Levanta: postgres, api, web, realtime, worker e plantuml.
 #
 # Execute:
 #   docker compose up -d --build

@@ -109,7 +109,8 @@ c4arch/
   Decisões da Onda 1: `ADR-0021` (modelo canônico e fonte única de verdade),
   `ADR-0022` (views como projeções do modelo), `ADR-0023` (DAS como projeção
   com overrides) e `ADR-0024` (versionamento restaurável e persistência do
-  estado colaborativo).
+  estado colaborativo). Interoperabilidade: `ADR-0025` (PlantUML como formato de
+  intercâmbio e pré-visualização renderizada na API).
 
 ## Login de desenvolvimento
 
@@ -192,7 +193,7 @@ cobre login, sessão e deep link com a API mockada.
 
 Stack completo via Compose:
 
-- `docker compose up -d --build` — desenvolvimento (db, api, web, realtime, worker)
+- `docker compose up -d --build` — desenvolvimento (db, api, web, realtime, worker, plantuml)
 - `docker compose -f docker-compose.yaml -f compose.production.yaml up -d` — produção
 
 Pontos de atenção:
@@ -205,6 +206,10 @@ Pontos de atenção:
 - `BIND_ADDR` controla o endereço de bind das portas em desenvolvimento
   (`127.0.0.1` por padrão; use `0.0.0.0` só quando a exposição for intencional).
 - `DATABASE_URL` usa `${POSTGRES_PASSWORD}` (não placeholder).
+- `PLANTUML_RENDER_URL_TEMPLATE` aponta a pré-visualização para o serviço
+  `plantuml` do compose (`http://plantuml:8080/svg/{encoded}` por padrão). Fora
+  do Docker, use o servidor público (`https://www.plantuml.com/plantuml/svg/{encoded}`)
+  ou outra instância acessível; o marcador `{encoded}` é obrigatório.
 - `worker` conecta em `db` via `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD`.
 - `web` serve `dist` com o binário local `serve` (sem `npx` em runtime).
 - `worker` executa `node dist/index.js`.
@@ -223,8 +228,10 @@ npm audit --audit-level=low --workspace=@c4arch/worker
 npm test
 ```
 
-Em 08/11/2026: 0 vulnerabilidades no `npm audit` e 26 testes automatizados
-aprovados (20 API + 6 realtime), além do build/typecheck dos quatro apps.
+Em 14/11/2026: build/typecheck dos apps e 146 testes automatizados aprovados
+(113 API + 9 realtime + 24 web). A última execução de `npm audit` registrada
+(08/11/2026) não apontava vulnerabilidades; rode os comandos acima antes de
+publicar.
 
 Não há ferramentas SAST/DAST obrigatórias no repositório; consulte
 `docs/SECURITY.md` para o checklist manual e para os riscos residuais.

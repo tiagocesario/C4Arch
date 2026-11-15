@@ -48,6 +48,9 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 - Gestão de pastas, aplicações e serviços auxiliares.
 - Abertura do editor draw.io a partir do modelo, inclusive logo após a criação.
 - Importação/exportação do XML draw.io associado ao modelo.
+- Interoperabilidade com C4-PlantUML: importação de diagramas e templates,
+  exportação `.puml` e edição do fonte com pré-visualização do SVG renderizada
+  pela API (ver ADR-0025).
 - Modelos tipados pelos diagramas do C4 model (`c4_type`, `c4_scope`).
 - Apps e serviços reutilizáveis como objetos C4 no draw.io, com propagação de edições.
 - Lista de modelos dependentes de um app ou serviço.
@@ -219,6 +222,7 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 | RF-22 | Hierarquia de pastas em árvore, movimentação para pai/raiz e prevenção de ciclos | Entregue |
 | RF-23 | Importar um ou vários modelos de arquivo/pasta local, Google Drive (link público de arquivo) ou outra URL, com detecção de tipo e relatório por item | Entregue |
 | RF-24 | Gerar e regenerar o DAS automaticamente a partir de todos os tipos de diagrama do modelo, incluindo modelos antigos no startup | Entregue |
+| RF-25 | Importar/exportar C4-PlantUML, criar modelos a partir de templates e pré-visualizar o SVG renderizado no painel de código | Entregue |
 
 ## 7. Requisitos não funcionais
 

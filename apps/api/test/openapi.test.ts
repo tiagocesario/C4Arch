@@ -18,6 +18,7 @@ test('OpenAPI documenta exportação, importação, views e comentários', () =>
     '/api/openapi.json',
     '/api/models/import/plantuml',
     '/api/models/import/plantuml/templates',
+    '/api/plantuml/render',
     '/api/models/{id}/import/plantuml',
     '/api/models/{id}/exports',
     '/api/models/{id}/export/{format}',
