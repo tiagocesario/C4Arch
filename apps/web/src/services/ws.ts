@@ -216,6 +216,79 @@ export function sendOp(op: Record<string, unknown>) {
   socket.send(payload);
 }
 
+/**
+ * Aplica um snapshot completo no documento colaborativo usando uma conexão
+ * dedicada e a encerra ao receber o eco do servidor.
+ *
+ * Usado quando o modelo é alterado fora do canvas (por exemplo, ao aplicar o
+ * código PlantUML pela lista): a conexão principal pode não estar "joinada"
+ * nesse modelo. Atualizar o CRDT evita que o editor reabra com o desenho
+ * antigo e que o projetor sobrescreva no Postgres o conteúdo recém-aplicado.
+ */
+export function pushModelSnapshot(
+  modelId: string,
+  elements: Element[],
+  edges: Edge[]
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!authToken) {
+      resolve(false);
+      return;
+    }
+
+    const ws = new WebSocket(`${WS_URL}${WS_PATH}?token=${encodeURIComponent(authToken)}`);
+    let settled = false;
+
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        // Conexão já encerrada.
+      }
+      resolve(ok);
+    };
+
+    const timer = setTimeout(() => finish(false), 5000);
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'join', modelId }));
+    };
+
+    ws.onmessage = (event) => {
+      let msg: { type?: string; modelId?: string };
+      try {
+        msg = JSON.parse(event.data as string);
+      } catch {
+        return;
+      }
+      if (msg.modelId !== modelId) return;
+      if (msg.type === 'state') {
+        ws.send(
+          JSON.stringify({
+            type: 'patch',
+            modelId,
+            patch: { op: 'replaceModel', data: { elements, edges } },
+          })
+        );
+        return;
+      }
+      if (msg.type === 'update') {
+        finish(true);
+        return;
+      }
+      if (msg.type === 'error') {
+        finish(false);
+      }
+    };
+
+    ws.onerror = () => finish(false);
+    ws.onclose = () => finish(false);
+  });
+}
+
 export function join(
   modelId: string | null,
   options?: { viewKey?: string | null; user?: { name: string; color?: string } | null }

@@ -36,9 +36,10 @@ const plantUmlTemplates = [
  */
 async function mockApi(
   target: Page | import('@playwright/test').BrowserContext,
-  options: { models?: unknown[] } = {}
+  options: { models?: unknown[]; modelDetail?: unknown } = {}
 ): Promise<void> {
   const modelList = options.models ?? [];
+  const modelDetail = options.modelDetail ?? createdModel;
   await target.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -78,6 +79,25 @@ async function mockApi(
       });
     }
 
+    if (method === 'POST' && path === '/api/models/model-1/import/plantuml') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ok: true,
+          das_content: '',
+          import: {
+            modelId: 'model-1',
+            mode: 'replace',
+            elements: 1,
+            relationships: 0,
+            views: 1,
+            skippedRelationships: 0,
+          },
+        }),
+      });
+    }
+
     const responses: Record<string, unknown> = {
       '/api/auth/me': { user, org },
       '/api/models': modelList,
@@ -85,7 +105,7 @@ async function mockApi(
       '/api/apps': [],
       '/api/services': [],
       '/api/models/import/plantuml/templates': { templates: plantUmlTemplates },
-      '/api/models/model-1': createdModel,
+      '/api/models/model-1': modelDetail,
     };
 
     if (method === 'GET' && path in responses) {
@@ -206,4 +226,70 @@ test('editor mantém apenas os botões essenciais no rodapé', async ({ page }) 
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   }
   await expect(page.getByRole('button', { name: /^Comentários/ })).toHaveCount(0);
+});
+
+test('aplicar PlantUML pela lista atualiza o estado colaborativo', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem('c4arch_token', 'e2e-token');
+  });
+
+  const appliedElement = {
+    id: 'el-1',
+    model_id: 'model-1',
+    type: 'system',
+    title: 'Loja API',
+    description: null,
+    metadata: null,
+    position_x: 12,
+    position_y: 34,
+    order: 0,
+  };
+  const modelDetail = { ...createdModel, elements: [appliedElement] };
+  await mockApi(page, { models: [modelDetail], modelDetail });
+
+  // Sem o push do snapshot, o editor reabriria com o desenho antigo e o
+  // projetor poderia sobrescrever no Postgres o conteúdo recém-aplicado.
+  const patches: Array<Record<string, unknown>> = [];
+  await page.routeWebSocket(/ws:\/\/localhost:4001/, (ws) => {
+    ws.onMessage((raw) => {
+      const message = JSON.parse(String(raw)) as {
+        type?: string;
+        modelId?: string;
+        patch?: { op?: string; data?: unknown };
+      };
+      if (message.type === 'join') {
+        ws.send(
+          JSON.stringify({ type: 'state', modelId: message.modelId, model: { elements: [], edges: [] } })
+        );
+        return;
+      }
+      if (message.type === 'patch') {
+        patches.push(message as Record<string, unknown>);
+        ws.send(
+          JSON.stringify({
+            type: 'update',
+            modelId: message.modelId,
+            model: message.patch?.data ?? { elements: [], edges: [] },
+          })
+        );
+      }
+    });
+  });
+
+  await page.goto('/#/files');
+  await page.getByRole('button', { name: 'Editar código (PlantUML)' }).click();
+  const source = page.getByLabel('Código PlantUML do modelo');
+  await expect(source).toHaveValue(/@startuml/);
+  await source.fill('@startuml\ntitle Loja\nSystem(api, "Loja API")\n@enduml');
+  await page.getByRole('button', { name: 'Aplicar no modelo' }).click();
+
+  await expect(page.getByText(/Modelo atualizado/)).toBeVisible();
+  await expect
+    .poll(() => patches.some((patch) => (patch.patch as { op?: string } | undefined)?.op === 'replaceModel'))
+    .toBe(true);
+  const replace = patches.find(
+    (patch) => (patch.patch as { op?: string } | undefined)?.op === 'replaceModel'
+  );
+  expect(JSON.stringify(replace)).toContain('Loja API');
 });

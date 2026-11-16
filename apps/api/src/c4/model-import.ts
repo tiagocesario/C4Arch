@@ -96,6 +96,24 @@ export async function persistDrawioArtifact(modelId: string): Promise<void> {
 }
 
 /**
+ * Invalida o estado colaborativo durável (`model_state`) depois de uma
+ * substituição autoritativa do modelo (importação/aplicação de PlantUML).
+ *
+ * O realtime hidrata o Yjs a partir de `model_state`. Se o snapshot antigo
+ * permanecer, o editor reabre com o desenho anterior e o projetor pode
+ * sobrescrever o conteúdo recém-aplicado no próximo flush. Sem a linha, o
+ * próximo `join` volta a hidratar do modelo canônico.
+ */
+export async function invalidateCollaborativeState(modelId: string): Promise<void> {
+  try {
+    await pool.query('DELETE FROM model_state WHERE model_id = $1', [modelId]);
+  } catch (error) {
+    // O canônico já foi confirmado; a invalidação é uma salvaguarda.
+    console.error('[imports] falha ao invalidar model_state:', error);
+  }
+}
+
+/**
  * Persiste o diagrama importado. Em `replace`, o conteúdo anterior do modelo é
  * removido; em `merge`, elementos são casados por `identifier` e atualizados.
  */
@@ -337,6 +355,7 @@ export async function importWorkspaceIntoModel(
     // Depois do COMMIT: `loadModelGraph` usa o pool e precisa enxergar o
     // conteúdo persistido para gerar o desenho inicial.
     await persistDrawioArtifact(modelId);
+    await invalidateCollaborativeState(modelId);
 
     return {
       modelId,

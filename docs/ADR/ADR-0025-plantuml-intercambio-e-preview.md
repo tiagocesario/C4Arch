@@ -59,6 +59,13 @@ pré-visualização é renderizada no servidor, nunca no navegador:
   inválido), esse desenho é encaminhado com `200 image/svg+xml` para que o
   usuário veja a mensagem do próprio PlantUML no painel. No navegador o SVG é
   exibido via `blob:`; a CSP da web libera `img-src 'self' data: blob:`.
+- **Aplicação consistente**: o Postgres é a fonte de verdade, mas o canvas lê o
+  documento Yjs. Ao aplicar, o painel envia `replaceModel` pelo WebSocket: na
+  conexão principal quando o editor está aberto e em uma conexão dedicada
+  quando o painel veio da lista (que também propaga a qualquer editor aberto em
+  outra aba). A API ainda invalida `model_state` após a importação; sem isso, o
+  realtime reabriria o modelo com o snapshot antigo e o projetor poderia
+  sobrescrever no Postgres o código recém-aplicado.
 - **Infraestrutura**: no Compose, o serviço `plantuml` usa a imagem oficial
   `plantuml/plantuml-server:jetty` e é acessível pela rede interna
   (`http://plantuml:8080/svg/{encoded}`). Em produção ele não publica porta no

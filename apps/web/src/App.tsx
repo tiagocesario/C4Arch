@@ -1447,7 +1447,11 @@ export default function App() {
           },
         });
       } else {
-        // Painel aberto a partir da lista: atualiza os metadados exibidos.
+        // Painel aberto a partir da lista: não há canvas nesta tela, mas o
+        // documento colaborativo (e qualquer editor aberto em outra aba)
+        // precisa receber o mesmo snapshot, senão o próximo join reabre com o
+        // desenho antigo e o projetor sobrescreve o Postgres.
+        await ws.pushModelSnapshot(modelId, detail.elements, detail.edges);
         await refreshModels();
       }
       setError(null);

@@ -211,7 +211,9 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 4. Erros de sintaxe aparecem como o próprio desenho de erro do PlantUML dentro
    do painel, sem mensagem genérica de falha.
 5. **Aplicar** converte o código editado de volta em elementos, relações e views
-   do modelo canônico.
+   do modelo canônico e propaga o snapshot ao documento colaborativo, de modo
+   que o canvas e a visualização mostrem a alteração imediatamente — inclusive
+   ao reabrir o modelo depois.
 
 ## 6. Requisitos funcionais (numeração estável)
 

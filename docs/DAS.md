@@ -236,6 +236,12 @@ do próprio PlantUML. A exportação usa o include empacotado no servidor
 (`!include <C4/C4_Context>`, `<C4/C4_Container>` ou `<C4/C4_Component>`), sem
 depender de acesso à internet.
 
+Aplicar o código atualiza o modelo canônico e também o documento colaborativo: o
+painel envia `replaceModel` pelo WebSocket (conexão principal no editor ou uma
+conexão dedicada quando veio da lista) e a API invalida o `model_state` daquele
+modelo. Essa etapa evita que o realtime reabra com o snapshot Yjs antigo ou que o
+projetor sobrescreva no Postgres o conteúdo aplicado.
+
 ---
 
 ## 7. Visão de componentes (C4 — Nível 3)
@@ -506,6 +512,7 @@ Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
 | 1.2.0 | 06/11/2026 | Time C4Arch | DAS coerente com os desenhos draw.io: parser de objetos/comprimidos/placeholders, enriquecimento por apps/serviços e formatação em tabelas na pré-visualização/PDF |
 | 1.3.0 | 14/11/2026 | Time C4Arch | Intercâmbio por C4-PlantUML (importação, exportação e templates), painel de código com pré-visualização renderizada pela API e serviço `plantuml` no Compose (ADR-0025) |
 | 1.3.1 | 16/11/2026 | Time C4Arch | Exportação usa o include C4 local, erros de sintaxe do PlantUML chegam como diagrama no painel, entrada **Editar código (PlantUML)** na lista e CSP libera `blob:` para a pré-visualização |
+| 1.3.2 | 16/11/2026 | Time C4Arch | Aplicar PlantUML passa a sincronizar o documento colaborativo (`replaceModel` via WS) e invalida `model_state`, evitando reabrir com snapshot antigo ou perder o código aplicado no projetor |
 
 ---
 
