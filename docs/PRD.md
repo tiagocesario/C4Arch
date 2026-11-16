@@ -203,7 +203,9 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
    **Editar código (PlantUML)** na linha da lista de arquivos (abre o painel
    daquele modelo sem sair da lista) ou automaticamente em modelos criados ou
    importados a partir de um template PlantUML (`?plantuml=1`).
-2. O painel exibe o fonte exportado do modelo canônico e um campo editável.
+2. O painel exibe o fonte exportado do modelo canônico em um editor com barra de
+   rolagem sempre visível (mesmo quando o sistema esconde scrollbars), além da
+   contagem de linhas no cabeçalho.
 3. A pré-visualização é renderizada pela API no servidor PlantUML: o SVG é
    exibido como imagem e atualizado conforme o código muda.
 4. Erros de sintaxe aparecem como o próprio desenho de erro do PlantUML dentro

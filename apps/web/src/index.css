@@ -395,3 +395,52 @@ body {
     min-height: 320px;
   }
 }
+
+/* ------------------------------------------------------------------------- */
+/* Painel de código PlantUML                                                 */
+/* ------------------------------------------------------------------------- */
+
+/* A rolagem fica explícita e sempre visível: no tema escuro os cursores
+   overlay do sistema somem sobre o fundo, escondendo que há mais código. */
+.plantuml-code-input,
+.plantuml-panel-preview {
+  overflow: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #6b7280 #1f2937;
+}
+
+/* O código força a barra vertical visível mesmo quando o sistema esconde
+   scrollbars automaticamente (padrão do Windows 11). */
+.plantuml-code-input {
+  overflow-y: scroll;
+}
+
+.plantuml-code-input::-webkit-scrollbar,
+.plantuml-panel-preview::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+.plantuml-code-input::-webkit-scrollbar-track,
+.plantuml-panel-preview::-webkit-scrollbar-track {
+  background: #1f2937;
+  border-radius: 8px;
+}
+
+.plantuml-code-input::-webkit-scrollbar-thumb,
+.plantuml-panel-preview::-webkit-scrollbar-thumb {
+  background: #6b7280;
+  border: 3px solid #0f1115;
+  border-radius: 8px;
+}
+
+.plantuml-code-input::-webkit-scrollbar-thumb:hover,
+.plantuml-panel-preview::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.plantuml-code-input::-webkit-scrollbar-corner,
+.plantuml-panel-preview::-webkit-scrollbar-corner {
+  background: #0f1115;
+}

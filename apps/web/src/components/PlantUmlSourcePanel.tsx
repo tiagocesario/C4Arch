@@ -177,9 +177,14 @@ export function PlantUmlSourcePanel({
         {error && <div style={{ color: '#f87171', fontSize: 12 }}>{error}</div>}
         {status && <div style={{ color: '#4ade80', fontSize: 12 }}>{status}</div>}
 
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <span style={{ fontSize: 12, color: '#9ca3af' }}>Código</span>
+        <div className="plantuml-panel-body" style={{ flex: 1, minHeight: 0, display: 'flex', gap: 12, flexWrap: 'wrap', overflow: 'auto' }}>
+          <div className="plantuml-panel-pane" style={{ flex: 1, minWidth: 320, minHeight: 240, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ fontSize: 12, color: '#9ca3af' }}>
+              Código
+              {source.trim() && (
+                <span style={{ marginLeft: 8 }}>{source.split('\n').length} linhas · role para ver o restante</span>
+              )}
+            </span>
             <textarea
               value={source}
               onChange={(event) => {
@@ -189,6 +194,7 @@ export function PlantUmlSourcePanel({
               readOnly={!canEdit || loading}
               spellCheck={false}
               aria-label="Código PlantUML do modelo"
+              className="plantuml-code-input"
               placeholder={'@startuml\n!include <C4/C4_Container>\nPerson(usuario, "Usuário")\n@enduml'}
               style={{
                 flex: 1,
@@ -207,9 +213,10 @@ export function PlantUmlSourcePanel({
             />
           </div>
 
-          <div style={{ flex: 1, minWidth: 320, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="plantuml-panel-pane" style={{ flex: 1, minWidth: 320, minHeight: 240, display: 'flex', flexDirection: 'column', gap: 6 }}>
             <span style={{ fontSize: 12, color: '#9ca3af' }}>Pré-visualização</span>
             <div
+              className="plantuml-panel-preview"
               style={{
                 flex: 1,
                 minHeight: 0,
