@@ -38,17 +38,27 @@ pré-visualização é renderizada no servidor, nunca no navegador:
   também a importação como template (`plantuml-templates.ts`).
 - **Exportação** (`apps/api/src/c4/exporters.ts`): `GET /api/models/{id}/export/plantuml`
   gera o `.puml` a partir do modelo canônico. É uma projeção descartável, não uma
-  segunda fonte de verdade.
+  segunda fonte de verdade. O `!include` usa a biblioteca C4-PlantUML empacotada
+  no próprio servidor PlantUML (`!include <C4/C4_Context>` e variantes), sem
+  depender de `raw.githubusercontent.com`: em redes sem saída externa o include
+  remoto falhava com `400` e derrubava a exportação.
 - **Edição** (`apps/web/src/components/PlantUmlSourcePanel.tsx`): o painel exibe
   o fonte exportado, permite editar e aplicar (`replace`) de volta no modelo.
-  Modelos criados ou importados via PlantUML abrem com esse painel já visível:
-  a URL do editor recebe `?plantuml=1`, consumido no primeiro carregamento e
-  removido da barra de endereços para não reabrir o painel a cada F5.
+  Ele abre por três caminhos: pelo botão **PlantUML** do rodapé do editor, pelo
+  botão **Editar código (PlantUML)** de cada linha da lista de arquivos (que
+  abre o painel do modelo daquela linha sem sair da lista) e automaticamente em
+  modelos criados ou importados via PlantUML. Nesse último caso a URL do editor
+  recebe `?plantuml=1`, consumido no primeiro carregamento e removido da barra
+  de endereços para não reabrir o painel a cada F5.
 - **Pré-visualização** (`POST /api/plantuml/render`): a API codifica o fonte no
   formato de URL do PlantUML (`deflate` raw + base64 próprio, implementado em
   `apps/api/src/c4/plantuml-render.ts`) e busca o SVG em um servidor PlantUML
   configurado por `PLANTUML_RENDER_URL_TEMPLATE`. O endpoint exige JWT, aceita
-  até 100 kB e aborta após 15 s, devolvendo `502` em falha do servidor.
+  até 100 kB e aborta após 15 s, devolvendo `502` apenas em falha de transporte.
+  Quando o PlantUML responde `400` com um SVG (erro de sintaxe ou `!include`
+  inválido), esse desenho é encaminhado com `200 image/svg+xml` para que o
+  usuário veja a mensagem do próprio PlantUML no painel. No navegador o SVG é
+  exibido via `blob:`; a CSP da web libera `img-src 'self' data: blob:`.
 - **Infraestrutura**: no Compose, o serviço `plantuml` usa a imagem oficial
   `plantuml/plantuml-server:jetty` e é acessível pela rede interna
   (`http://plantuml:8080/svg/{encoded}`). Em produção ele não publica porta no

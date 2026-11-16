@@ -274,6 +274,7 @@ export default function App() {
   // Colaboração e interoperabilidade (Ondas 2/3).
   const [showExport, setShowExport] = useState(false);
   const [showPlantUml, setShowPlantUml] = useState(false);
+  const [plantUmlSourceTarget, setPlantUmlSourceTarget] = useState<Model | null>(null);
   const [showPlantUmlImport, setShowPlantUmlImport] = useState(false);
   const [plantUmlTargetModelId, setPlantUmlTargetModelId] = useState<string | null>(null);
   const [plantUmlTemplates, setPlantUmlTemplates] = useState<PlantUmlTemplate[]>([]);
@@ -1315,6 +1316,9 @@ export default function App() {
   const isWriter = currentRole === 'owner' || currentRole === 'editor';
 
   const activeViewKey = model?.c4Type ?? 'container';
+  // O painel PlantUML pode ser aberto pelo rodapé do editor (modelo em edição)
+  // ou pela lista de arquivos (modelo alvo explícito).
+  const plantUmlPanelModel = plantUmlSourceTarget ?? (selectedId ? model : null);
 
   const dasParsed = useMemo(() => parseDasSections(dasContent), [dasContent]);
   const dasSectionItems = useMemo(
@@ -1425,21 +1429,27 @@ export default function App() {
     }
   }
 
-  async function handlePlantUmlApplied() {
-    if (!selectedId) return;
+  async function handlePlantUmlApplied(appliedModelId?: string) {
+    const modelId = appliedModelId ?? selectedId;
+    if (!modelId) return;
     try {
-      const detail = await getModel(selectedId);
-      setModel(detail);
-      // O canvas lê o documento colaborativo; substitui o snapshot para que a
-      // edição em PlantUML apareça imediatamente para todos os clientes.
-      ws.sendOp({
-        type: 'patch',
-        modelId: selectedId,
-        patch: {
-          op: 'replaceModel',
-          data: { elements: detail.elements, edges: detail.edges },
-        },
-      });
+      const detail = await getModel(modelId);
+      if (selectedId === modelId) {
+        setModel(detail);
+        // O canvas lê o documento colaborativo; substitui o snapshot para que a
+        // edição em PlantUML apareça imediatamente para todos os clientes.
+        ws.sendOp({
+          type: 'patch',
+          modelId,
+          patch: {
+            op: 'replaceModel',
+            data: { elements: detail.elements, edges: detail.edges },
+          },
+        });
+      } else {
+        // Painel aberto a partir da lista: atualiza os metadados exibidos.
+        await refreshModels();
+      }
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -2061,14 +2071,13 @@ export default function App() {
                             {isWriter && (
                               <button
                                 onClick={() => {
-                                  setPlantUmlTargetModelId(item.id);
-                                  void loadPlantUmlTemplates();
-                                  setShowPlantUmlImport(true);
+                                  setPlantUmlSourceTarget(item);
+                                  setShowPlantUml(true);
                                 }}
                                 style={buttonStyle}
-                                title="Adicionar novos objetos ao modelo a partir de um diagrama PlantUML"
+                                title="Editar o código C4-PlantUML do modelo com pré-visualização"
                               >
-                                Adicionar objetos (PlantUML)
+                                Editar código (PlantUML)
                               </button>
                             )}
                             {isWriter && (
@@ -2245,7 +2254,7 @@ export default function App() {
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 {!isWriter && <span style={{ ...smallMuted, alignSelf: 'center' }}>Somente leitura</span>}
-                <button onClick={() => setShowPlantUml(true)} style={buttonStyle} title="Ver e editar o modelo como código C4-PlantUML">
+                <button onClick={() => { setPlantUmlSourceTarget(null); setShowPlantUml(true); }} style={buttonStyle} title="Ver e editar o modelo como código C4-PlantUML">
                   PlantUML
                 </button>
                 <button onClick={() => setShowExport(true)} style={buttonStyle}>
@@ -2346,13 +2355,16 @@ export default function App() {
         />
       )}
 
-      {showPlantUml && selectedId && model && (
+      {showPlantUml && plantUmlPanelModel && (
         <PlantUmlSourcePanel
-          modelId={selectedId}
-          modelTitle={model.title}
+          modelId={plantUmlPanelModel.id}
+          modelTitle={plantUmlPanelModel.title}
           canEdit={isWriter}
-          onClose={() => setShowPlantUml(false)}
-          onApplied={() => void handlePlantUmlApplied()}
+          onClose={() => {
+            setShowPlantUml(false);
+            setPlantUmlSourceTarget(null);
+          }}
+          onApplied={() => void handlePlantUmlApplied(plantUmlPanelModel.id)}
         />
       )}
 

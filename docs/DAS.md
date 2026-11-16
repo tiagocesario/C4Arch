@@ -228,6 +228,14 @@ flowchart TB
 | Realtime | API | HTTP | JSON | token de serviço (opcional) |
 | API → Web (biblioteca) | draw.io | data URL | XML `<mxlibrary>` | token escopado |
 
+A API só aceita o fonte PlantUML e a URL de renderização vem de
+`PLANTUML_RENDER_URL_TEMPLATE`; o cliente nunca escolhe o servidor. Quando o
+PlantUML devolve `400` com um SVG (erro de sintaxe ou `!include` desconhecido), a
+API repassa esse desenho com `200 image/svg+xml` para que o painel mostre o erro
+do próprio PlantUML. A exportação usa o include empacotado no servidor
+(`!include <C4/C4_Context>`, `<C4/C4_Container>` ou `<C4/C4_Component>`), sem
+depender de acesso à internet.
+
 ---
 
 ## 7. Visão de componentes (C4 — Nível 3)
@@ -497,6 +505,7 @@ Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
 | 1.1.0 | 06/11/2026 | Time C4Arch | Importação em lote (arquivo/pasta/Drive/URL), DAS automático para todos os tipos de diagrama e backfill de modelos antigos |
 | 1.2.0 | 06/11/2026 | Time C4Arch | DAS coerente com os desenhos draw.io: parser de objetos/comprimidos/placeholders, enriquecimento por apps/serviços e formatação em tabelas na pré-visualização/PDF |
 | 1.3.0 | 14/11/2026 | Time C4Arch | Intercâmbio por C4-PlantUML (importação, exportação e templates), painel de código com pré-visualização renderizada pela API e serviço `plantuml` no Compose (ADR-0025) |
+| 1.3.1 | 16/11/2026 | Time C4Arch | Exportação usa o include C4 local, erros de sintaxe do PlantUML chegam como diagrama no painel, entrada **Editar código (PlantUML)** na lista e CSP libera `blob:` para a pré-visualização |
 
 ---
 

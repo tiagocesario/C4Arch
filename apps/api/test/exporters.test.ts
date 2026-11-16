@@ -127,7 +127,7 @@ test('renderMermaid gera flowchart e relações rotuladas', () => {
 test('renderPlantUml escolhe C4_Component quando há componentes', () => {
   const plantuml = renderPlantUml(sampleGraph());
   assert.match(plantuml, /@startuml/);
-  assert.match(plantuml, /C4_Component\.puml/);
+  assert.match(plantuml, /!include <C4\/C4_Component>/);
   assert.match(plantuml, /Person\(e0, "Cliente"/);
   assert.match(plantuml, /Container\(e2, "API", "Node\.js"/);
   assert.match(plantuml, /Rel\(e2, e3, "processa pagamento"/);

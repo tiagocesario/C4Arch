@@ -511,13 +511,16 @@ export function renderPlantUml(graph: ModelGraph): string {
 
   const hasComponents = graph.elements.some((element) => kind(element) === 'component');
   const include = hasComponents
-    ? 'C4_Component.puml'
+    ? 'C4_Component'
     : graph.elements.some((element) => kind(element) === 'container')
-      ? 'C4_Container.puml'
-      : 'C4_Context.puml';
+      ? 'C4_Container'
+      : 'C4_Context';
 
   lines.push('@startuml');
-  lines.push(`!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/${include}`);
+  // Usa a biblioteca C4-PlantUML empacotada no servidor PlantUML. A forma
+  // `<C4/...>` não depende de acesso à internet (o include via raw.github
+  // falhava com 400 em ambientes sem saída externa).
+  lines.push(`!include <C4/${include}>`);
   lines.push(`title ${escapePlantUml(modelTitle(graph))}`);
   if (modelDescription(graph)) lines.push(`caption ${escapePlantUml(modelDescription(graph) ?? '')}`);
 

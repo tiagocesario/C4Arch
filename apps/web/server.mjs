@@ -43,7 +43,7 @@ function setSecurityHeaders(res) {
       "default-src 'self'",
       "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
-      "img-src 'self' data:",
+      "img-src 'self' data: blob:",
       "font-src 'self' data:",
       "connect-src 'self' http: https: ws: wss:",
       "frame-src https://viewer.diagrams.net https://embed.diagrams.net https://app.diagrams.net",

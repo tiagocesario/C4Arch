@@ -112,7 +112,10 @@ Ameaças tratadas nesta revisão:
   somente leitura e exigem membership na organização (o vínculo pode vir de
   `elements` ou dos marcadores no XML).
 - A página do editor define CSP restritiva, `Referrer-Policy: no-referrer` e
-  `Cache-Control: no-store`.
+  `Cache-Control: no-store`. A diretiva `img-src` inclui `blob:` porque a
+  pré-visualização PlantUML cria um object URL a partir do SVG devolvido pela
+  API; o SVG é exibido apenas em `<img>` (sem `script`, `object` ou `iframe`),
+  então scripts embutidos não são executados.
 - XML de importação é limitado a 100 kB e validado minimamente.
 
 ### Importação de modelos
@@ -158,6 +161,9 @@ Ameaças tratadas nesta revisão:
 - `POST /api/plantuml/render` exige JWT, limita o fonte a 100 kB (mesmo teto do
   parser JSON), aborta a chamada ao servidor PlantUML após 15 s e só acessa a
   URL definida em `PLANTUML_RENDER_URL_TEMPLATE` (não aceita URL do cliente).
+  Respostas `400` do PlantUML que tragam um SVG (erro de sintaxe ou `!include`
+  inválido) são repassadas com `200 image/svg+xml` para exibir o próprio
+  desenho de erro no painel; qualquer outro corpo é descartado e vira `502`.
   Em Docker a renderização ocorre na rede interna; em produção o serviço
   `plantuml` não publica porta no host.
 - Handler final de erros não vaza stack trace; 404 padronizado.

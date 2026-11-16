@@ -197,6 +197,20 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 6. No startup, a API regenera o DAS de todos os modelos existentes, garantindo
    que modelos antigos recebam o formato atual.
 
+### 5.9 Editar o código PlantUML
+
+1. O painel de código abre por três caminhos: **PlantUML** no rodapé do editor,
+   **Editar código (PlantUML)** na linha da lista de arquivos (abre o painel
+   daquele modelo sem sair da lista) ou automaticamente em modelos criados ou
+   importados a partir de um template PlantUML (`?plantuml=1`).
+2. O painel exibe o fonte exportado do modelo canônico e um campo editável.
+3. A pré-visualização é renderizada pela API no servidor PlantUML: o SVG é
+   exibido como imagem e atualizado conforme o código muda.
+4. Erros de sintaxe aparecem como o próprio desenho de erro do PlantUML dentro
+   do painel, sem mensagem genérica de falha.
+5. **Aplicar** converte o código editado de volta em elementos, relações e views
+   do modelo canônico.
+
 ## 6. Requisitos funcionais (numeração estável)
 
 | ID | Requisito | Estado |
@@ -225,7 +239,7 @@ arquitetura em planilhas, apresentações e diagramas desatualizados.
 | RF-22 | Hierarquia de pastas em árvore, movimentação para pai/raiz e prevenção de ciclos | Entregue |
 | RF-23 | Importar um ou vários modelos de arquivo/pasta local, Google Drive (link público de arquivo) ou outra URL, com detecção de tipo e relatório por item | Entregue |
 | RF-24 | Gerar e regenerar o DAS automaticamente a partir de todos os tipos de diagrama do modelo, incluindo modelos antigos no startup | Entregue |
-| RF-25 | Importar/exportar C4-PlantUML, criar modelos a partir de templates e pré-visualizar o SVG renderizado no painel de código, que abre automaticamente em modelos criados/importados via PlantUML | Entregue |
+| RF-25 | Importar/exportar C4-PlantUML, criar modelos a partir de templates e pré-visualizar o SVG renderizado no painel de código, que abre automaticamente em modelos criados/importados via PlantUML e pelo botão **Editar código (PlantUML)** da lista | Entregue |
 
 ## 7. Requisitos não funcionais
 

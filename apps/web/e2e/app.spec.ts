@@ -34,7 +34,11 @@ const plantUmlTemplates = [
  * Mock da API usado pelos testes. Responde o suficiente para o bootstrap da
  * sessão (auth/me + catálogo vazio) e para o POST de login.
  */
-async function mockApi(target: Page | import('@playwright/test').BrowserContext): Promise<void> {
+async function mockApi(
+  target: Page | import('@playwright/test').BrowserContext,
+  options: { models?: unknown[] } = {}
+): Promise<void> {
+  const modelList = options.models ?? [];
   await target.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -76,7 +80,7 @@ async function mockApi(target: Page | import('@playwright/test').BrowserContext)
 
     const responses: Record<string, unknown> = {
       '/api/auth/me': { user, org },
-      '/api/models': [],
+      '/api/models': modelList,
       '/api/folders': [],
       '/api/apps': [],
       '/api/services': [],
@@ -169,6 +173,20 @@ test('cria modelo novo a partir de um padrão PlantUML', async ({ page, context 
   // O painel PlantUML abre já na primeira visualização do modelo criado.
   await expect(editor.getByRole('heading', { name: 'PlantUML · Loja' })).toBeVisible();
   await expect(editor.getByLabel('Código PlantUML do modelo')).toHaveValue(/@startuml/);
+});
+
+test('lista abre o editor de código PlantUML do modelo', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem('c4arch_token', 'e2e-token');
+  });
+  await mockApi(page, { models: [createdModel] });
+
+  await page.goto('/#/files');
+  await page.getByRole('button', { name: 'Editar código (PlantUML)' }).click();
+
+  await expect(page.getByRole('heading', { name: 'PlantUML · Loja' })).toBeVisible();
+  await expect(page.getByLabel('Código PlantUML do modelo')).toHaveValue(/@startuml/);
 });
 
 test('editor mantém apenas os botões essenciais no rodapé', async ({ page }) => {

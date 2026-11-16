@@ -32,6 +32,16 @@ export class PlantumlController {
       return res.status(502).json({ error: 'Falha ao renderizar PlantUML' });
     }
     if (!response.ok) {
+      // O servidor PlantUML responde 400 com um SVG que desenha o erro de
+      // sintaxe. Encaminhar esse SVG permite ao usuário ver e corrigir o
+      // problema no próprio painel, em vez de receber só "retornou 400".
+      const contentType = response.headers.get('content-type') ?? '';
+      const body = await response.text().catch(() => '');
+      if (contentType.includes('svg') && body.includes('<svg')) {
+        res.setHeader('Content-Type', 'image/svg+xml; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.send(body);
+      }
       return res.status(502).json({ error: `PlantUML server retornou ${response.status}` });
     }
 

@@ -37,7 +37,8 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
   microserviços, componentes ou modelo em branco), com exportação para
   C4-PlantUML, Mermaid, SVG, PNG, HTML e draw.io, com preview server-side e
   legenda. Modelos criados/importados via PlantUML abrem já com o painel de
-  código e pré-visualização PlantUML.
+  código e pré-visualização PlantUML; na lista de arquivos, o botão
+  **Editar código (PlantUML)** abre o mesmo painel para o modelo da linha.
 - **Colaboração em tempo real:** presença por view/sala, cursores e atualização
   do canvas via WebSocket + Yjs.
 - **Contrato estável:** OpenAPI 3.1 em `/api/openapi.json`, Swagger UI em
