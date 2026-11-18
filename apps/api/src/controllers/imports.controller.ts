@@ -9,6 +9,7 @@ import {
   type ImportedWorkspace,
 } from '../c4/model-import.js';
 import { detectPlantUmlFormat, parsePlantUmlWorkspace } from '../c4/plantuml-import.js';
+import { loadModelGraph } from '../c4/model-graph.js';
 import { isC4ModelType, type C4ModelType } from '../c4/model-types.js';
 import { PLANTUML_TEMPLATES } from '../c4/plantuml-templates.js';
 
@@ -106,6 +107,23 @@ export class ImportController {
         return res.status(400).json({ error: 'Diagrama PlantUML inválido' });
       }
 
+      const mode = body.mode === 'merge' ? 'merge' : 'replace';
+
+      // Guard: replace apaga o conteúdo atual. Se o parser não reconheceu nenhum
+      // elemento, aplicar o texto destruiria o modelo sem salvar o código
+      // editado (foi a causa de modelos que "sumiam" ao aplicar PlantUML).
+      // `mode` é opcional na API; omitir significa replace e precisa passar
+      // pelo mesmo guard destrutivo.
+      if (workspace.elements.length === 0 && mode === 'replace') {
+        return res.status(400).json({
+          error:
+            'Nenhum elemento C4 foi reconhecido no código PlantUML. ' +
+            'Use as macros C4 (Person, System, Container, Component) ou declarações ' +
+            'PlantUML com alias (actor, rectangle, component, node...). ' +
+            'O modelo atual não foi alterado.',
+        });
+      }
+
       const c4Type = (body.c4Type as C4ModelType | undefined) ?? 'container';
       const title =
         cleanTitle(body.title) ??
@@ -129,7 +147,7 @@ export class ImportController {
       const model = created.rows[0];
 
       const result = await importWorkspaceIntoModel(model.id, workspace, {
-        mode: 'replace',
+        mode,
         title,
         c4Type,
       });
@@ -179,12 +197,37 @@ export class ImportController {
         return res.status(400).json({ error: 'Diagrama PlantUML inválido' });
       }
 
+      const mode = body.mode === 'merge' ? 'merge' : 'replace';
+
+      // Guard: replace apaga o conteúdo atual. Se o parser não reconheceu nenhum
+      // elemento, aplicar o texto destruiria o modelo sem salvar o código
+      // editado (foi a causa de modelos que "sumiam" ao aplicar PlantUML).
+      // `mode` é opcional na API; omitir significa replace e precisa passar
+      // pelo mesmo guard destrutivo.
+      if (workspace.elements.length === 0 && mode === 'replace') {
+        return res.status(400).json({
+          error:
+            'Nenhum elemento C4 foi reconhecido no código PlantUML. ' +
+            'Use as macros C4 (Person, System, Container, Component) ou declarações ' +
+            'PlantUML com alias (actor, rectangle, component, node...). ' +
+            'O modelo atual não foi alterado.',
+        });
+      }
+
       const result = await importWorkspaceIntoModel(id, workspace, {
-        mode: body.mode === 'merge' ? 'merge' : 'replace',
-        title: cleanTitle(body.title),
+        mode,
+        // O título também faz parte do código PlantUML. Quando o chamador não
+        // envia um título explícito, usa o `title` do diagrama para que uma
+        // edição nesse campo seja efetivamente persistida no modelo.
+        title: cleanTitle(body.title) ?? cleanTitle(workspace.name),
+        description: workspace.description,
         c4Type: typeof body.c4Type === 'string' ? body.c4Type : null,
       });
       const das = await regenerateModelDAS(id);
+      // Devolve o snapshot persistido para que o painel aplique exatamente o
+      // conteúdo recém-importado no documento colaborativo, sem uma leitura
+      // intermediária que pudesse capturar um estado antigo do projetor.
+      const graph = await loadModelGraph(id);
       await recordAudit({
         orgId: (model.org_id as string) ?? null,
         actorId: req.user!.id,
@@ -200,7 +243,12 @@ export class ImportController {
         },
       });
 
-      return res.json({ ok: true, das_content: das, import: result });
+      return res.json({
+        ok: true,
+        das_content: das,
+        import: result,
+        model: graph ? { elements: graph.elements, edges: graph.edges } : null,
+      });
     } catch (err) {
       console.error('[imports] importIntoModel error', err);
       return res.status(500).json({ error: 'Erro ao importar diagrama PlantUML' });

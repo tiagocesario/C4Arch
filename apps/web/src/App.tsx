@@ -32,6 +32,7 @@ import {
   getModelDrawioXml,
   addModelDiagram,
   importModel,
+  mapModelSnapshot,
 } from './services/api';
 import { Canvas } from './components/Canvas';
 import { AppHeader } from './components/AppHeader';
@@ -45,7 +46,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { PresenceBar } from './components/PresenceBar';
 import { PlantUmlImportPanel } from './components/PlantUmlImportPanel';
 import { VersionsPanel } from './components/VersionsPanel';
-import { autoLayoutViewModel, importPlantUmlWorkspace, listPlantUmlTemplates, type PlantUmlTemplate } from './services/collaboration';
+import { autoLayoutViewModel, importPlantUmlWorkspace, listPlantUmlTemplates, type ImportedModelSnapshot, type PlantUmlTemplate } from './services/collaboration';
 import { inspectModel, type InspectionReport } from './services/api';
 import {
   listModelVersions,
@@ -1429,13 +1430,22 @@ export default function App() {
     }
   }
 
-  async function handlePlantUmlApplied(appliedModelId?: string) {
+  async function handlePlantUmlApplied(
+    appliedModelId?: string,
+    snapshot?: ImportedModelSnapshot | null
+  ) {
     const modelId = appliedModelId ?? selectedId;
     if (!modelId) return;
     try {
       const detail = await getModel(modelId);
+      // A importação devolve o snapshot recém-gravado. Preferi-lo evita que
+      // uma leitura concorrente (projetor/realtime) traga o desenho anterior
+      // e o painel reenvie conteúdo antigo ao canvas.
+      const applied = snapshot ? mapModelSnapshot(snapshot) : null;
+      const elements = applied?.elements ?? detail.elements;
+      const edges = applied?.edges ?? detail.edges;
       if (selectedId === modelId) {
-        setModel(detail);
+        setModel({ ...detail, elements, edges });
         // O canvas lê o documento colaborativo; substitui o snapshot para que a
         // edição em PlantUML apareça imediatamente para todos os clientes.
         ws.sendOp({
@@ -1443,7 +1453,7 @@ export default function App() {
           modelId,
           patch: {
             op: 'replaceModel',
-            data: { elements: detail.elements, edges: detail.edges },
+            data: { elements, edges },
           },
         });
       } else {
@@ -1451,7 +1461,7 @@ export default function App() {
         // documento colaborativo (e qualquer editor aberto em outra aba)
         // precisa receber o mesmo snapshot, senão o próximo join reabre com o
         // desenho antigo e o projetor sobrescreve o Postgres.
-        await ws.pushModelSnapshot(modelId, detail.elements, detail.edges);
+        await ws.pushModelSnapshot(modelId, elements, edges);
         await refreshModels();
       }
       setError(null);
@@ -2368,7 +2378,7 @@ export default function App() {
             setShowPlantUml(false);
             setPlantUmlSourceTarget(null);
           }}
-          onApplied={() => void handlePlantUmlApplied(plantUmlPanelModel.id)}
+          onApplied={(snapshot) => void handlePlantUmlApplied(plantUmlPanelModel.id, snapshot)}
         />
       )}
 

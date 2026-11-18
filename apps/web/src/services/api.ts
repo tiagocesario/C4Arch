@@ -325,10 +325,24 @@ export const getModel = async (id: string): Promise<ModelDetail> => {
   const raw = await req<Raw>('/api/models/' + id);
   return {
     ...mapModel(raw),
+    ...mapModelSnapshot(raw),
+  };
+};
+
+/**
+ * Normaliza o snapshot de elementos/arestas vindo da API. Usado tanto por
+ * `getModel` quanto pela resposta da aplicação de PlantUML, que já devolve o
+ * conteúdo persistido.
+ */
+export function mapModelSnapshot(raw: {
+  elements?: unknown;
+  edges?: unknown;
+}): { elements: Element[]; edges: Edge[] } {
+  return {
     elements: Array.isArray(raw.elements) ? (raw.elements as Raw[]).map(mapElement) : [],
     edges: Array.isArray(raw.edges) ? (raw.edges as Raw[]).map(mapEdge) : [],
   };
-};
+}
 
 export const updateModel = async (id: string, input: UpdateModelInput): Promise<Model> => {
   const raw = await req<Raw>('/api/models/' + id, {

@@ -5,6 +5,7 @@ import { viewTypeFromC4Type } from './canonical.js';
 import { computeAutoLayout } from './autolayout.js';
 import { loadModelGraph } from './model-graph.js';
 import { renderDrawio } from './exporters.js';
+import { computeStateContentHash, encodeModelState, stateVectorOf } from './state.js';
 
 /**
  * Persistência de diagramas importados.
@@ -62,6 +63,7 @@ const LEGACY_TYPE_BY_KIND: Record<CanonicalElementKind, string> = {
 export interface ImportOptions {
   mode?: 'replace' | 'merge';
   title?: string | null;
+  description?: string | null;
   c4Type?: string | null;
 }
 
@@ -110,6 +112,62 @@ export async function invalidateCollaborativeState(modelId: string): Promise<voi
   } catch (error) {
     // O canônico já foi confirmado; a invalidação é uma salvaguarda.
     console.error('[imports] falha ao invalidar model_state:', error);
+  }
+}
+
+/**
+ * Sincroniza o snapshot colaborativo durável com o modelo recém-aplicado.
+ *
+ * A aplicação de PlantUML é uma substituição autoritativa: além do Postgres,
+ * o `model_state` precisa representar o mesmo grafo. Sem isso, uma sessão Yjs
+ * antiga pode reidratar o desenho anterior e sobrescrever a alteração salva.
+ * Se a sincronização falhar, remover o estado antigo ainda evita uma
+ * hidratação obsoleta.
+ */
+export async function syncCollaborativeState(modelId: string): Promise<void> {
+  try {
+    const graph = await loadModelGraph(modelId);
+    if (!graph) throw new Error('Modelo não encontrado');
+
+    const decoded = {
+      elements: graph.elements.map((element) => ({
+        id: element.id,
+        type: element.type,
+        title: element.title,
+        description: element.description,
+        metadata: element.metadata,
+        position_x: element.position_x,
+        position_y: element.position_y,
+        order: element.order,
+      })),
+      edges: graph.edges.map((edge) => ({
+        id: edge.id,
+        from_id: edge.from_id,
+        to_id: edge.to_id,
+        label: edge.label,
+        type: edge.type,
+      })),
+    };
+    const state = encodeModelState(decoded);
+    const stateVector = stateVectorOf(state);
+    const contentHash = computeStateContentHash(decoded);
+
+    await pool.query(
+      `INSERT INTO model_state
+         (model_id, state, state_vector, content_hash, revision, updated_by)
+       VALUES ($1, $2, $3, $4, 1, NULL)
+       ON CONFLICT (model_id) DO UPDATE SET
+         state = EXCLUDED.state,
+         state_vector = EXCLUDED.state_vector,
+         content_hash = EXCLUDED.content_hash,
+         revision = model_state.revision + 1,
+         updated_at = NOW(),
+         updated_by = NULL`,
+      [modelId, Buffer.from(state), Buffer.from(stateVector), contentHash]
+    );
+  } catch (error) {
+    console.error('[imports] falha ao sincronizar model_state:', error);
+    await invalidateCollaborativeState(modelId);
   }
 }
 
@@ -342,6 +400,12 @@ export async function importWorkspaceIntoModel(
         modelId,
       ]);
     }
+    if (options.description !== undefined) {
+      await client.query('UPDATE models SET description = $1 WHERE id = $2', [
+        options.description,
+        modelId,
+      ]);
+    }
     if (options.c4Type) {
       await client.query('UPDATE models SET c4_type = $1 WHERE id = $2', [
         options.c4Type,
@@ -355,7 +419,7 @@ export async function importWorkspaceIntoModel(
     // Depois do COMMIT: `loadModelGraph` usa o pool e precisa enxergar o
     // conteúdo persistido para gerar o desenho inicial.
     await persistDrawioArtifact(modelId);
-    await invalidateCollaborativeState(modelId);
+    await syncCollaborativeState(modelId);
 
     return {
       modelId,

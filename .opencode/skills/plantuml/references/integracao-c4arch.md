@@ -124,28 +124,35 @@ a importação responde `400 Diagrama PlantUML inválido`.
 
 ### Leitura
 
-O parser percorre linha a linha:
+O parser percorre as declarações lógicas do diagrama:
 
-1. Remove espaços nas pontas; ignora vazias, comentários (`'`) e linhas que
-   começam com `@` ou `!`.
+1. Remove comentários de linha (`'`, `//`) e de bloco (`/' ... '/`) sem
+   alterar textos entre aspas; junta macros divididas em várias linhas.
 2. Reconhece `title "..."` ou `title("...")` e usa o último como nome.
-3. Reconhece **uma macro por linha** no formato
-   `Macro(arg1, arg2, ...)` com `{` opcional no fim.
+3. Reconhece macros C4 no formato `Macro(arg1, arg2, ...)` e declarações
+   genéricas como `actor "Usuário" as user` ou `database "Banco" as db`.
 4. Elementos suportados (nomes case-insensitive):
 
 | Macros | `kind` canônico |
 | --- | --- |
-| `Person`, `Person_Ext` | `person` |
+| `Person`, `Person_Ext`, `Actor` | `person` |
 | `System`, `System_Ext`, `SystemDb`, `SystemQueue` | `software_system` |
 | `Container`, `Container_Ext`, `ContainerDb`, `ContainerQueue` | `container` |
 | `Component`, `Component_Ext`, `ComponentDb`, `ComponentQueue` | `component` |
+| `Deployment_Node`, `Node` | `deployment_node` |
+| `Rectangle` | `software_system` |
+| `Database`, `Queue` | `container` |
+| `Interface`, `UseCase`, `Artifact` | `component` |
 
-5. Relações: qualquer macro cujo nome em minúsculas comece com `rel`
-   (`Rel`, `Rel_Back`, `Rel_D`, `Rel_R`, ...), além de `BiRel` e `Rel_Back`.
+5. Relações: macros `Rel*`/`BiRel` e setas genéricas `-->`, `..>`, `<--`,
+   `<|--` e equivalentes. A direção das setas reversas é preservada;
+   `Rel_Back*` inverte a direção e `BiRel*` cria uma relação em cada sentido.
 
 Argumentos:
 
 - `splitArgs` respeita aspas e parênteses aninhados.
+- Macros aceitam posição (`alias`, `label`, ...) ou nomes (`$alias`, `$label`,
+  `$descr`, `$technology`).
 - 1º argumento é o **alias**; aliases repetidos são ignorados.
 - `Person`/`System`: 2º = nome, 3º = descrição.
 - `Container`/`Component`: 2º = nome, 3º = **tecnologia**, 4º = descrição.
@@ -172,8 +179,11 @@ Uma única view, com chave `default`. O tipo é inferido do texto:
 - `model_elements`/`model_relationships`/`model_views` (canônico);
 - `model_view_layout` e posições com autolayout (`LR`, `gapX=90`,
   `gapY=32`);
+- `model_state` sincronizado com o grafo aplicado (Yjs durável);
 - XML draw.io inicial;
-- título e `c4_type` quando informados.
+- título, descrição (`caption`) e `c4_type` quando informados. O `title` do
+  PlantUML atualiza o título do modelo quando a requisição não envia um título
+  explícito; o `caption` atualiza a descrição persistida.
 
 Relações cujo destino/origem não foi importado (ou self-loop) são contadas em
 `skippedRelationships`.
@@ -185,15 +195,10 @@ Relações cujo destino/origem não foi importado (ou self-loop) são contadas e
   importados sem pai.
 - **Sem tags, sprites, links ou propriedades.** `$tags`, `$sprite`, `$link` e
   `AddElementTag` não são lidos.
-- **Uma macro por linha.** Argumentos multilinha, macros quebradas ou
-  construções como `rectangle "X" as y { ... }` não são reconhecidas.
-- **Comentário no fim da linha quebra o parser.** O regex exige que a linha
-  termine em `)` ou `) {`.
-- **`RelIndex` e `BiRel_D` não são suportados corretamente.** `RelIndex` cai em
-  `startsWith('rel')` e tem os argumentos deslocados; `BiRel_*` diferentes de
-  `BiRel` são ignorados.
-- **`$index` vira tecnologia.** Em `Rel(a, b, "x", $index=1)`, o 4º argumento é
-  lido como tecnologia. Evite em conteúdo importável.
+- **`RelIndex` e `BiRel_D` não são suportados.** `RelIndex` e variantes
+  `BiRel_*` diferentes de `BiRel` são ignorados.
+- **Índices de relação são ignorados.** `$index` não é confundido com a
+  tecnologia da relação.
 - **Tecnologia só em container/componente.** Em `Person`/`System`, o 3º
   argumento é descrição.
 - **Sem atualização incremental de relações no `merge`.** Elementos são
@@ -205,8 +210,8 @@ Relações cujo destino/origem não foi importado (ou self-loop) são contadas e
 ## Checklist para diagrama importável
 
 - [ ] Bloco começa com `@startuml` e termina com `@enduml`.
-- [ ] `!include <C4/C4_...>` presente (ajuda na detecção e no render).
-- [ ] Uma macro por linha, sem comentário no fim.
+- [ ] `!include <C4/C4_...>` é recomendado para macros C4, mas não é
+      obrigatório em diagramas genéricos.
 - [ ] Aliases sem espaços, hífens ou acentos.
 - [ ] `Container`/`Component` com tecnologia no 3º argumento.
 - [ ] Relações com verbo e, quando fizer sentido, tecnologia no 4º.
@@ -245,8 +250,8 @@ ignorada.
   ...
 - Emite `Rel` com rótulo e tecnologia quando existirem.
 - Inclui `title` e `caption`.
-- Usa a URL remota `raw.githubusercontent.com/.../master/...` — renderização
-  offline precisa de include local.
+- Usa `!include <C4/C4_...>`; a biblioteca C4 é empacotada no servidor
+  PlantUML e funciona sem acesso externo.
 
 ## UI
 
@@ -258,7 +263,8 @@ ignorada.
   permite editar e aplica com `mode: 'replace'`; avisa sobre alterações não
   aplicadas.
 - O canvas é sincronizado pela operação realtime `replaceModel` após a
-  importação.
+  importação; a API também atualiza o `model_state` durável com o snapshot
+  persistido.
 
 ## MCP
 
@@ -282,8 +288,9 @@ ferramenta de exportação com `format: "plantuml"`.
 
 | Sintoma | Causa provável |
 | --- | --- |
-| `400 Diagrama PlantUML inválido` | falta `@startuml`/`!include` com `c4` ou nenhuma macro reconhecida |
-| Elemento sumiu | macro não suportada, alias repetido ou linha com comentário no fim |
+| `400 Diagrama PlantUML inválido` | falta `@startuml`/`!include` com `c4` |
+| `400 Nenhum elemento C4 foi reconhecido` | o texto não contém declaração de elemento compatível ou o `replace` seria destrutivo |
+| Elemento sumiu | macro não suportada, alias repetido ou referência que não corresponde a um elemento |
 | Tecnologia no lugar errado | 3º argumento de `Person`/`System` é descrição |
 | Relação não importada | origem/destino não existe, self-loop ou `BiRel_D` |
 | Estrutura achatada | boundaries não são importadas |

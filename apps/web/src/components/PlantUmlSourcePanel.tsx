@@ -3,6 +3,7 @@ import {
   fetchModelExportText,
   importPlantUmlIntoModel,
   renderPlantUmlPreview,
+  type ImportedModelSnapshot,
 } from '../services/collaboration';
 
 interface PlantUmlSourcePanelProps {
@@ -10,7 +11,7 @@ interface PlantUmlSourcePanelProps {
   modelTitle: string;
   canEdit: boolean;
   onClose: () => void;
-  onApplied: () => void;
+  onApplied: (snapshot?: ImportedModelSnapshot | null) => void;
 }
 
 const buttonStyle = {
@@ -123,7 +124,7 @@ export function PlantUmlSourcePanel({
         `Modelo atualizado: ${result.import.elements} elementos, ` +
           `${result.import.relationships} relações, ${result.import.views} visões.`
       );
-      onApplied();
+      onApplied(result.model);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

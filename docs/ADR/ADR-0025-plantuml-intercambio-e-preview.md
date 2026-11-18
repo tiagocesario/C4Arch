@@ -34,8 +34,14 @@ O PlantUML passa a ser o **formato textual de intercâmbio** do C4Arch, e a
 pré-visualização é renderizada no servidor, nunca no navegador:
 
 - **Importação** (`apps/api/src/c4/plantuml-import.ts`): o parser converte o
-  diagrama C4-PlantUML em elementos, relações e views do modelo canônico. Existe
-  também a importação como template (`plantuml-templates.ts`).
+  diagrama C4-PlantUML em elementos, relações e views do modelo canônico. Além
+  das macros C4, aceita declarações genéricas do PlantUML (`actor`, `rectangle`,
+  `database`, `component` etc.), setas como `-->`, `..>` e `<--`, comentários de
+  linha/bloco, macros multilinha e argumentos nomeados. O `title` e o `caption`
+  do diagrama atualizam, respectivamente, o título e a descrição do modelo.
+  Antes de uma substituição, a API rejeita fontes sem elementos reconhecidos
+  para não apagar o modelo. Existe também a importação como template
+  (`plantuml-templates.ts`).
 - **Exportação** (`apps/api/src/c4/exporters.ts`): `GET /api/models/{id}/export/plantuml`
   gera o `.puml` a partir do modelo canônico. É uma projeção descartável, não uma
   segunda fonte de verdade. O `!include` usa a biblioteca C4-PlantUML empacotada
@@ -63,9 +69,9 @@ pré-visualização é renderizada no servidor, nunca no navegador:
   documento Yjs. Ao aplicar, o painel envia `replaceModel` pelo WebSocket: na
   conexão principal quando o editor está aberto e em uma conexão dedicada
   quando o painel veio da lista (que também propaga a qualquer editor aberto em
-  outra aba). A API ainda invalida `model_state` após a importação; sem isso, o
-  realtime reabriria o modelo com o snapshot antigo e o projetor poderia
-  sobrescrever no Postgres o código recém-aplicado.
+  outra aba). A API ainda sincroniza `model_state` com o grafo recém-aplicado;
+  sem isso, o realtime reabriria o modelo com o snapshot antigo e o projetor
+  poderia sobrescrever no Postgres o código recém-aplicado.
 - **Infraestrutura**: no Compose, o serviço `plantuml` usa a imagem oficial
   `plantuml/plantuml-server:jetty` e é acessível pela rede interna
   (`http://plantuml:8080/svg/{encoded}`). Em produção ele não publica porta no

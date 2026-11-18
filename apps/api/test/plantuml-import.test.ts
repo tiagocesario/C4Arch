@@ -52,7 +52,8 @@ test('parsePlantUmlWorkspace extrai elementos, tecnologia e relações', () => {
     [
       ['cliente', 'api', 'usa', 'HTTPS'],
       ['api', 'banco', 'lê e grava', 'SQL'],
-      ['api', 'pagamentos', 'consulta', null],
+      ['banco', 'api', 'lê e grava', 'SQL'],
+      ['pagamentos', 'api', 'consulta', null],
     ]
   );
 
@@ -74,6 +75,99 @@ Person(usuario, "Duplicado")
     ['usuario']
   );
   assert.equal(workspace.views[0].type, 'system_context');
+});
+
+test('parsePlantUmlWorkspace aceita declarações e setas genéricas do PlantUML', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+title Teste Alterado
+caption Descrição do diagrama
+actor "Usuário" as user
+rectangle "Aplicação Web" as app
+database "Banco de Dados" as db
+user --> app : Acessa
+app --> db : Consulta
+db --> app : Retorna
+app --> user : Exibe
+@enduml`);
+
+  assert.equal(workspace.name, 'Teste Alterado');
+  assert.equal(workspace.description, 'Descrição do diagrama');
+  assert.deepEqual(
+    workspace.elements.map((element) => [
+      element.identifier,
+      element.kind,
+      element.name,
+    ]),
+    [
+      ['user', 'person', 'Usuário'],
+      ['app', 'software_system', 'Aplicação Web'],
+      ['db', 'container', 'Banco de Dados'],
+    ]
+  );
+  assert.deepEqual(
+    workspace.relationships.map((relationship) => [
+      relationship.sourceIdentifier,
+      relationship.targetIdentifier,
+      relationship.description,
+    ]),
+    [
+      ['user', 'app', 'Acessa'],
+      ['app', 'db', 'Consulta'],
+      ['db', 'app', 'Retorna'],
+      ['app', 'user', 'Exibe'],
+    ]
+  );
+});
+
+test('parsePlantUmlWorkspace aceita comentários, macros multilinha e argumentos nomeados', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+/' comentário de bloco
+   ignorado '/
+actor "Operador" as operador ' comentário de linha
+Person(
+  administrador,
+  "Administrador",
+  "Administra o sistema"
+)
+System($alias=sistema, $label="Sistema", $descr="Sistema principal")
+operador --> administrador : Opera
+@enduml`);
+
+  assert.deepEqual(
+    workspace.elements.map((element) => element.identifier),
+    ['operador', 'administrador', 'sistema']
+  );
+  assert.equal(workspace.elements[2].name, 'Sistema');
+  assert.equal(workspace.elements[2].description, 'Sistema principal');
+  assert.deepEqual(
+    workspace.relationships.map((relationship) => [
+      relationship.sourceIdentifier,
+      relationship.targetIdentifier,
+    ]),
+    [['operador', 'administrador']]
+  );
+});
+
+test('parsePlantUmlWorkspace respeita setas reversas e bidirecionais', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+actor "Usuário" as user
+rectangle "Aplicação" as app
+rectangle "Serviço" as service
+user <-- app : Publica
+user <--> service : Troca
+@enduml`);
+
+  assert.deepEqual(
+    workspace.relationships.map((relationship) => [
+      relationship.sourceIdentifier,
+      relationship.targetIdentifier,
+    ]),
+    [
+      ['app', 'user'],
+      ['user', 'service'],
+      ['service', 'user'],
+    ]
+  );
 });
 
 test('padrões PlantUML são diagramas válidos e referenciáveis', () => {

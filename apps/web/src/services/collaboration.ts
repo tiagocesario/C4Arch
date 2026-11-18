@@ -268,6 +268,12 @@ export interface PlantUmlImportResult {
   skippedRelationships: number;
 }
 
+/** Snapshot devolvido pela importação, no formato bruto da API (snake_case). */
+export interface ImportedModelSnapshot {
+  elements: unknown[];
+  edges: unknown[];
+}
+
 export interface PlantUmlTemplate {
   id: string;
   name: string;
@@ -306,7 +312,12 @@ export async function importPlantUmlIntoModel(
     title?: string;
     c4Type?: string;
   }
-): Promise<{ ok: boolean; das_content?: string; import: PlantUmlImportResult }> {
+): Promise<{
+  ok: boolean;
+  das_content?: string;
+  import: PlantUmlImportResult;
+  model?: ImportedModelSnapshot | null;
+}> {
   return request(`/api/models/${modelId}/import/plantuml`, {
     method: 'POST',
     body: JSON.stringify(input),
