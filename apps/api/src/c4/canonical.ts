@@ -42,6 +42,10 @@ export interface LegacyElementRow {
   position_x?: number | null;
   position_y?: number | null;
   order?: number | null;
+  /** Presente quando a linha vem de `model_elements`. */
+  parent_element_id?: string | null;
+  /** Identificador canônico; a tabela legada não possui a coluna. */
+  identifier?: string | null;
 }
 
 export interface LegacyEdgeRow {
@@ -51,6 +55,8 @@ export interface LegacyEdgeRow {
   to_id: string;
   label?: string | null;
   type: string;
+  /** Presente quando a linha vem de `model_relationships`. */
+  technology?: string | null;
   /** Títulos denormalizados usados pela API legada; mantidos por paridade. */
   source_title?: string | null;
   target_title?: string | null;

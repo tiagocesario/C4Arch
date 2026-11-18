@@ -200,18 +200,26 @@ export async function importWorkspaceIntoModel(
       await client.query('DELETE FROM edges WHERE model_id = $1', [modelId]);
       await client.query('DELETE FROM elements WHERE model_id = $1', [modelId]);
       await client.query('DELETE FROM model_relationships WHERE model_id = $1', [modelId]);
-      await client.query('DELETE FROM model_views WHERE model_id = $1', [modelId]);
-      await client.query('DELETE FROM model_elements WHERE model_id = $1', [modelId]);
+      // `model_views` é configuração canônica (quais elementos cada visão
+      // mostra), não conteúdo do diagrama. Preservar as visões existentes evita
+      // que aplicar o PlantUML apague views criadas pelo usuário no canvas; as
+      // visões vindas do import são atualizadas por upsert logo abaixo.
+      //
+      // `model_elements` também não é apagado em bloco: reaproveitar o id de
+      // cada `identifier` mantém o layout das views preservadas e os vínculos
+      // com apps/serviços. Os elementos que saíram do diagrama são removidos
+      // depois do upsert.
     }
 
+    // Elementos com o mesmo identificador mantêm o id nas duas modalidades.
+    // Em `replace` isso evita que o cascade de `model_view_layout` apague o
+    // posicionamento manual das views que não vieram do import.
     const existing = new Map<string, string>();
-    if (mode === 'merge') {
-      const rows = await client.query<{ id: string; identifier: string }>(
-        'SELECT id, identifier FROM model_elements WHERE model_id = $1',
-        [modelId]
-      );
-      for (const row of rows.rows) existing.set(row.identifier, row.id);
-    }
+    const rows = await client.query<{ id: string; identifier: string }>(
+      'SELECT id, identifier FROM model_elements WHERE model_id = $1',
+      [modelId]
+    );
+    for (const row of rows.rows) existing.set(row.identifier, row.id);
 
     const idByIdentifier = new Map<string, string>();
     let order = 0;
@@ -278,17 +286,29 @@ export async function importWorkspaceIntoModel(
       );
     }
 
-    // Segundo passe: hierarquia.
+    // Segundo passe: hierarquia. Atualiza também os elementos que voltaram a
+    // ser raiz (pai nulo), pois os ids existentes podem conservar o vínculo
+    // anterior.
     for (const element of workspace.elements) {
       const id = idByIdentifier.get(element.identifier);
+      if (!id) continue;
       const parentId = element.parentIdentifier
         ? idByIdentifier.get(element.parentIdentifier) ?? null
         : null;
-      if (!id || !parentId) continue;
       await client.query('UPDATE model_elements SET parent_element_id = $1 WHERE id = $2', [
         parentId,
         id,
       ]);
+    }
+
+    // Em `replace`, o que não veio no diagrama deixa de existir. O delete roda
+    // depois do upsert (para preservar os ids mantidos) e depois da hierarquia
+    // (para o cascade não levar junto um filho que virou raiz).
+    if (mode === 'replace') {
+      await client.query(
+        'DELETE FROM model_elements WHERE model_id = $1 AND NOT (identifier = ANY($2::text[]))',
+        [modelId, workspace.elements.map((element) => element.identifier)]
+      );
     }
 
     let importedRelationships = 0;
@@ -336,6 +356,7 @@ export async function importWorkspaceIntoModel(
             },
           ];
 
+    const viewKeys = views.map((view) => view.key);
     for (const view of views) {
       await client.query(
         `INSERT INTO model_views (model_id, key, type, scope_element_id, title, include, exclude, auto_layout)
@@ -357,7 +378,9 @@ export async function importWorkspaceIntoModel(
     }
 
     // Layout separado: calcula posições e grava tanto no legado (para o canvas
-    // atual) quanto em `model_view_layout` (para views/exportação).
+    // atual) quanto em `model_view_layout` (para views/exportação). O layout só
+    // é sobrescrito nas visões deste import; views preservadas mantêm as
+    // posições que o usuário ajustou.
     const positions = computeAutoLayout(
       workspace.elements.map((element) => ({
         id: idByIdentifier.get(element.identifier) ?? element.identifier,
@@ -388,9 +411,10 @@ export async function importWorkspaceIntoModel(
          SELECT v.id, $1, NULL, $2, $3, 190, 90, '{"source":"autolayout"}'::jsonb
            FROM model_views v
           WHERE v.model_id = $4
+            AND v.key = ANY($5::text[])
          ON CONFLICT (view_id, element_id) WHERE element_id IS NOT NULL
          DO UPDATE SET x = EXCLUDED.x, y = EXCLUDED.y, width = EXCLUDED.width, height = EXCLUDED.height`,
-        [id, position.x, position.y, modelId]
+        [id, position.x, position.y, modelId, viewKeys]
       );
     }
 

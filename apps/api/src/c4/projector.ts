@@ -168,29 +168,94 @@ export function preserveExistingViews(
 }
 
 /**
- * Preserva a hierarquia já existente quando o estado não trouxe um pai. O Yjs
- * atual não carrega geometria de contenção nem `parentId`, então apagar todos
- * os vínculos a cada projeção seria destrutivo.
+ * Preserva detalhes canônicos que o Yjs não carrega (identificador, URL, tags,
+ * tecnologia das relações e hierarquia). O estado colaborativo só transporta
+ * tipo, título, descrição, metadados e posição; sem esta mesclagem, cada flush
+ * do editor apagaria a tecnologia das relações e renomearia os identificadores
+ * importados do PlantUML.
  */
-async function preserveParents(
-  client: PoolClient,
-  modelId: string,
-  snapshot: CanonicalSnapshot
-): Promise<void> {
-  const result = await client.query<{ id: string; parent_element_id: string | null }>(
-    'SELECT id, parent_element_id FROM model_elements WHERE model_id = $1',
-    [modelId]
-  );
-  const existing = new Map(result.rows.map((row) => [row.id, row.parent_element_id]));
+export interface ExistingElementDetails {
+  id: string;
+  parent_element_id?: string | null;
+  identifier?: string | null;
+  url?: string | null;
+  tags?: string[] | null;
+}
+
+export interface ExistingRelationshipDetails {
+  id: string;
+  technology?: string | null;
+  tags?: string[] | null;
+}
+
+/**
+ * Mescla os detalhes canônicos no snapshot derivado do Yjs. Função pura para
+ * poder ser testada sem banco; a leitura das linhas fica em
+ * `loadCanonicalDetails`.
+ */
+export function preserveCanonicalDetails(
+  snapshot: CanonicalSnapshot,
+  existingElements: ExistingElementDetails[],
+  existingRelationships: ExistingRelationshipDetails[]
+): void {
+  const elementsById = new Map(existingElements.map((row) => [row.id, row]));
   const ids = new Set(snapshot.elements.map((element) => element.id));
 
   for (const element of snapshot.elements) {
+    const current = elementsById.get(element.id);
+    if (!current) continue;
+
+    if (current.identifier && element.identifier !== current.identifier) {
+      element.identifier = current.identifier;
+    }
+    if (!element.url && current.url) element.url = current.url;
+    if ((!element.tags || element.tags.length === 0) && current.tags?.length) {
+      element.tags = current.tags;
+    }
+
     if (element.parent_element_id) continue;
-    const parent = existing.get(element.id);
+    const parent = current.parent_element_id;
     if (parent && ids.has(parent) && parent !== element.id) {
       element.parent_element_id = parent;
     }
   }
+
+  const relationshipsById = new Map(
+    existingRelationships.map((row) => [row.id, row])
+  );
+
+  for (const relationship of snapshot.relationships) {
+    const current = relationshipsById.get(relationship.id);
+    if (!current) continue;
+    if (!relationship.technology && current.technology) {
+      relationship.technology = current.technology;
+    }
+    if (
+      (!relationship.tags || relationship.tags.length === 0) &&
+      current.tags?.length
+    ) {
+      relationship.tags = current.tags;
+    }
+  }
+}
+
+async function loadCanonicalDetails(
+  client: PoolClient,
+  modelId: string,
+  snapshot: CanonicalSnapshot
+): Promise<void> {
+  const elementRows = await client.query<ExistingElementDetails>(
+    `SELECT id, parent_element_id, identifier, url, tags
+       FROM model_elements
+      WHERE model_id = $1`,
+    [modelId]
+  );
+  const relationshipRows = await client.query<ExistingRelationshipDetails>(
+    'SELECT id, technology, tags FROM model_relationships WHERE model_id = $1',
+    [modelId]
+  );
+
+  preserveCanonicalDetails(snapshot, elementRows.rows, relationshipRows.rows);
 }
 
 async function readState(
@@ -241,8 +306,32 @@ export async function projectModel(
     const stateBytes = new Uint8Array(loaded.row.state);
     const decoded = decodeModelState(stateBytes);
     const contentHash = computeStateContentHash(decoded);
+
+    // Um flush antigo pode chegar ao projetor depois de uma importação/aplicação
+    // que já gravou um estado mais novo. Aplicar o snapshot obsoleto desfaria a
+    // alteração recém-salva, então confere o hash antes de escrever.
+    const currentHash = await client.query<{ content_hash: string }>(
+      'SELECT content_hash FROM model_state WHERE model_id = $1',
+      [modelId]
+    );
+    if (currentHash.rows[0]?.content_hash !== contentHash) {
+      return {
+        modelId,
+        mode,
+        skipped: true,
+        reason: 'estado desatualizado',
+        applied: false,
+        ok: true,
+        contentHash,
+        expected: emptyStats(),
+        actual: emptyStats(),
+        divergences: [],
+        warnings: [],
+      };
+    }
+
     const expected = snapshotFromDecoded(loaded.model, decoded);
-    await preserveParents(client, modelId, expected);
+    await loadCanonicalDetails(client, modelId, expected);
 
     // O estado colaborativo não conhece views/layout das views secundárias:
     // mescla o que já está persistido antes de comparar ou aplicar.

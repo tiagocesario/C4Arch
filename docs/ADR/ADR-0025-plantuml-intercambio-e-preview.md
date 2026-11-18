@@ -39,15 +39,22 @@ pré-visualização é renderizada no servidor, nunca no navegador:
   `database`, `component` etc.), setas como `-->`, `..>` e `<--`, comentários de
   linha/bloco, macros multilinha e argumentos nomeados. O `title` e o `caption`
   do diagrama atualizam, respectivamente, o título e a descrição do modelo.
-  Antes de uma substituição, a API rejeita fontes sem elementos reconhecidos
-  para não apagar o modelo. Existe também a importação como template
-  (`plantuml-templates.ts`).
+  Fronteiras (`System_Boundary`, `Container_Boundary`, `Enterprise_Boundary`)
+  viram o elemento estrutural do seu nível (sistema, container ou componente) e
+  os blocos aninhados viram `parent_element_id`; `technology`, `$tags` e a
+  tecnologia das relações (`Rel(a, b, "x", "HTTPS")`) são persistidos no
+  canônico. Antes de uma substituição, a API rejeita fontes sem elementos
+  reconhecidos para não apagar o modelo. Existe também a importação como
+  template (`plantuml-templates.ts`).
 - **Exportação** (`apps/api/src/c4/exporters.ts`): `GET /api/models/{id}/export/plantuml`
   gera o `.puml` a partir do modelo canônico. É uma projeção descartável, não uma
   segunda fonte de verdade. O `!include` usa a biblioteca C4-PlantUML empacotada
   no próprio servidor PlantUML (`!include <C4/C4_Context>` e variantes), sem
   depender de `raw.githubusercontent.com`: em redes sem saída externa o include
-  remoto falhava com `400` e derrubava a exportação.
+  remoto falhava com `400` e derrubava a exportação. O fonte reemite hierarquia
+  (blocos aninhados), `$tags`, tecnologia das relações e usa o `identifier`
+  canônico como alias, para que exportar → editar → aplicar não renomeie
+  elementos nem perca o layout de views que não vieram do import.
 - **Edição** (`apps/web/src/components/PlantUmlSourcePanel.tsx`): o painel exibe
   o fonte exportado, permite editar e aplicar (`replace`) de volta no modelo.
   Ele abre por três caminhos: pelo botão **PlantUML** do rodapé do editor, pelo
@@ -71,7 +78,11 @@ pré-visualização é renderizada no servidor, nunca no navegador:
   quando o painel veio da lista (que também propaga a qualquer editor aberto em
   outra aba). A API ainda sincroniza `model_state` com o grafo recém-aplicado;
   sem isso, o realtime reabriria o modelo com o snapshot antigo e o projetor
-  poderia sobrescrever no Postgres o código recém-aplicado.
+  poderia sobrescrever no Postgres o código recém-aplicado. Ao projetar o Yjs,
+  o projetor preserva os detalhes que o estado colaborativo não transporta
+  (`identifier`, `url`, `tags`, hierarquia e tecnologia das relações) e ignora
+  um flush cujo hash não corresponde mais ao de `model_state`. Views existentes
+  também são preservadas; só a view do import é atualizada.
 - **Infraestrutura**: no Compose, o serviço `plantuml` usa a imagem oficial
   `plantuml/plantuml-server:jetty` e é acessível pela rede interna
   (`http://plantuml:8080/svg/{encoded}`). Em produção ele não publica porta no

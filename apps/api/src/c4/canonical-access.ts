@@ -37,6 +37,8 @@ export async function loadCanonicalElements(modelId: string): Promise<LegacyElem
   const elements = await pool.query<{
     id: string;
     model_id: string;
+    parent_element_id: string | null;
+    identifier: string;
     app_id: string | null;
     service_id: string | null;
     kind: string;
@@ -47,11 +49,14 @@ export async function loadCanonicalElements(modelId: string): Promise<LegacyElem
     tags: string[] | null;
     properties: Record<string, unknown> | null;
   }>(
-    `SELECT id, model_id, app_id, service_id, kind, name, description,
-            technology, url, tags, properties
+    `SELECT id, model_id, parent_element_id, identifier, app_id, service_id,
+            kind, name, description, technology, url, tags, properties
        FROM model_elements
       WHERE model_id = $1
-      ORDER BY name`,
+      ORDER BY
+        CASE WHEN properties->>'order' ~ '^[0-9]+$'
+             THEN (properties->>'order')::int ELSE 0 END,
+        name`,
     [modelId]
   );
 
@@ -98,6 +103,8 @@ export async function loadCanonicalElements(modelId: string): Promise<LegacyElem
       position_x: Math.round(position.x),
       position_y: Math.round(position.y),
       order: typeof orderValue === 'number' ? orderValue : 0,
+      parent_element_id: row.parent_element_id,
+      identifier: row.identifier,
     };
   });
 }
@@ -149,6 +156,7 @@ export async function loadCanonicalEdges(modelId: string): Promise<LegacyEdgeRow
       to_id: row.target_id,
       label: row.description ?? '',
       type,
+      technology: row.technology,
       source_title: nameById.get(row.source_id) ?? null,
       target_title: nameById.get(row.target_id) ?? null,
     };

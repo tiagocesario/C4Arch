@@ -240,6 +240,59 @@ function normalizeAlias(value: string | undefined): string {
   return unquote(value).trim();
 }
 
+/** Lê `$tags="a+b"` (separadores aceitos pelo C4: `+`, `,` e `;`). */
+function parseTags(args: ParsedArguments): string[] {
+  const raw = args.named.get('tags') ?? args.named.get('tag');
+  if (!raw) return [];
+  return unquote(raw)
+    .split(/[+,;]/)
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+/** Braços de bloco fora de aspas, usados para empilhar/desempilhar escopos. */
+function braceDelta(text: string): { opens: number; closes: number } {
+  let opens = 0;
+  let closes = 0;
+  let quote: '"' | "'" | null = null;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '{') opens += 1;
+    if (char === '}') closes += 1;
+  }
+
+  return { opens, closes };
+}
+
+/** Remove chaves de agrupamento das extremidades preservando o texto útil. */
+function stripBlockBraces(statement: string): { text: string; opensBlock: boolean } {
+  let text = statement.trim();
+  let opensBlock = false;
+
+  while (/\}+\s*$/.test(text)) {
+    text = text.replace(/\}+\s*$/, '').trim();
+  }
+  while (/\{\s*$/.test(text)) {
+    opensBlock = true;
+    text = text.replace(/\{\s*$/, '').trim();
+  }
+
+  return { text, opensBlock };
+}
+
 /**
  * Extrai o título do diagrama. PlantUML aceita `title Texto`, `title "Texto"`
  * e `title("Texto")`; a forma com aspas preserva espaços e pontuação.
@@ -550,8 +603,14 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
   const identifiers = new Set<string>();
   const aliasToIdentifier = new Map<string, string>();
   const labelToIdentifier = new Map<string, string>();
+  // Pilha de escopos abertos (`System_Boundary(...) {`, `Container(...) {`).
+  // O topo é o pai dos próximos elementos declarados.
+  const scopes: Array<string | null> = [];
   let name: string | null = null;
   let description: string | null = null;
+
+  const currentScope = (): string | null =>
+    scopes.length > 0 ? scopes[scopes.length - 1] : null;
 
   const resolveReference = (raw: string): string | null => {
     const value = raw.trim();
@@ -566,7 +625,8 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
     label: string,
     kind: CanonicalElementKind,
     elementDescription: string | null,
-    technology: string | null
+    technology: string | null,
+    tags: string[] = []
   ): void => {
     const identifier = alias.trim();
     if (!identifier || identifiers.has(identifier)) return;
@@ -577,9 +637,9 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
       name: label,
       description: elementDescription,
       technology,
-      tags: [],
+      tags,
       url: null,
-      parentIdentifier: null,
+      parentIdentifier: currentScope(),
     });
     aliasToIdentifier.set(identifier, identifier);
     aliasToIdentifier.set(identifier.toLocaleLowerCase(), identifier);
@@ -602,9 +662,44 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
   };
 
   for (const statement of logicalStatements(content)) {
-    const line = statement.replace(/[{}]+\s*$/g, '').trim();
-    if (!line) continue;
-    if (line.startsWith('@') || line.startsWith('!')) continue;
+    // Fecha escopos abertos antes de interpretar a declaração. `}` pode vir em
+    // linha própria (fim de um boundary) ou no fim de uma declaração.
+    let contentPart = statement.trim();
+
+    const leadingCloses = /^(?:\s*\})+/.exec(contentPart);
+    if (leadingCloses) {
+      const count = (leadingCloses[0].match(/\}/g) ?? []).length;
+      for (let index = 0; index < count; index += 1) scopes.pop();
+      contentPart = contentPart.slice(leadingCloses[0].length).trim();
+    }
+
+    const trailingCloses = /(?:\}+\s*)+$/.exec(contentPart);
+    if (trailingCloses) {
+      const closes = (trailingCloses[0].match(/\}/g) ?? []).length;
+      const opens = braceDelta(contentPart).opens;
+      const toClose = Math.max(0, closes - opens);
+      for (let index = 0; index < toClose; index += 1) scopes.pop();
+      contentPart = contentPart.slice(0, contentPart.length - trailingCloses[0].length).trim();
+    }
+
+    const stripped = stripBlockBraces(contentPart);
+    const line = stripped.text;
+    const opensBlock = stripped.opensBlock;
+
+    // Blocos não reconhecidos (ex.: `package ... {`) herdam o escopo atual
+    // para que o `}` correspondente não desempilhe o pai errado.
+    const openScope = (identifier: string | null): void => {
+      if (opensBlock) scopes.push(identifier ?? currentScope());
+    };
+
+    if (!line) {
+      openScope(null);
+      continue;
+    }
+    if (line.startsWith('@') || line.startsWith('!')) {
+      openScope(null);
+      continue;
+    }
 
     const diagramTitle = parseTitle(line);
     if (diagramTitle) {
@@ -646,7 +741,27 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         continue;
       }
 
-      if (BOUNDARY_MACROS.has(macro)) continue;
+      if (BOUNDARY_MACROS.has(macro)) {
+        // C4Arch não tem um tipo "boundary": a fronteira vira o elemento
+        // estrutural do seu nível (sistema, container ou componente) para
+        // preservar a hierarquia no modelo canônico e na exportação.
+        const boundaryKind: CanonicalElementKind =
+          macro === 'container_boundary'
+            ? 'container'
+            : macro === 'component_boundary'
+              ? 'component'
+              : 'software_system';
+        const alias = normalizeAlias(
+          namedValue(args, ['alias', 'id', 'key'], 0) ?? ''
+        );
+        const label =
+          unquote(namedValue(args, ['label', 'name', 'title'], 1) ?? '') || alias;
+        if (alias && !identifiers.has(alias)) {
+          addElement(alias, label, boundaryKind, null, null, parseTags(args));
+        }
+        openScope(alias || currentScope());
+        continue;
+      }
 
       const kind = KIND_BY_MACRO[macro];
       if (kind) {
@@ -664,7 +779,8 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         const elementDescription = unquote(
           namedValue(args, ['descr', 'description'], descriptionIndex) ?? ''
         ) || null;
-        addElement(alias, label, kind, elementDescription, technology);
+        addElement(alias, label, kind, elementDescription, technology, parseTags(args));
+        openScope(alias || currentScope());
         continue;
       }
 
@@ -676,9 +792,12 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         const label = unquote(
           namedValue(args, ['label', 'name', 'title'], 1) ?? ''
         ) || alias;
-        addElement(alias, label, genericKind, null, null);
+        addElement(alias, label, genericKind, null, null, parseTags(args));
+        openScope(alias || currentScope());
         continue;
       }
+
+      openScope(null);
     }
 
     const genericMatch = /^([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$/.exec(line);
@@ -689,6 +808,7 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         const declaration = parseGenericDeclaration(kind, genericMatch[2]);
         if (declaration) {
           addElement(declaration.alias, declaration.label, kind, null, null);
+          openScope(declaration.alias);
         }
         continue;
       }

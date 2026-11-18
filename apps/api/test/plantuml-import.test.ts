@@ -33,14 +33,21 @@ test('parsePlantUmlWorkspace extrai elementos, tecnologia e relações', () => {
   assert.equal(workspace.description, null);
 
   const byIdentifier = new Map(workspace.elements.map((element) => [element.identifier, element]));
-  assert.equal(byIdentifier.size, 5);
+  assert.equal(byIdentifier.size, 6);
   assert.equal(byIdentifier.get('cliente')!.kind, 'person');
   assert.equal(byIdentifier.get('cliente')!.description, 'Compra produtos');
+  assert.equal(byIdentifier.get('loja')!.kind, 'software_system');
+  assert.equal(byIdentifier.get('loja')!.name, 'Loja');
   assert.equal(byIdentifier.get('api')!.kind, 'container');
   assert.equal(byIdentifier.get('api')!.technology, 'Node.js');
+  // A fronteira do PlantUML vira o pai estrutural no modelo canônico.
+  assert.equal(byIdentifier.get('api')!.parentIdentifier, 'loja');
+  assert.equal(byIdentifier.get('banco')!.parentIdentifier, 'loja');
   assert.equal(byIdentifier.get('banco')!.technology, 'PostgreSQL');
   assert.equal(byIdentifier.get('pagamentos')!.kind, 'software_system');
+  assert.equal(byIdentifier.get('pagamentos')!.parentIdentifier, null);
   assert.equal(byIdentifier.get('carrinho')!.kind, 'component');
+  assert.equal(byIdentifier.get('carrinho')!.parentIdentifier, null);
 
   assert.deepEqual(
     workspace.relationships.map((relationship) => [
@@ -60,6 +67,57 @@ test('parsePlantUmlWorkspace extrai elementos, tecnologia e relações', () => {
   assert.equal(workspace.views.length, 1);
   assert.equal(workspace.views[0].type, 'container');
   assert.equal(workspace.views[0].title, 'Loja');
+});
+
+test('parsePlantUmlWorkspace preserva boundaries e blocos aninhados', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+!include <C4/C4_Component>
+System_Boundary(sistema, "Sistema") {
+  Container(api, "API", "Node.js", "Backend") {
+    Component(servico, "Serviço", "TypeScript", "Regras de negócio")
+  }
+  Container_Boundary(dados, "Dados") {
+    ComponentDb(banco, "Banco")
+  }
+}
+Person(cliente, "Cliente")
+Rel(cliente, api, "usa", "HTTPS")
+@enduml`);
+
+  const parentOf = new Map(
+    workspace.elements.map((element) => [element.identifier, element.parentIdentifier])
+  );
+  assert.deepEqual(
+    workspace.elements.map((element) => [
+      element.identifier,
+      element.kind,
+      element.parentIdentifier,
+    ]),
+    [
+      ['sistema', 'software_system', null],
+      ['api', 'container', 'sistema'],
+      ['servico', 'component', 'api'],
+      ['dados', 'container', 'sistema'],
+      ['banco', 'component', 'dados'],
+      ['cliente', 'person', null],
+    ]
+  );
+  assert.equal(parentOf.get('api'), 'sistema');
+  assert.equal(workspace.relationships[0].technology, 'HTTPS');
+});
+
+test('parsePlantUmlWorkspace extrai $tags de elementos', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+!include <C4/C4_Container>
+Person(cliente, "Cliente", "Compra", $tags="externo+prioritario")
+Container(api, "API", "Node.js", "Backend", $tags="interno")
+Container(banco, "Banco", "PostgreSQL")
+@enduml`);
+
+  const byIdentifier = new Map(workspace.elements.map((element) => [element.identifier, element]));
+  assert.deepEqual(byIdentifier.get('cliente')!.tags, ['externo', 'prioritario']);
+  assert.deepEqual(byIdentifier.get('api')!.tags, ['interno']);
+  assert.deepEqual(byIdentifier.get('banco')!.tags, []);
 });
 
 test('parsePlantUmlWorkspace ignora diretivas, comentários e aliases repetidos', () => {

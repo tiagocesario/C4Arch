@@ -146,7 +146,22 @@ function technologyOf(element: GraphElement): string | null {
 }
 
 function relationshipTechnology(edge: GraphEdge): string | null {
-  return extractTechnologyFromLabel(edge.label);
+  const declared = typeof edge.technology === 'string' ? edge.technology.trim() : '';
+  return declared || extractTechnologyFromLabel(edge.label);
+}
+
+/** Tags canônicas guardadas em `metadata.tags` (C4 `$tags="a+b"`). */
+function tagsOf(element: GraphElement): string[] {
+  const value = metadataOf(element).tags;
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((tag): tag is string => typeof tag === 'string')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function plantUmlTags(tags: string[]): string {
+  return tags.length > 0 ? `, $tags="${escapePlantUml(tags.join('+'))}"` : '';
 }
 
 function dateStamp(): string {
@@ -525,31 +540,108 @@ export function renderPlantUml(graph: ModelGraph): string {
   if (modelDescription(graph)) lines.push(`caption ${escapePlantUml(modelDescription(graph) ?? '')}`);
 
   const identifiers = new Map<string, string>();
+  const usedAliases = new Set<string>();
+
+  // Aliases: usa o identificador canônico quando existe para que exportar,
+  // editar e aplicar de novo mantenha os mesmos identificadores (e, com eles,
+  // o layout das views e os vínculos com apps/serviços). Elementos sem
+  // identificador caem em `e0`, `e1`...
+  const aliasOf = (raw: string): string => {
+    const sanitized = raw.replace(/[^A-Za-z0-9_]/g, '_').replace(/^([0-9])/, 'e_$1');
+    const base = sanitized.slice(0, 60) || 'e';
+    let alias = base;
+    let suffix = 2;
+    while (usedAliases.has(alias)) alias = `${base}_${suffix++}`;
+    usedAliases.add(alias);
+    return alias;
+  };
+
+  for (const element of graph.elements) {
+    const raw = element.identifier?.trim();
+    if (!raw) continue;
+    identifiers.set(element.id, aliasOf(raw));
+  }
+
   let index = 0;
   for (const element of graph.elements) {
-    const id = `e${index++}`;
-    identifiers.set(element.id, id);
+    if (identifiers.has(element.id)) continue;
+    let alias = `e${index++}`;
+    while (usedAliases.has(alias)) alias = `e${index++}`;
+    usedAliases.add(alias);
+    identifiers.set(element.id, alias);
+  }
+
+  // Hierarquia: `parent_element_id` agrupa os filhos no bloco do pai
+  // (`System(...) { ... }`, `Container(...) { ... }`), preservando a estrutura
+  // importada do PlantUML em vez de achatá-la na exportação.
+  const elementIds = new Set(graph.elements.map((element) => element.id));
+  const elementById = new Map(graph.elements.map((element) => [element.id, element]));
+  const nestable = (element: GraphElement): boolean => kind(element) !== 'person';
+  const childrenByParent = new Map<string, GraphElement[]>();
+  const roots: GraphElement[] = [];
+  const orderIndex = new Map(graph.elements.map((element, position) => [element.id, position]));
+
+  for (const element of graph.elements) {
+    const parentId = element.parent_element_id;
+    const parent =
+      parentId && parentId !== element.id && elementIds.has(parentId)
+        ? elementById.get(parentId)
+        : undefined;
+    if (!parent || !nestable(parent)) {
+      roots.push(element);
+      continue;
+    }
+    const list = childrenByParent.get(parent.id) ?? [];
+    list.push(element);
+    childrenByParent.set(parent.id, list);
+  }
+
+  for (const list of childrenByParent.values()) {
+    list.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
+  }
+  roots.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
+
+  const emitted = new Set<string>();
+  const emit = (element: GraphElement, depth: number): void => {
+    if (emitted.has(element.id)) return;
+    emitted.add(element.id);
+
+    const id = identifiers.get(element.id) ?? element.id;
+    const indent = '  '.repeat(depth);
+    const children = childrenByParent.get(element.id) ?? [];
+    const block = children.length > 0 ? ' {' : '';
     const name = escapePlantUml(element.title);
     const description = escapePlantUml(element.description ?? '');
     const technology = technologyOf(element);
+    const tags = plantUmlTags(tagsOf(element));
+
     switch (kind(element)) {
       case 'person':
-        lines.push(`Person(${id}, "${name}", "${description}")`);
+        lines.push(`${indent}Person(${id}, "${name}", "${description}"${tags})${block}`);
         break;
       case 'software_system':
-        lines.push(`System(${id}, "${name}", "${description}")`);
+        lines.push(`${indent}System(${id}, "${name}", "${description}"${tags})${block}`);
         break;
       case 'container':
         lines.push(
-          `Container(${id}, "${name}", "${technology ? escapePlantUml(technology) : ''}", "${description}")`
+          `${indent}Container(${id}, "${name}", "${technology ? escapePlantUml(technology) : ''}", "${description}"${tags})${block}`
         );
         break;
       default:
         lines.push(
-          `Component(${id}, "${name}", "${technology ? escapePlantUml(technology) : ''}", "${description}")`
+          `${indent}Component(${id}, "${name}", "${technology ? escapePlantUml(technology) : ''}", "${description}"${tags})${block}`
         );
     }
-  }
+
+    if (children.length > 0) {
+      for (const child of children) emit(child, depth + 1);
+      lines.push(`${indent}}`);
+    }
+  };
+
+  for (const element of roots) emit(element, 0);
+  // Elementos órfãos de um ciclo de hierarquia nunca ficam de fora.
+  for (const element of graph.elements) emit(element, 0);
 
   for (const edge of graph.edges) {
     const from = identifiers.get(edge.from_id);

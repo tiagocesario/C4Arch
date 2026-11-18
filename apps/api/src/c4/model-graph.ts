@@ -22,6 +22,10 @@ export interface GraphElement {
   position_x: number;
   position_y: number;
   order: number;
+  /** Identificador estável do modelo canônico, usado como alias no PlantUML. */
+  identifier?: string | null;
+  /** Hierarquia canônica (boundaries/blocos do PlantUML). */
+  parent_element_id?: string | null;
   app_id?: string | null;
   service_id?: string | null;
 }
@@ -33,6 +37,8 @@ export interface GraphEdge {
   to_id: string;
   label: string;
   type: string;
+  /** Tecnologia declarada na relação (`Rel(a, b, "x", "HTTPS")`). */
+  technology?: string | null;
   source_title?: string | null;
   target_title?: string | null;
 }
@@ -59,9 +65,25 @@ function normalizeElement(row: Record<string, unknown>): GraphElement {
     position_x: asFinite(row.position_x ?? row.positionX),
     position_y: asFinite(row.position_y ?? row.positionY),
     order: asFinite(row.order),
+    identifier: elementIdentifierOf(row),
+    parent_element_id:
+      typeof row.parent_element_id === 'string' ? row.parent_element_id : null,
     app_id: typeof row.app_id === 'string' ? row.app_id : null,
     service_id: typeof row.service_id === 'string' ? row.service_id : null,
   };
+}
+
+/** Prefere o identificador canônico; no legado cai em `metadata.importIdentifier`. */
+function elementIdentifierOf(row: Record<string, unknown>): string | null {
+  if (typeof row.identifier === 'string' && row.identifier.trim()) {
+    return row.identifier.trim();
+  }
+  const metadata = row.metadata;
+  if (metadata && typeof metadata === 'object') {
+    const value = (metadata as Record<string, unknown>).importIdentifier;
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
 }
 
 function normalizeEdge(row: Record<string, unknown>): GraphEdge {
@@ -72,6 +94,7 @@ function normalizeEdge(row: Record<string, unknown>): GraphEdge {
     to_id: String(row.to_id ?? row.toId ?? ''),
     label: typeof row.label === 'string' ? row.label : '',
     type: typeof row.type === 'string' ? row.type : 'call',
+    technology: typeof row.technology === 'string' ? row.technology : null,
     source_title: typeof row.source_title === 'string' ? row.source_title : null,
     target_title: typeof row.target_title === 'string' ? row.target_title : null,
   };

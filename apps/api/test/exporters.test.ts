@@ -12,6 +12,7 @@ import {
   renderSvg,
 } from '../src/c4/exporters.js';
 import type { ModelGraph } from '../src/c4/model-graph.js';
+import { parsePlantUmlWorkspace } from '../src/c4/plantuml-import.js';
 
 function sampleGraph(): ModelGraph {
   return {
@@ -132,6 +133,48 @@ test('renderPlantUml escolhe C4_Component quando há componentes', () => {
   assert.match(plantuml, /Container\(e2, "API", "Node\.js"/);
   assert.match(plantuml, /Rel\(e2, e3, "processa pagamento"/);
   assert.match(plantuml, /@enduml/);
+});
+
+test('renderPlantUml preserva hierarquia, tags e tecnologia das relações', () => {
+  const graph = sampleGraph();
+  graph.elements[2].parent_element_id = 's1';
+  graph.elements[3].parent_element_id = 'c1';
+  graph.edges[1].technology = 'HTTPS';
+
+  const plantuml = renderPlantUml(graph);
+  assert.match(plantuml, /Person\(e0, "Cliente", "Compra produtos", \$tags="externo"\)/);
+  assert.match(plantuml, /System\(e1, "Loja", "Sistema principal"\) \{/);
+  assert.match(plantuml, /\n {2}Container\(e2, "API", "Node\.js", "Backend"\) \{/);
+  assert.match(plantuml, /\n {4}Component\(e3, "Pagamentos"/);
+  assert.match(plantuml, /Rel\(e2, e3, "processa pagamento", "HTTPS"\)/);
+});
+
+test('renderPlantUml faz roundtrip da hierarquia e da tecnologia', () => {
+  const graph = sampleGraph();
+  graph.elements[2].parent_element_id = 's1';
+  graph.elements[3].parent_element_id = 'c1';
+  graph.edges[1].technology = 'HTTPS';
+
+  const workspace = parsePlantUmlWorkspace(renderPlantUml(graph));
+  const byIdentifier = new Map(workspace.elements.map((element) => [element.identifier, element]));
+
+  assert.equal(byIdentifier.get('e2')!.parentIdentifier, 'e1');
+  assert.equal(byIdentifier.get('e3')!.parentIdentifier, 'e2');
+  assert.deepEqual(byIdentifier.get('e0')!.tags, ['externo']);
+  assert.equal(workspace.relationships[1].technology, 'HTTPS');
+});
+
+test('renderPlantUml usa identificadores canônicos como aliases', () => {
+  const graph = sampleGraph();
+  graph.elements[1].identifier = 'loja';
+  graph.elements[2].identifier = 'api';
+  graph.elements[3].identifier = 'pagamentos';
+
+  const plantuml = renderPlantUml(graph);
+  // Sem identificador o fallback continua sendo e0.
+  assert.match(plantuml, /Person\(e0, "Cliente"/);
+  assert.match(plantuml, /System\(loja, "Loja"/);
+  assert.match(plantuml, /Rel\(api, pagamentos, "processa pagamento"\)/);
 });
 
 test('renderDrawio inclui IDs estáveis e arestas conectadas', () => {
