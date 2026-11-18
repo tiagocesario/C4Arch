@@ -168,10 +168,14 @@ java -jar plantuml.jar -charset UTF-8 -Dplantuml.include.path=./puml diagrama.pu
   `POST /api/models/{id}/import/plantuml`.
 - Exportar o modelo como C4-PlantUML: formato `plantuml` em
   `/api/models/{id}/export/plantuml` (`.puml`).
-- O importador lê um subconjunto de C4-PlantUML (elementos, relações, título e
-  tipo de visão). Ele **não** preserva boundaries, tags, sprites nem URLs.
+- O importador lê um subconjunto de C4-PlantUML (elementos, relações, título,
+  `$tags`, tecnologia, fronteiras/blocos aninhados e tipo de visão). Ele **não**
+  preserva sprites, links/URLs nem `AddElementTag`. Fronteiras não têm tipo
+  próprio: viram o elemento estrutural do nível para manter a hierarquia.
 - Ao gerar conteúdo para o C4Arch, use aliases estáveis, macros suportadas e
-  `!include <C4/...>`; evite construções que o parser não entende.
+  `!include <C4/...>`; evite construções que o parser não entende. A exportação
+  reusa o `identifier` canônico como alias, então exportar → editar → aplicar
+  mantém os mesmos identificadores.
 
 Detalhes de contrato, limitações e exemplos: `references/integracao-c4arch.md`.
 

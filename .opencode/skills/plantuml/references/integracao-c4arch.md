@@ -79,7 +79,11 @@ Importa/substitui o conteúdo de um modelo existente.
 ```
 
 - `mode`: `replace` (padrão) ou `merge`.
-- `replace` apaga elementos/relações/views anteriores do modelo.
+- `replace` substitui elementos e relações do modelo. Views existentes são
+  preservadas (a view do import é atualizada por upsert), e elementos com o
+  mesmo `identifier` mantêm o id canônico — com isso o layout manual das views
+  preservadas e os vínculos com apps/serviços continuam válidos. Elementos que
+  saíram do diagrama são removidos.
 - `merge` casa elementos por `identifier` e atualiza os existentes; relações
   são recriadas.
 - Exige permissão de escrita no modelo.
@@ -144,6 +148,12 @@ O parser percorre as declarações lógicas do diagrama:
 | `Database`, `Queue` | `container` |
 | `Interface`, `UseCase`, `Artifact` | `component` |
 
+Fronteiras (`System_Boundary`, `Container_Boundary`, `Enterprise_Boundary` e
+`Boundary`) não existem como tipo no C4Arch: viram o elemento estrutural do seu
+nível (`software_system`, `container` ou `component`) para preservar a
+hierarquia. Por isso elas aparecem na exportação como `System(...)`,
+`Container(...)` ou `Component(...)` com bloco.
+
 5. Relações: macros `Rel*`/`BiRel` e setas genéricas `-->`, `..>`, `<--`,
    `<|--` e equivalentes. A direção das setas reversas é preservada;
    `Rel_Back*` inverte a direção e `BiRel*` cria uma relação em cada sentido.
@@ -152,12 +162,14 @@ Argumentos:
 
 - `splitArgs` respeita aspas e parênteses aninhados.
 - Macros aceitam posição (`alias`, `label`, ...) ou nomes (`$alias`, `$label`,
-  `$descr`, `$technology`).
+  `$descr`, `$technology`, `$tags`).
 - 1º argumento é o **alias**; aliases repetidos são ignorados.
 - `Person`/`System`: 2º = nome, 3º = descrição.
 - `Container`/`Component`: 2º = nome, 3º = **tecnologia**, 4º = descrição.
 - `Rel`: 1º origem, 2º destino, 3º rótulo, 4º tecnologia.
-- `tags`, `url` e `parentIdentifier` ficam vazios.
+- `$tags` (separadas por `+`, `,` ou `;`) viram `tags` canônicas.
+- `parentIdentifier` é o elemento do bloco/boundary que contém a declaração.
+- `$sprite`, `$link`, `$url` e propriedades arbitrárias continuam ignorados.
 
 ### Views
 
@@ -178,23 +190,30 @@ Uma única view, com chave `default`. O tipo é inferido do texto:
 - `elements`/`edges` (legado, usado pelo canvas);
 - `model_elements`/`model_relationships`/`model_views` (canônico);
 - `model_view_layout` e posições com autolayout (`LR`, `gapX=90`,
-  `gapY=32`);
+  `gapY=32`). Em `replace`, só as views do import são reposicionadas; views
+  preservadas mantêm o layout manual;
 - `model_state` sincronizado com o grafo aplicado (Yjs durável);
 - XML draw.io inicial;
 - título, descrição (`caption`) e `c4_type` quando informados. O `title` do
   PlantUML atualiza o título do modelo quando a requisição não envia um título
   explícito; o `caption` atualiza a descrição persistida.
 
+Em `replace`, elementos com o mesmo `identifier` reaproveitam o id canônico,
+preservando `model_view_layout`, vínculos com apps/serviços e referências. O que
+não aparece no diagrama é removido depois do upsert. Views que não vieram do
+import não são apagadas.
+
 Relações cujo destino/origem não foi importado (ou self-loop) são contadas em
 `skippedRelationships`.
 
 ## Limitações do parser
 
-- **Sem hierarquia de boundaries.** `System_Boundary`, `Container_Boundary`,
-  `Enterprise_Boundary` e `Boundary` são ignoradas; os elementos internos são
-  importados sem pai.
-- **Sem tags, sprites, links ou propriedades.** `$tags`, `$sprite`, `$link` e
-  `AddElementTag` não são lidos.
+- **Sem tipo próprio para boundaries.** Fronteiras viram o elemento estrutural
+  do nível; o desenho exportado mostra uma caixa a mais em relação ao
+  `*_Boundary` original.
+- **Sprites, links e propriedades não são lidos.** `$sprite`, `$link`, `$url`,
+  `AddElementTag` e propriedades arbitrárias são ignorados; `$tags` na própria
+  declaração é suportado.
 - **`RelIndex` e `BiRel_D` não são suportados.** `RelIndex` e variantes
   `BiRel_*` diferentes de `BiRel` são ignorados.
 - **Índices de relação são ignorados.** `$index` não é confundido com a
@@ -215,7 +234,8 @@ Relações cujo destino/origem não foi importado (ou self-loop) são contadas e
 - [ ] Aliases sem espaços, hífens ou acentos.
 - [ ] `Container`/`Component` com tecnologia no 3º argumento.
 - [ ] Relações com verbo e, quando fizer sentido, tecnologia no 4º.
-- [ ] Sem `$index`, `RelIndex`, `BiRel_D` ou tags.
+- [ ] `$tags` opcional, separadas por `+` (`$tags="externo+critico"`).
+- [ ] Sem `$index`, `RelIndex` ou `BiRel_D`.
 - [ ] `title` opcional, mas consistente com o nome do modelo.
 
 Exemplo mínimo importável:
@@ -238,17 +258,20 @@ Rel(api, banco, "Lê e grava", "SQL")
 @enduml
 ```
 
-Resultado: 4 elementos, 3 relações, 1 view `container`; `System_Boundary`
-ignorada.
+Resultado: 5 elementos (a fronteira `loja` vira um `software_system` pai de
+`web`, `api` e `banco`), 3 relações e 1 view `container`.
 
 ## Exportação (`renderPlantUml`)
 
 - Escolhe o include pelo maior nível presente: `C4_Component.puml` se houver
   componente, senão `C4_Container.puml` se houver container, senão
   `C4_Context.puml`.
-- Emite `Person`, `System`, `Container` ou `Component` com aliases `e0`, `e1`,
-  ...
-- Emite `Rel` com rótulo e tecnologia quando existirem.
+- Emite `Person`, `System`, `Container` ou `Component` usando o `identifier`
+  canônico como alias; sem identificador, cai em `e0`, `e1`, ... Aliases são
+  sanitizados (sem espaços/acentos) e desambiguados quando colidem.
+- Reproduz a hierarquia com blocos aninhados a partir de
+  `parent_element_id`.
+- Reemite `$tags`, tecnologia de elemento e tecnologia da relação.
 - Inclui `title` e `caption`.
 - Usa `!include <C4/C4_...>`; a biblioteca C4 é empacotada no servidor
   PlantUML e funciona sem acesso externo.
@@ -264,7 +287,9 @@ ignorada.
   aplicadas.
 - O canvas é sincronizado pela operação realtime `replaceModel` após a
   importação; a API também atualiza o `model_state` durável com o snapshot
-  persistido.
+  persistido. O projetor preserva `identifier`, `url`, `tags`, hierarquia e
+  tecnologia das relações, que o Yjs não transporta, e ignora flush com hash
+  desatualizado.
 
 ## MCP
 
@@ -293,7 +318,7 @@ ferramenta de exportação com `format: "plantuml"`.
 | Elemento sumiu | macro não suportada, alias repetido ou referência que não corresponde a um elemento |
 | Tecnologia no lugar errado | 3º argumento de `Person`/`System` é descrição |
 | Relação não importada | origem/destino não existe, self-loop ou `BiRel_D` |
-| Estrutura achatada | boundaries não são importadas |
+| Estrutura achatada | o fonte não usa blocos `{ ... }` (fronteiras e aninhamento são preservados) |
 | `413` | conteúdo acima de 5 MB |
 | `403` | usuário sem papel de escrita |
 | `404` | `folderId`/`parentId`/modelo fora da organização |
@@ -301,8 +326,12 @@ ferramenta de exportação com `format: "plantuml"`.
 ## Testes
 
 - `apps/api/test/plantuml-import.test.ts` cobre detecção, elementos,
-  tecnologia, relações, comentários, aliases repetidos e templates.
-- `apps/api/test/exporters.test.ts` cobre a escolha do include e a saída
-  PlantUML.
+  tecnologia, relações, `$tags`, boundaries/aninhamento, comentários, aliases
+  repetidos e templates.
+- `apps/api/test/exporters.test.ts` cobre a escolha do include, aliases
+  canônicos, hierarquia, tags, tecnologia das relações e round-trip
+  exportar → importar.
+- `apps/api/test/projector.test.ts` cobre a preservação de detalhes canônicos
+  (`identifier`, `url`, `tags`, pai e tecnologia) durante a projeção do Yjs.
 - `apps/web/test/components.test.tsx` cobre o painel de importação.
 - `apps/web/e2e/app.spec.ts` cobre o fluxo de UI.
