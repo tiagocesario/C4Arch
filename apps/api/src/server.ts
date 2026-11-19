@@ -7,7 +7,8 @@ import { pool } from './db.js';
 import { metricsMiddleware, renderMetrics } from './observability/metrics.js';
 import { requestContext } from './observability/http.js';
 import { idempotencyMiddleware } from './security/idempotency.js';
-import { buildOpenApiDocument, renderDocsHtml } from './openapi.js';
+import { buildOpenApiDocument, renderDocsHtml, renderDocsScript } from './openapi.js';
+import { hasSessionCookie } from './auth/session-cookie.js';
 import { ApiError, errorBody } from './errors.js';
 
 const app = express();
@@ -30,9 +31,22 @@ app.use(requestContext);
 app.use(metricsMiddleware);
 app.use(
   helmet({
-    // A página do draw.io precisa incorporar o embed.diagrams.net; a CSP dela
-    // é definida explicitamente no controller.
-    contentSecurityPolicy: false,
+    // CSP padrão restritiva para a API (respostas JSON). Páginas que precisam
+    // de política própria (draw.io e Swagger) sobrescrevem o header na rota.
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        'default-src': ["'self'"],
+        'base-uri': ["'none'"],
+        'object-src': ["'none'"],
+        'frame-ancestors': ["'none'"],
+        'script-src': ["'self'"],
+        'style-src': ["'self'", "'unsafe-inline'"],
+        'img-src': ["'self'", 'data:', 'blob:'],
+        'connect-src': ["'self'"],
+        'font-src': ["'self'", 'data:'],
+      },
+    },
     crossOriginEmbedderPolicy: false,
   })
 );
@@ -49,9 +63,34 @@ app.use(
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'X-Request-Id'],
     exposedHeaders: ['X-Request-Id', 'Idempotency-Replayed', 'Content-Disposition'],
+    credentials: true,
     maxAge: 600,
   })
 );
+
+/**
+ * CSRF para autenticação por cookie: SameSite=Lax já bloqueia POST cross-site
+ * na maioria dos navegadores, e aqui rejeitamos explicitamente metadados de
+ * requisição cross-site. Requisições com Bearer não usam cookie e seguem.
+ */
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  if (req.headers.authorization?.startsWith('Bearer ')) return next();
+  if (!hasSessionCookie(req)) return next();
+
+  const origin = req.headers.origin;
+  if (origin) {
+    // O `Origin` não é forjável por páginas web; a allowlist do CORS é a
+    // autoridade. Isso também cobre deployments cross-site legítimos.
+    if (!config.corsOrigins.includes(origin)) {
+      return res.status(403).json({ error: 'Origem não permitida' });
+    }
+  } else if (req.headers['sec-fetch-site'] === 'cross-site') {
+    // Sem `Origin`, um POST cross-site é rejeitado pelo metadado do navegador.
+    return res.status(403).json({ error: 'Requisição cross-site bloqueada' });
+  }
+  return next();
+});
 
 // Importação de arquivos draw.io e autosave do editor podem enviar XML de
 // vários megabytes. Essas rotas recebem um parser próprio, com limite maior,
@@ -125,7 +164,18 @@ app.get('/api/openapi.json', (_req, res) => {
 });
 app.get('/api/docs', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  // Swagger UI é carregado de CDN fixada (com SRI); o script de inicialização
+  // é servido pela própria API para não exigir 'unsafe-inline'.
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'none'; script-src 'self' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https://unpkg.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  );
   return res.type('text/html; charset=utf-8').send(renderDocsHtml());
+});
+app.get('/api/docs-init.js', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  return res.type('application/javascript; charset=utf-8').send(renderDocsScript());
 });
 
 const apiLimiter = rateLimit({

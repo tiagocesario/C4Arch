@@ -1,8 +1,11 @@
 import type { NextFunction, Request, Response } from 'express';
 import { verifyDrawioToken, verifySessionToken } from './tokens.js';
+import { readSessionCookie } from './session-cookie.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: { id: string; email: string; role: string };
+  /** Como o chamador se autenticou; usado pelo guard de CSRF. */
+  authSource?: 'bearer' | 'cookie';
 }
 
 function unauthorized(res: Response) {
@@ -15,23 +18,29 @@ function forbidden(res: Response) {
 
 export function verifyToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return unauthorized(res);
+  let token: string | null = null;
+  let source: 'bearer' | 'cookie' = 'bearer';
+
+  if (header && header.startsWith('Bearer ')) {
+    token = header.slice('Bearer '.length).trim();
+  } else {
+    token = readSessionCookie(req);
+    source = 'cookie';
   }
 
-  const token = header.slice('Bearer '.length).trim();
   if (!token) return unauthorized(res);
 
   const user = verifySessionToken(token);
   if (!user) return forbidden(res);
 
   req.user = user;
+  req.authSource = source;
   return next();
 }
 
 /**
- * Aceita o token de sessão via header (uso interno/API) ou o token escopado
- * de 5 minutos na query string (abertura do editor no navegador).
+ * Aceita o token de sessão via header/cookie (uso interno/API) ou o token
+ * escopado de 5 minutos na query string (abertura do editor no navegador).
  */
 export function verifyDrawioAccess(
   req: AuthenticatedRequest,

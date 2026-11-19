@@ -57,16 +57,15 @@ export async function callOperation<T>(
   for (const [key, value] of Object.entries(params)) {
     path = path.replace(`{${key}}`, encodeURIComponent(String(value)));
   }
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('c4arch_token') : null;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string> | undefined),
   };
-  if (token) headers.Authorization = 'Bearer ' + token;
   const response = await fetch(API_BASE + path, {
     ...init,
     method: operation.method,
     headers,
+    credentials: 'include',
     body: body === undefined ? init.body : JSON.stringify(body),
   });
   if (!response.ok) {

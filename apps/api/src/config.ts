@@ -80,6 +80,27 @@ function readOrigins(): string[] {
 
 const seedDemo = readBoolean('SEED_DEMO', !isProduction);
 
+type SameSite = 'lax' | 'strict' | 'none';
+
+function readSameSite(): SameSite {
+  const value = (process.env.COOKIE_SAMESITE ?? 'lax').trim().toLowerCase();
+  if (value === 'lax' || value === 'strict' || value === 'none') return value;
+  throw new Error('COOKIE_SAMESITE deve ser lax, strict ou none.');
+}
+
+const cookieSameSite = readSameSite();
+const cookieSecure = readBoolean('COOKIE_SECURE', isProduction);
+
+if (cookieSameSite === 'none' && !cookieSecure) {
+  throw new Error('COOKIE_SAMESITE=none exige COOKIE_SECURE=true (cookies SameSite=None precisam de Secure).');
+}
+
+function readSessionCookieMaxAgeMs(): number {
+  const fallback = 7 * 24 * 60 * 60 * 1000;
+  const parsed = Number(process.env.SESSION_COOKIE_MAX_AGE_MS ?? fallback);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
+}
+
 export const config = {
   nodeEnv,
   isProduction,
@@ -87,6 +108,12 @@ export const config = {
   jwtIssuer: 'c4arch',
   jwtExpiresIn: (process.env.JWT_EXPIRES_IN ?? '7d') as SignOptions['expiresIn'],
   corsOrigins: readOrigins(),
+  /** Sessão em cookie HttpOnly (o Bearer continua aceito para clientes de API). */
+  sessionCookieName: process.env.SESSION_COOKIE_NAME?.trim() || 'c4arch_session',
+  cookieSecure,
+  cookieSameSite,
+  cookieDomain: process.env.COOKIE_DOMAIN?.trim() || undefined,
+  sessionCookieMaxAgeMs: readSessionCookieMaxAgeMs(),
   allowRegistration: readBoolean('ALLOW_REGISTRATION', !isProduction),
   seedDemo,
   demoAdminPassword: readDemoAdminPassword(seedDemo),

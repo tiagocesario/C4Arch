@@ -45,7 +45,7 @@ function setSecurityHeaders(res) {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
-      "connect-src 'self' http: https: ws: wss:",
+      `connect-src ${resolveConnectSrc()}`,
       "frame-src https://viewer.diagrams.net https://embed.diagrams.net https://app.diagrams.net",
       "object-src 'none'",
       "base-uri 'self'",
@@ -53,6 +53,38 @@ function setSecurityHeaders(res) {
       "frame-ancestors 'none'",
     ].join('; ')
   );
+}
+
+function originOf(value) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Origens permitidas em `connect-src`. Restringir a API/WS evita que um XSS
+ * use `fetch` para exfiltrar dados para qualquer host.
+ */
+function resolveConnectSrc() {
+  const configured = [process.env.API_ORIGIN, process.env.WS_ORIGIN]
+    .map(originOf)
+    .filter(Boolean);
+
+  const extra = (process.env.CSP_CONNECT_SRC ?? '')
+    .split(/[\s,]+/)
+    .filter((value) => /^(https?|wss?):\/\/[^\s;]+$/i.test(value));
+
+  const origins = [...new Set([...configured, ...extra])];
+  if (origins.length > 0) return ["'self'", ...origins].join(' ');
+
+  return process.env.NODE_ENV === 'production'
+    ? "'self'"
+    : "'self' http://localhost:4000 ws://localhost:4001";
 }
 
 function sendError(res, status, message) {

@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import type { SignOptions } from 'jsonwebtoken';
+import { randomUUID } from 'node:crypto';
 import { config } from '../config.js';
 
 export interface TokenUser {
@@ -86,6 +87,53 @@ export function verifyDrawioToken(token: string, modelId: string): TokenUser | n
       email: typeof decoded.email === 'string' ? decoded.email : '',
       role: 'editor',
     };
+  } catch {
+    return null;
+  }
+}
+
+export interface WsTicket {
+  userId: string;
+  jti: string;
+}
+
+/**
+ * Ticket efêmero (30 s) para abrir o WebSocket.
+ *
+ * O cliente troca o ticket por um token de sessão no servidor realtime; assim
+ * o JWT de sessão nunca aparece na query string/logs do handshake. O `jti`
+ * permite uso único do ticket no endpoint de troca.
+ */
+export function signWsTicket(userId: string, expiresIn: SignOptions['expiresIn'] = '30s'): string {
+  return jwt.sign(
+    { id: userId, purpose: 'ws', jti: randomUUID() },
+    config.jwtSecret,
+    {
+      algorithm: 'HS256',
+      expiresIn,
+      issuer: config.jwtIssuer,
+      audience: 'c4arch-ws',
+    }
+  );
+}
+
+export function verifyWsTicket(token: string): WsTicket | null {
+  try {
+    const decoded = jwt.verify(token, config.jwtSecret, {
+      algorithms: ['HS256'],
+      issuer: config.jwtIssuer,
+      audience: 'c4arch-ws',
+    }) as jwt.JwtPayload;
+
+    if (
+      decoded.purpose !== 'ws' ||
+      typeof decoded.id !== 'string' ||
+      typeof decoded.jti !== 'string'
+    ) {
+      return null;
+    }
+
+    return { userId: decoded.id, jti: decoded.jti };
   } catch {
     return null;
   }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildOpenApiDocument, renderDocsHtml } from '../src/openapi.js';
+import { buildOpenApiDocument, renderDocsHtml, renderDocsScript } from '../src/openapi.js';
 import { ApiError, errorBody } from '../src/errors.js';
 
 const doc = buildOpenApiDocument();
@@ -59,8 +59,9 @@ test('exportação aceita todos os formatos implementados', () => {
 
 test('renderDocsHtml referencia o JSON e o Swagger UI', () => {
   const html = renderDocsHtml();
-  assert.match(html, /SwaggerUIBundle/);
-  assert.match(html, /\/api\/openapi\.json/);
+  assert.match(html, /\/api\/docs-init\.js/);
+  assert.match(html, /integrity="sha384-/);
+  assert.match(renderDocsScript(), /\/api\/openapi\.json/);
 });
 
 test('ApiError e errorBody preservam o contrato error/code', () => {
