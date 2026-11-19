@@ -10,7 +10,10 @@ export const AuditController = {
     try {
       const role = await getOrgRole(req.user!.id, orgId);
       if (role !== 'owner') return res.status(403).json({ error: 'Apenas owner pode ver a auditoria' });
-      const limit = Math.min(Number(req.query.limit ?? 100), 500);
+      const requested = Number(req.query.limit ?? 100);
+      const limit = Number.isFinite(requested)
+        ? Math.min(Math.max(1, Math.trunc(requested)), 500)
+        : 100;
       const result = await pool.query(
         `SELECT id, org_id, actor_id, actor_email, action, entity_type, entity_id, metadata, created_at
            FROM audit_log

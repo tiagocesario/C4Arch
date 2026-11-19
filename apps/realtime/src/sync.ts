@@ -419,25 +419,34 @@ export function attachWebsocket(httpServer: Server) {
       return role === 'owner' || role === 'editor';
     }
 
-    // Valida o token de sessão contra a API. Mensagens que chegam durante a
-    // validação ficam aguardando a mesma promise, sem serem perdidas.
+    // O handshake traz um ticket efêmero (30 s, uso único), não o JWT de
+    // sessão. Trocamos o ticket por um token de sessão que fica apenas na
+    // memória deste processo e é usado nas chamadas à API.
     const authReady: Promise<boolean> = (async () => {
       if (allowAnonymous) return true;
 
-      let token: string | null = null;
+      let ticket: string | null = null;
       try {
         const url = new URL(req.url ?? '/ws', 'http://localhost');
-        token = url.searchParams.get('token');
+        ticket = url.searchParams.get('ticket');
       } catch {
         return false;
       }
-      if (!token) return false;
+      if (!ticket) return false;
 
-      const response = await apiFetchWithToken('/api/auth/me', token);
-      if (!response?.ok) return false;
-
-      sessionToken = token;
-      return true;
+      try {
+        const response = await fetch(`${apiUrl.replace(/\/+$/, '')}/api/auth/ws-exchange`, {
+          method: 'POST',
+          headers: { 'X-WS-Ticket': ticket },
+        });
+        if (!response.ok) return false;
+        const body = (await response.json()) as { token?: unknown };
+        if (typeof body.token !== 'string' || !body.token) return false;
+        sessionToken = body.token;
+        return true;
+      } catch {
+        return false;
+      }
     })();
 
     void authReady.then((authenticated) => {

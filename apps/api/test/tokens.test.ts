@@ -6,8 +6,14 @@ import assert from 'node:assert/strict';
 process.env.JWT_SECRET = 'test-only-secret-with-at-least-32-characters-123456';
 process.env.NODE_ENV = 'test';
 
-const { signDrawioToken, signSessionToken, verifyDrawioToken, verifySessionToken } =
-  await import('../src/auth/tokens.js');
+const {
+  signDrawioToken,
+  signSessionToken,
+  signWsTicket,
+  verifyDrawioToken,
+  verifySessionToken,
+  verifyWsTicket,
+} = await import('../src/auth/tokens.js');
 
 const USER_ID = '11111111-1111-4111-8111-111111111111';
 const MODEL_ID = '22222222-2222-4222-8222-222222222222';
@@ -46,4 +52,27 @@ test('token adulterado é rejeitado', () => {
   const token = signSessionToken({ id: USER_ID, email: 'user@example.com' });
   const tampered = token.slice(0, -2) + (token.endsWith('aa') ? 'bb' : 'aa');
   assert.equal(verifySessionToken(tampered), null);
+});
+
+test('ticket do WebSocket tem propósito próprio e jti', () => {
+  const ticket = signWsTicket(USER_ID);
+  const claims = verifyWsTicket(ticket);
+  assert.equal(claims?.userId, USER_ID);
+  assert.ok(claims && claims.jti.length >= 16);
+});
+
+test('ticket do WebSocket não é aceito como sessão nem como draw.io', () => {
+  const ticket = signWsTicket(USER_ID);
+  assert.equal(verifySessionToken(ticket), null);
+  assert.equal(verifyDrawioToken(ticket, MODEL_ID), null);
+});
+
+test('sessão não é aceita como ticket do WebSocket', () => {
+  const token = signSessionToken({ id: USER_ID, email: 'user@example.com' });
+  assert.equal(verifyWsTicket(token), null);
+});
+
+test('ticket do WebSocket expirado é rejeitado', () => {
+  const ticket = signWsTicket(USER_ID, '-1s');
+  assert.equal(verifyWsTicket(ticket), null);
 });

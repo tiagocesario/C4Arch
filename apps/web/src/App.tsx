@@ -10,6 +10,7 @@ import {
   updateModelDAS,
   updateElement,
   login,
+  logout,
   me,
   listFolders,
   createFolder,
@@ -411,24 +412,13 @@ export default function App() {
   }
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const urlToken = urlParams.get('token');
-    if (urlToken) {
-      localStorage.setItem('c4arch_token', urlToken);
-      urlParams.delete('token');
-      const next = urlParams.toString();
-      window.history.replaceState({}, '', window.location.pathname + (next ? '?' + next : ''));
-    }
+    // Versões antigas guardavam o JWT em localStorage; a sessão agora é um
+    // cookie HttpOnly e nunca é lida pelo JavaScript.
+    localStorage.removeItem('c4arch_token');
 
     let cancelled = false;
 
     (async () => {
-      const token = localStorage.getItem('c4arch_token');
-      if (!token) {
-        ws.setToken(null);
-        setBooting(false);
-        return;
-      }
       // Lê a tela salva ANTES de qualquer setState. O efeito de persistência
       // dispara assim que `loggedIn` vira true e, sem isso, sobrescreveria o
       // estado salvo com `list`/`null` antes da restauração.
@@ -455,7 +445,7 @@ export default function App() {
         setCurrentRole(session.org?.role ?? null);
         setOrgName(session.org?.name ?? '');
         setOrgId(session.org?.id ?? '');
-        ws.setToken(token);
+        ws.setAuthenticated(true);
         const list = await listModels();
         if (cancelled) return;
         setModels(list);
@@ -491,7 +481,7 @@ export default function App() {
         if (cancelled) return;
         localStorage.removeItem('c4arch_token');
         localStorage.removeItem('c4arch_session');
-        ws.setToken(null);
+        ws.setAuthenticated(false);
       } finally {
         if (!cancelled) setBooting(false);
       }
@@ -635,9 +625,8 @@ export default function App() {
 
   useEffect(() => {
     if (!loggedIn || mode !== 'domains' || !orgId) return;
-    const token = localStorage.getItem('c4arch_token');
     fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains?orgId=' + encodeURIComponent(orgId), {
-      headers: { Authorization: 'Bearer ' + (token ?? '') },
+      credentials: 'include',
     })
       .then((r) => r.json())
       .then((data) => setDomainRules(Array.isArray(data) ? data : []))
@@ -648,7 +637,8 @@ export default function App() {
     localStorage.removeItem('c4arch_token');
     localStorage.removeItem('c4arch_session');
     localStorage.removeItem('c4arch_view');
-    ws.setToken(null);
+    void logout().catch(() => undefined);
+    ws.setAuthenticated(false);
     setLoggedIn(false);
     setOrgId('');
     setOrgName('');
@@ -665,10 +655,8 @@ export default function App() {
     e.preventDefault();
     setError(null);
     try {
-      const { token, user } = await login(email, password);
-      localStorage.setItem('c4arch_token', token);
-      localStorage.setItem('c4arch_session', JSON.stringify({ email: user.email }));
-      ws.setToken(token);
+      const { user } = await login(email, password);
+      ws.setAuthenticated(true);
       setLoggedIn(true);
       setPassword('');
       setEmail(user.email);
@@ -1548,14 +1536,14 @@ export default function App() {
                 </select>
                 <button type="button" style={primaryButtonStyle} onClick={async () => {
                   if (!newDomain.trim() || !orgId) return;
-                  const token = localStorage.getItem('c4arch_token');
                   await fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (token ?? '') },
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ orgId, domain: newDomain.trim(), role: newDomainRole }),
                   });
                   setNewDomain('');
-                  const r = await fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains?orgId=' + encodeURIComponent(orgId), { headers: { Authorization: 'Bearer ' + (token ?? '') } });
+                  const r = await fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains?orgId=' + encodeURIComponent(orgId), { credentials: 'include' });
                   setDomainRules(await r.json());
                 }}>Adicionar</button>
               </div>
@@ -1564,8 +1552,7 @@ export default function App() {
                   <div key={rule.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 8, border: '1px solid #2a2f3a', borderRadius: 6 }}>
                     <span>{rule.domain} - {rule.role}</span>
                     <button type="button" style={buttonStyle} onClick={async () => {
-                      const token = localStorage.getItem('c4arch_token');
-                      await fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains/' + rule.id, { method: 'DELETE', headers: { Authorization: 'Bearer ' + (token ?? '') } });
+                      await fetch((import.meta.env.VITE_API_URL ?? 'http://localhost:4000') + '/api/auth/domains/' + rule.id, { method: 'DELETE', credentials: 'include' });
                       setDomainRules(domainRules.filter((r) => r.id !== rule.id));
                     }}>Remover</button>
                   </div>

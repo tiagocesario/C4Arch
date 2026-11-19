@@ -29,22 +29,16 @@ const API = (import.meta.env.VITE_API_URL ?? 'http://localhost:4000');
 
 type Raw = Record<string, unknown>;
 
-function getToken(): string | null {
-  return localStorage.getItem('c4arch_token');
-}
-
 async function request(path: string, options?: RequestInit): Promise<Response> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getToken();
-  if (token) {
-    headers.Authorization = 'Bearer ' + token;
-  }
   if (options && options.headers) {
     Object.assign(headers, options.headers as Record<string, string>);
   }
   const res = await fetch(API + path, {
     ...options,
     headers,
+    // A sessão viaja em cookie HttpOnly.
+    credentials: 'include',
   });
   if (!res.ok) {
     let msg = 'Requisição falhou: ' + res.status;
@@ -219,6 +213,11 @@ export const login = async (email: string, password: string) => {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
+};
+
+/** Encerra a sessão no servidor (limpa o cookie HttpOnly). */
+export const logout = async (): Promise<void> => {
+  await request('/api/auth/logout', { method: 'POST' });
 };
 
 export const me = () => req<MeResponse>('/api/auth/me');
@@ -544,8 +543,7 @@ export const listAppDependencies = async (id: string): Promise<AssetDependency[]
 
 export const downloadAppLibrary = async (orgId: string): Promise<void> => {
   const url = API + '/api/apps/library?orgId=' + encodeURIComponent(orgId);
-  const token = getToken();
-  const res = await fetch(url, { headers: token ? { Authorization: 'Bearer ' + token } : {} });
+  const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error('Falha ao baixar biblioteca');
   const blob = await res.blob();
   const link = document.createElement('a');

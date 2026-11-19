@@ -28,6 +28,7 @@ export let connected = false;
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:4001';
 const WS_PATH = import.meta.env.VITE_WS_PATH ?? '/ws';
+const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000';
 
 // Modelo que o cliente quer acompanhar. Preservado entre reconexões.
 let pendingModelId: string | null = null;
@@ -42,8 +43,8 @@ let reconnectAttempt = 0;
 // Operações enviadas enquanto o socket ainda não estava aberto.
 let pendingOps: string[] = [];
 
-// Token de sessão usado para autenticar a conexão WebSocket.
-let authToken: string | null = null;
+// Sessão habilitada (cookie HttpOnly). O ticket do WS é buscado a cada conexão.
+let sessionEnabled = false;
 
 let onConnectionChange: ((connected: boolean) => void) | null = null;
 
@@ -99,10 +100,28 @@ function scheduleReconnect() {
   }, delay);
 }
 
-export function setToken(token: string | null) {
-  authToken = token;
+/**
+ * Busca um ticket efêmero no backend. O JWT de sessão fica no cookie HttpOnly
+ * e nunca é lido pelo JavaScript.
+ */
+async function fetchTicket(): Promise<string | null> {
+  try {
+    const response = await fetch(API_URL + '/api/auth/ws-ticket', {
+      method: 'POST',
+      credentials: 'include',
+    });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { ticket?: unknown };
+    return typeof body.ticket === 'string' && body.ticket ? body.ticket : null;
+  } catch {
+    return null;
+  }
+}
 
-  if (!token) {
+export function setAuthenticated(value: boolean) {
+  sessionEnabled = value;
+
+  if (!value) {
     disconnect();
     return;
   }
@@ -124,16 +143,25 @@ export function setToken(token: string | null) {
   connect();
 }
 
-export function connect() {
-  if (!authToken) return;
+export async function connect() {
+  if (!sessionEnabled) return;
   if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
     return;
   }
 
   closedManually = false;
   const currentGeneration = ++generation;
+  const ticket = await fetchTicket();
+  // A sessão pode ter sido encerrada (ou outra conexão iniciada) enquanto o
+  // ticket era buscado; nesse caso o resultado é descartado.
+  if (!sessionEnabled || currentGeneration !== generation) return;
+  if (!ticket) {
+    scheduleReconnect();
+    return;
+  }
+
   const ws = new WebSocket(
-    `${WS_URL}${WS_PATH}?token=${encodeURIComponent(authToken)}`
+    `${WS_URL}${WS_PATH}?ticket=${encodeURIComponent(ticket)}`
   );
   socket = ws;
   ws.binaryType = 'blob';
@@ -188,8 +216,8 @@ export function connect() {
     socket = null;
     notifyConnection(false);
 
-    // 1008 = política de autenticação. Não insiste com token inválido.
-    if (event.code === 1008 || !authToken) {
+    // 1008 = política de autenticação. Não insiste com ticket inválido.
+    if (event.code === 1008 || !sessionEnabled) {
       closedManually = true;
       return;
     }
@@ -225,18 +253,20 @@ export function sendOp(op: Record<string, unknown>) {
  * nesse modelo. Atualizar o CRDT evita que o editor reabra com o desenho
  * antigo e que o projetor sobrescreva no Postgres o conteúdo recém-aplicado.
  */
-export function pushModelSnapshot(
+export async function pushModelSnapshot(
   modelId: string,
   elements: Element[],
   edges: Edge[]
 ): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!authToken) {
-      resolve(false);
-      return;
-    }
+  if (!sessionEnabled) return false;
 
-    const ws = new WebSocket(`${WS_URL}${WS_PATH}?token=${encodeURIComponent(authToken)}`);
+  const ticket = await fetchTicket();
+  if (!ticket) return false;
+  // A sessão pode ter sido encerrada enquanto o ticket era buscado.
+  if (!sessionEnabled) return false;
+
+  return new Promise((resolve) => {
+    const ws = new WebSocket(`${WS_URL}${WS_PATH}?ticket=${encodeURIComponent(ticket)}`);
     let settled = false;
 
     const finish = (ok: boolean) => {
@@ -342,7 +372,7 @@ export function redo() {
 
 export function disconnect() {
   closedManually = true;
-  authToken = null;
+  sessionEnabled = false;
   generation += 1;
   pendingOps = [];
   pendingModelId = null;

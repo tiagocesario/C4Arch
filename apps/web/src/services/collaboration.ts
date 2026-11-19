@@ -3,17 +3,11 @@
 
 const API = import.meta.env?.VITE_API_URL ?? 'http://localhost:4000';
 
-function getToken(): string | null {
-  return localStorage.getItem('c4arch_token');
-}
-
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = getToken();
-  if (token) headers.Authorization = 'Bearer ' + token;
   Object.assign(headers, (options.headers as Record<string, string> | undefined) ?? {});
 
-  const res = await fetch(API + path, { ...options, headers });
+  const res = await fetch(API + path, { ...options, headers, credentials: 'include' });
   if (!res.ok) {
     let message = 'Requisição falhou: ' + res.status;
     try {
@@ -29,10 +23,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 async function requestBlob(path: string): Promise<Blob> {
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) headers.Authorization = 'Bearer ' + token;
-  const res = await fetch(API + path, { headers });
+  const res = await fetch(API + path, { credentials: 'include' });
   if (!res.ok) throw new Error('Falha ao baixar arquivo: ' + res.status);
   return res.blob();
 }
@@ -221,12 +212,11 @@ export async function renderPlantUmlPreview(
   content: string,
   signal?: AbortSignal
 ): Promise<string> {
-  const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = 'Bearer ' + token;
   const res = await fetch(API + '/api/plantuml/render', {
     method: 'POST',
     headers,
+    credentials: 'include',
     body: JSON.stringify({ content }),
     signal,
   });

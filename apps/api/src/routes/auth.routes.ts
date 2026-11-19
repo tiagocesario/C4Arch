@@ -2,7 +2,14 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { AuthService } from '../auth/service.js';
 import { verifyToken, AuthenticatedRequest } from '../auth/middleware.js';
-import { signSessionToken } from '../auth/tokens.js';
+import { signSessionToken, signWsTicket, verifyWsTicket } from '../auth/tokens.js';
+import {
+  clearOauthStateCookie,
+  clearSessionCookie,
+  readOauthStateCookie,
+  setOauthStateCookie,
+  setSessionCookie,
+} from '../auth/session-cookie.js';
 import { config } from '../config.js';
 import { pool } from '../db.js';
 
@@ -34,6 +41,7 @@ router.post('/register', async (req, res) => {
   try {
     const user = await AuthService.register(email, name, password);
     const token = signSessionToken({ id: user.id, email: user.email, role: 'editor' });
+    setSessionCookie(res, token);
     return res.status(201).json({ token, user });
   } catch (err) {
     const message = err instanceof Error ? err.message : '';
@@ -55,6 +63,7 @@ router.post('/login', async (req, res) => {
 
   try {
     const result = await AuthService.login(email, password);
+    setSessionCookie(res, result.token);
     return res.json(result);
   } catch {
     // Mensagem genérica: não revela se o e-mail existe.
@@ -95,7 +104,71 @@ router.get('/me', verifyToken, async (req: AuthenticatedRequest, res) => {
 });
 
 
+// Logout: limpa o cookie de sessão. Tokens Bearer continuam válidos até
+// expirar (clientes de API são responsáveis por descartá-los).
+router.post('/logout', (_req, res) => {
+  clearSessionCookie(res);
+  return res.status(204).end();
+});
+
+/**
+ * Emite um ticket efêmero para o handshake do WebSocket. O cliente troca o
+ * ticket por um token de sessão no endpoint de exchange, que roda entre o
+ * realtime e a API — o JWT de sessão nunca vai para a query string do browser.
+ */
+router.post('/ws-ticket', verifyToken, (req: AuthenticatedRequest, res) => {
+  const ticket = signWsTicket(req.user!.id);
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({ ticket, expiresIn: 30 });
+});
+
+const usedWsTickets = new Map<string, number>();
+const WS_TICKET_REUSE_WINDOW_MS = 60_000;
+
+function pruneUsedWsTickets() {
+  const now = Date.now();
+  for (const [jti, expiresAt] of usedWsTickets) {
+    if (expiresAt <= now) usedWsTickets.delete(jti);
+  }
+}
+
+/** Troca (uma única vez) o ticket do WebSocket por um token de sessão. */
+router.post('/ws-exchange', async (req, res) => {
+  const raw = req.headers['x-ws-ticket'];
+  const ticket = typeof raw === 'string' ? raw : '';
+  if (!ticket) return res.status(401).json({ error: 'Ticket ausente' });
+
+  const claims = verifyWsTicket(ticket);
+  if (!claims) return res.status(401).json({ error: 'Ticket inválido ou expirado' });
+
+  pruneUsedWsTickets();
+  if (usedWsTickets.has(claims.jti)) {
+    return res.status(401).json({ error: 'Ticket já utilizado' });
+  }
+  // Marca antes do await para que duas trocas concorrentes não passem.
+  usedWsTickets.set(claims.jti, Date.now() + WS_TICKET_REUSE_WINDOW_MS);
+
+  try {
+    const result = await pool.query('SELECT id, email FROM users WHERE id = $1', [claims.userId]);
+    const user = result.rows[0];
+    if (!user) return res.status(401).json({ error: 'Usuário não encontrado' });
+
+    const token = signSessionToken({ id: user.id, email: user.email, role: 'editor' });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ token });
+  } catch (err) {
+    console.error('[auth] ws exchange error', err);
+    return res.status(500).json({ error: 'Falha ao trocar ticket' });
+  }
+});
+
 const oauthStates = new Map();
+
+function safeEqual(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 function pruneOauthStates() {
   const now = Date.now();
@@ -111,6 +184,10 @@ router.get('/google', (req, res) => {
   pruneOauthStates();
   const state = crypto.randomBytes(24).toString('hex');
   oauthStates.set(state, { createdAt: Date.now() });
+  // O state também vai em cookie HttpOnly: o callback só aceita o par
+  // state-da-URL + state-do-cookie, impedindo login CSRF (um atacante não
+  // consegue plantar um state válido no navegador da vítima).
+  setOauthStateCookie(res, state);
 
   const params = new URLSearchParams({
     client_id: config.googleClientId,
@@ -127,7 +204,10 @@ router.get('/google', (req, res) => {
 router.get('/google/callback', async (req, res) => {
   const code = typeof req.query.code === 'string' ? req.query.code : '';
   const state = typeof req.query.state === 'string' ? req.query.state : '';
-  if (!code || !state || !oauthStates.has(state)) {
+  const cookieState = readOauthStateCookie(req);
+  clearOauthStateCookie(res);
+  pruneOauthStates();
+  if (!code || !state || !cookieState || !safeEqual(state, cookieState) || !oauthStates.has(state)) {
     return res.status(400).json({ error: 'Estado OAuth inválido ou expirado' });
   }
   oauthStates.delete(state);
@@ -194,9 +274,10 @@ router.get('/google/callback', async (req, res) => {
     );
 
     const token = signSessionToken({ id: user.id, email: user.email, role: rule.role });
-    const redirectUrl = new URL(config.frontendUrl);
-    redirectUrl.searchParams.set('token', token);
-    return res.redirect(redirectUrl.toString());
+    setSessionCookie(res, token);
+    // O JWT não vai na URL: o SPA detecta a sessão chamando /api/auth/me com
+    // o cookie HttpOnly.
+    return res.redirect(config.frontendUrl);
   } catch (err) {
     console.error('[auth] google callback error', err);
     return res.status(500).json({ error: 'Erro ao concluir login com Google' });

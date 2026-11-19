@@ -218,6 +218,28 @@ export class ViewsController {
         return res.status(403).json({ error: 'Sem permissão para alterar este modelo' });
       }
 
+      // O layout só pode posicionar elementos do próprio modelo. Sem esta
+      // checagem, um `elementId` de outro modelo passaria pela FK de
+      // `model_view_layout` e contaminaria a view.
+      const elementIds = [
+        ...new Set(
+          items
+            .map((item) => item.elementId)
+            .filter((value): value is string => typeof value === 'string')
+        ),
+      ];
+      if (elementIds.length > 0) {
+        const owned = await pool.query(
+          `SELECT id FROM model_elements WHERE model_id = $1 AND id = ANY($2::uuid[])
+           UNION
+           SELECT id FROM elements WHERE model_id = $1 AND id = ANY($2::uuid[])`,
+          [id, elementIds]
+        );
+        if (owned.rows.length !== elementIds.length) {
+          return res.status(400).json({ error: 'elementId não pertence ao modelo' });
+        }
+      }
+
       const view = await ensureView(id, key, String(model.c4_type ?? 'container'), String(model.title ?? ''));
       const client = await pool.connect();
       try {
