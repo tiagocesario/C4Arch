@@ -65,6 +65,38 @@ const KIND_BY_GENERIC_DECLARATION: Record<string, CanonicalElementKind> = {
   artifact: 'component',
 };
 
+/**
+ * Declarações de elemento comuns do PlantUML que não têm equivalência no
+ * modelo C4Arch. Elas são registradas para que uma importação `replace` não
+ * descarte silenciosamente parte do diagrama.
+ */
+const UNSUPPORTED_GENERIC_ELEMENT_KEYWORDS = new Set([
+  'abstract',
+  'agent',
+  'card',
+  'circle',
+  'class',
+  'collections',
+  'diamond',
+  'entity',
+  'enum',
+  'file',
+  'hexagon',
+  'mainframe',
+  'map',
+  'object',
+  'participant',
+  'person',
+  'port',
+  'protocol',
+  'query',
+  'service',
+  'stack',
+  'state',
+  'storage',
+  'system',
+]);
+
 const RELATION_MACROS = new Set([
   'rel',
   'rel_u',
@@ -114,6 +146,14 @@ const BOUNDARY_MACROS = new Set([
   'component_boundary',
 ]);
 
+/** Macros C4 cujo nome indica um elemento, mas que não são suportados. */
+function looksLikeUnsupportedElementMacro(macro: string): boolean {
+  if (UNSUPPORTED_GENERIC_ELEMENT_KEYWORDS.has(macro)) return true;
+  return /^(?:component|container|deployment|infrastructure|node|person|service|software|system)(?:_|$)/.test(
+    macro
+  );
+}
+
 /**
  * Formas de seta genéricas aceitas pelo PlantUML.
  *
@@ -161,7 +201,10 @@ const GENERIC_ARROWS = [
 ];
 
 interface ParsedArguments {
+  /** Argumentos sem nome, na ordem em que apareceram. */
   positional: string[];
+  /** Todos os argumentos, incluindo os nomeados, para respeitar a posição C4. */
+  slots: string[];
   named: Map<string, string>;
 }
 
@@ -224,7 +267,7 @@ function parseArguments(args: string[]): ParsedArguments {
     }
   }
 
-  return { positional, named };
+  return { positional, slots: args, named };
 }
 
 function unquote(value: string | undefined): string {
@@ -247,6 +290,13 @@ function namedValue(
   for (const name of names) {
     const value = args.named.get(name);
     if (value !== undefined) return value;
+  }
+  // `slots` preserva a posição original mesmo quando há argumentos nomeados
+  // antes de um argumento posicional (por exemplo `$tags` + `$descr`). Um slot
+  // que já contém outro argumento nomeado não pode ser usado como posicional.
+  const slot = args.slots[positionalIndex];
+  if (slot !== undefined && !/^\s*\$?[A-Za-z][A-Za-z0-9_]*\s*=/.test(slot)) {
+    return slot;
   }
   return args.positional[positionalIndex];
 }
@@ -732,12 +782,14 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
       relationships: [],
       views: [],
       unrecognizedRelationships: [],
+      unrecognizedElements: [],
     };
   }
 
   const elements: ImportedElement[] = [];
   const relationships: ImportedRelationship[] = [];
   const unrecognizedRelationships: string[] = [];
+  const unrecognizedElements: string[] = [];
   const identifiers = new Set<string>();
   const aliasToIdentifier = new Map<string, string>();
   const labelToIdentifier = new Map<string, string>();
@@ -888,7 +940,21 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         // estrutural do seu nível (sistema, container ou componente) para
         // preservar a hierarquia no modelo canônico e na exportação.
         // `Boundary(alias, label, type)` informa o nível no terceiro argumento.
-        const boundaryType = unquote(namedValue(args, ['type'], 2) ?? '').toLowerCase();
+        // Na exportação, `Type:Technology` preserva também a tecnologia, que
+        // as boundaries específicas do C4 não possuem como argumento.
+        const boundaryTypeValue = unquote(
+          namedValue(args, ['type'], 2) ?? ''
+        ).trim();
+        const technologySeparator = boundaryTypeValue.indexOf(':');
+        const boundaryType = (
+          technologySeparator >= 0
+            ? boundaryTypeValue.slice(0, technologySeparator)
+            : boundaryTypeValue
+        ).trim().toLowerCase();
+        const boundaryTechnology =
+          technologySeparator >= 0
+            ? boundaryTypeValue.slice(technologySeparator + 1).trim() || null
+            : null;
         const boundaryKind: CanonicalElementKind =
           macro === 'container_boundary' || boundaryType.includes('container')
             ? 'container'
@@ -900,8 +966,19 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         );
         const label =
           unquote(namedValue(args, ['label', 'name', 'title'], 1) ?? '') || alias;
+        const descriptionIndex = macro === 'boundary' ? 5 : 4;
+        const boundaryDescription = unquote(
+          namedValue(args, ['descr', 'description'], descriptionIndex) ?? ''
+        ) || null;
         if (alias && !identifiers.has(alias)) {
-          addElement(alias, label, boundaryKind, null, null, parseTags(args));
+          addElement(
+            alias,
+            label,
+            boundaryKind,
+            boundaryDescription,
+            macro === 'boundary' ? boundaryTechnology : null,
+            parseTags(args)
+          );
         }
         openScope(alias || currentScope());
         continue;
@@ -947,6 +1024,12 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         continue;
       }
 
+      if (looksLikeUnsupportedElementMacro(macro)) {
+        unrecognizedElements.push(line);
+        openScope(null);
+        continue;
+      }
+
       openScope(null);
     }
 
@@ -959,7 +1042,13 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         if (declaration) {
           addElement(declaration.alias, declaration.label, kind, null, null);
           openScope(declaration.alias);
+        } else {
+          unrecognizedElements.push(line);
         }
+        continue;
+      }
+      if (UNSUPPORTED_GENERIC_ELEMENT_KEYWORDS.has(keyword)) {
+        unrecognizedElements.push(line);
         continue;
       }
     }
@@ -1002,5 +1091,6 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
     relationships,
     views: [view],
     unrecognizedRelationships,
+    unrecognizedElements,
   };
 }

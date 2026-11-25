@@ -17,6 +17,22 @@ import { PLANTUML_TEMPLATES } from '../c4/plantuml-templates.js';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_IMPORT_BYTES = 5_000_000;
 
+/**
+ * Verifica se o conteúdo é o template oficial em branco. Título e caption
+ * podem ser editados; qualquer outra declaração transforma a criação em um
+ * diagrama potencialmente parcial.
+ */
+function isOfficialBlankPlantUml(content: string): boolean {
+  const blank = PLANTUML_TEMPLATES.find((template) => template.id === 'blank');
+  if (!blank) return false;
+  const normalize = (source: string): string =>
+    source
+      .replace(/^\s*(?:title|caption)(?:\s|\().*$/gim, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  return normalize(content) === normalize(blank.content);
+}
+
 function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);
 }
@@ -117,8 +133,10 @@ export class ImportController {
       const guard = validatePlantUmlImport({
         elements: workspace.elements,
         unrecognizedRelationships: workspace.unrecognizedRelationships,
+        unrecognizedElements: workspace.unrecognizedElements,
         mode,
         hasExistingModel: false,
+        allowEmpty: isOfficialBlankPlantUml(content),
       });
       if (!guard.ok) {
         return res.status(400).json({ error: guard.error });
@@ -205,6 +223,7 @@ export class ImportController {
       const guard = validatePlantUmlImport({
         elements: workspace.elements,
         unrecognizedRelationships: workspace.unrecognizedRelationships,
+        unrecognizedElements: workspace.unrecognizedElements,
         mode,
         hasExistingModel: true,
       });

@@ -95,7 +95,11 @@ pré-visualização é renderizada no servidor, nunca no navegador:
   `parent_element_id` e relações no formato C4 (`endArrow=blockThin`). Assim um
   modelo importado do PlantUML abre no draw.io já no padrão C4, em vez de caixas
   genéricas.
-
+- **Sincronização draw.io → modelo**: ao salvar no editor draw.io, a API executa
+  `syncModelFromDrawio`, que faz upsert dos elementos e relações no modelo
+  canônico/legado, regenera o DAS e invalida o estado colaborativo. Componentes
+  inseridos/editados no draw.io se refletem automaticamente no código
+  C4-PlantUML gerado.
 - **Aplicação consistente**: o Postgres é a fonte de verdade, mas o canvas lê o
   documento Yjs. Ao aplicar, a API devolve o snapshot persistido e o painel
   envia `replaceModel` pelo WebSocket: na conexão principal quando o editor está

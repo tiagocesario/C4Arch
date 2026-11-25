@@ -235,6 +235,27 @@ function plantUmlTags(tags: string[]): string {
   return tags.length > 0 ? `, $tags="${escapePlantUml(tags.join('+'))}"` : '';
 }
 
+/**
+ * Boundaries oficiais do C4-PlantUML aceitam descrição, mas não technology.
+ * A descrição é emitida no argumento nativo `$descr`; a tecnologia é
+ * preservada no tipo da macro genérica `Boundary` (ver `boundaryTypeLabel`).
+ */
+function plantUmlBoundaryDescription(description: string | null): string {
+  if (!description || !description.trim()) return '';
+  return `, $descr=${quotePlantUmlText(description)}`;
+}
+
+/** Tipo exibido na boundary; tecnologia separada por `:` é recuperada no import. */
+function boundaryTypeLabel(kind: Kind, technology: string | null): string {
+  const label =
+    kind === 'software_system'
+      ? 'Software System'
+      : kind === 'container'
+        ? 'Container'
+        : 'Component';
+  return technology ? `${label}:${technology}` : label;
+}
+
 function dateStamp(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -734,12 +755,27 @@ export function renderPlantUml(graph: ModelGraph): string {
     // exatamente como no draw.io. Sem isso o preview aninharia um `System(...)`
     // dentro de outro e o nível apareceria como caixa sólida em vez de fronteira.
     if (children.length > 0 && elementKind !== 'person') {
-      if (elementKind === 'software_system') {
-        lines.push(`${indent}System_Boundary(${id}, "${name}"${tags}) {`);
+      const boundaryName = quotePlantUmlText(element.title);
+      const boundaryDescription = plantUmlBoundaryDescription(element.description);
+      if (technology) {
+        // As boundaries específicas do C4 não têm argumento de technology.
+        // A macro `Boundary` é oficial e permite exibir o tipo/technology no
+        // rótulo; o importador recupera os dois campos separadamente.
+        lines.push(
+          `${indent}Boundary(${id}, ${boundaryName}, ${quotePlantUmlText(boundaryTypeLabel(elementKind, technology))}${tags}${boundaryDescription}) {`
+        );
+      } else if (elementKind === 'software_system') {
+        lines.push(
+          `${indent}System_Boundary(${id}, ${boundaryName}${tags}${boundaryDescription}) {`
+        );
       } else if (elementKind === 'container') {
-        lines.push(`${indent}Container_Boundary(${id}, "${name}"${tags}) {`);
+        lines.push(
+          `${indent}Container_Boundary(${id}, ${boundaryName}${tags}${boundaryDescription}) {`
+        );
       } else {
-        lines.push(`${indent}Boundary(${id}, "${name}", "Component"${tags}) {`);
+        lines.push(
+          `${indent}Boundary(${id}, ${boundaryName}, ${quotePlantUmlText(boundaryTypeLabel(elementKind, null))}${tags}${boundaryDescription}) {`
+        );
       }
       for (const child of children) emit(child, depth + 1);
       lines.push(`${indent}}`);

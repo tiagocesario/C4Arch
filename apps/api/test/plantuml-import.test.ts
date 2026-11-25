@@ -342,6 +342,7 @@ test('guard permite criar modelo em branco, mas protege modelo existente', () =>
       unrecognizedRelationships: blank.unrecognizedRelationships,
       mode: 'replace',
       hasExistingModel: false,
+      allowEmpty: true,
     }).ok,
     true
   );

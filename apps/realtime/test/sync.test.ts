@@ -371,3 +371,31 @@ test('conflito recarrega o estado durável e descarta o snapshot local antigo', 
     ['Estado durável']
   );
 });
+
+test('falha ao recarregar após conflito preserva a edição local para retry', async () => {
+  const modelId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  flags.realtimePgState = 'on';
+  setApiBase('http://api.test', 'internal-token');
+  const entry = await loadModelEntry(modelId, 'Estado local');
+  entry.revisionBase = 7;
+  entry.dirty = true;
+  entry.undoStack = [Y.encodeStateAsUpdate(entry.doc)];
+
+  let getCount = 0;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === 'PUT') {
+      return jsonResponse({ error: 'conflito', currentRevision: 9 }, 409);
+    }
+    assert.match(String(input), /\/api\/internal\/models\/.+\/state$/);
+    getCount += 1;
+    return jsonResponse({ error: 'indisponível' }, 503);
+  }) as typeof fetch;
+
+  await flushState(modelId);
+
+  assert.equal(getCount, 1);
+  assert.equal(entry.dirty, true);
+  assert.equal(entry.revisionBase, 7);
+  assert.equal(entry.undoStack.length, 1);
+  assert.equal(entry.doc.getMap('elements').has(`old-${modelId}`), true);
+});

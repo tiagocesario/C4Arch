@@ -5,10 +5,14 @@ export interface PlantUmlImportGuardInput {
   elements: readonly unknown[];
   /** Relações que o parser não conseguiu interpretar. */
   unrecognizedRelationships?: readonly string[];
+  /** Declarações de elemento que o parser não conseguiu interpretar. */
+  unrecognizedElements?: readonly string[];
   /** `replace` substitui o conteúdo atual; `merge` preserva os elementos existentes. */
   mode: PlantUmlImportMode;
   /** Indica se a importação ocorre em um modelo já existente. */
   hasExistingModel: boolean;
+  /** Permite conteúdo vazio somente para o template oficial em branco. */
+  allowEmpty?: boolean;
 }
 
 export interface PlantUmlImportGuardResult {
@@ -27,12 +31,12 @@ export interface PlantUmlImportGuardResult {
 export function validatePlantUmlImport(
   input: PlantUmlImportGuardInput
 ): PlantUmlImportGuardResult {
-  const unrecognizedCount = input.unrecognizedRelationships?.length ?? 0;
-  if (unrecognizedCount > 0) {
+  const unrecognizedRelationshipCount = input.unrecognizedRelationships?.length ?? 0;
+  if (unrecognizedRelationshipCount > 0) {
     return {
       ok: false,
       error:
-        `Foram encontradas ${unrecognizedCount} relações PlantUML não suportadas. ` +
+        `Foram encontradas ${unrecognizedRelationshipCount} relações PlantUML não suportadas. ` +
         'A importação foi cancelada para não persistir um diagrama incompleto. ' +
         (input.hasExistingModel
           ? 'O modelo atual não foi alterado.'
@@ -40,10 +44,26 @@ export function validatePlantUmlImport(
     };
   }
 
+  const unrecognizedElementCount = input.unrecognizedElements?.length ?? 0;
+  if (unrecognizedElementCount > 0) {
+    return {
+      ok: false,
+      error:
+        `Foram encontradas ${unrecognizedElementCount} declarações de elemento PlantUML ` +
+        'não suportadas. A importação foi cancelada para não descartar parte do ' +
+        'diagrama. ' +
+        (input.hasExistingModel
+          ? 'O modelo atual não foi alterado.'
+          : 'Nenhum conteúdo foi alterado.'),
+    };
+  }
+
+  const emptyReplaceIsDestructive =
+    input.hasExistingModel && input.mode === 'replace';
+  const emptyCreationIsNotBlank = !input.hasExistingModel && !input.allowEmpty;
   if (
-    input.hasExistingModel &&
-    input.mode === 'replace' &&
-    input.elements.length === 0
+    input.elements.length === 0 &&
+    (emptyReplaceIsDestructive || emptyCreationIsNotBlank)
   ) {
     return {
       ok: false,
@@ -51,7 +71,9 @@ export function validatePlantUmlImport(
         'Nenhum elemento C4 foi reconhecido no código PlantUML. ' +
         'Use as macros C4 (Person, System, Container, Component) ou declarações ' +
         'PlantUML com alias (actor, rectangle, component, node...). ' +
-        'O modelo atual não foi alterado.',
+        (input.hasExistingModel
+          ? 'O modelo atual não foi alterado.'
+          : 'Use o template oficial em branco para criar um modelo vazio.'),
     };
   }
 

@@ -260,10 +260,13 @@ async function loadCanonicalDetails(
 
 async function readState(
   client: PoolClient,
-  modelId: string
+  modelId: string,
+  lockForProjection = false
 ): Promise<{ row: StateRow; model: LegacyModelRow } | null> {
   const stateResult = await client.query<StateRow>(
-    'SELECT state, revision, content_hash FROM model_state WHERE model_id = $1',
+    lockForProjection
+      ? 'SELECT state, revision, content_hash FROM model_state WHERE model_id = $1 FOR SHARE'
+      : 'SELECT state, revision, content_hash FROM model_state WHERE model_id = $1',
     [modelId]
   );
   const row = stateResult.rows[0];
@@ -283,9 +286,19 @@ export async function projectModel(
 ): Promise<ProjectionReport> {
   const mode = options.mode ?? 'shadow';
   const client = await pool.connect();
+  let transactionStarted = false;
 
   try {
-    const loaded = await readState(client, modelId);
+    if (mode === 'on') {
+      // O lock compartilhado da linha `model_state` impede uma importação
+      // autoritativa de confirmar entre a leitura do snapshot e a projeção.
+      // A importação aguarda o commit do projetor e então publica o estado
+      // novo, portanto o resultado final continua sendo o diagrama importado.
+      await client.query('BEGIN');
+      transactionStarted = true;
+    }
+
+    const loaded = await readState(client, modelId, mode === 'on');
     if (!loaded) {
       recordProjectionRun(mode, 'skipped');
       return {
@@ -357,12 +370,13 @@ export async function projectModel(
       return report;
     }
 
-    await client.query('BEGIN');
     try {
       await applyCanonicalSnapshot(client, expected, { prune: true });
       await client.query('COMMIT');
+      transactionStarted = false;
     } catch (err) {
       await client.query('ROLLBACK');
+      transactionStarted = false;
       throw err;
     }
 
@@ -384,9 +398,16 @@ export async function projectModel(
     recordProjectionRun(mode, report.ok ? 'ok' : 'divergent');
     return report;
   } catch (err) {
+    if (transactionStarted) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      transactionStarted = false;
+    }
     recordProjectionError();
     throw err;
   } finally {
+    if (transactionStarted) {
+      await client.query('ROLLBACK').catch(() => undefined);
+    }
     client.release();
   }
 }

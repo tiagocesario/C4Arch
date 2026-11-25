@@ -143,8 +143,14 @@ test('renderPlantUml preserva hierarquia, tags e tecnologia das relações', () 
 
   const plantuml = renderPlantUml(graph);
   assert.match(plantuml, /Person\(e0, "Cliente", "Compra produtos", \$tags="externo"\)/);
-  assert.match(plantuml, /System_Boundary\(e1, "Loja"\) \{/);
-  assert.match(plantuml, /\n {2}Container_Boundary\(e2, "API"\) \{/);
+  assert.match(
+    plantuml,
+    /System_Boundary\(e1, "Loja", \$descr="Sistema principal"\) \{/
+  );
+  assert.match(
+    plantuml,
+    /\n {2}Boundary\(e2, "API", "Container:Node\.js", \$descr="Backend"\) \{/
+  );
   assert.match(plantuml, /\n {4}Component\(e3, "Pagamentos"/);
   assert.match(plantuml, /Rel\(e2, e3, "processa pagamento", "HTTPS"\)/);
 });
@@ -161,6 +167,9 @@ test('renderPlantUml faz roundtrip da hierarquia e da tecnologia', () => {
   assert.equal(byIdentifier.get('e2')!.parentIdentifier, 'e1');
   assert.equal(byIdentifier.get('e3')!.parentIdentifier, 'e2');
   assert.deepEqual(byIdentifier.get('e0')!.tags, ['externo']);
+  assert.equal(byIdentifier.get('e1')!.description, 'Sistema principal');
+  assert.equal(byIdentifier.get('e2')!.description, 'Backend');
+  assert.equal(byIdentifier.get('e2')!.technology, 'Node.js');
   assert.equal(workspace.relationships[1].technology, 'HTTPS');
 });
 
@@ -253,15 +262,27 @@ test('renderPlantUml desenha elementos com filhos como boundaries C4 oficiais', 
   graph.elements[2].parent_element_id = 's1';
   const plantuml = renderPlantUml(graph);
 
-  assert.match(plantuml, /System_Boundary\(e1, "Loja"\) \{/);
+  assert.match(
+    plantuml,
+    /System_Boundary\(e1, "Loja", \$descr="Sistema principal"\) \{/
+  );
   assert.doesNotMatch(plantuml, /System\(e1, "Loja"/);
 
   const workspace = parsePlantUmlWorkspace(plantuml);
-  assert.equal(workspace.elements.some((element) => element.identifier === 'e1'), true);
+  const system = workspace.elements.find((element) => element.identifier === 'e1');
+  assert.equal(system?.description, 'Sistema principal');
 
   graph.elements[3].parent_element_id = 'c1';
   const containerParent = renderPlantUml(graph);
-  assert.match(containerParent, /Container_Boundary\(e2, /);
+  assert.match(
+    containerParent,
+    /Boundary\(e2, "API", "Container:Node\.js", \$descr="Backend"\) \{/
+  );
+  const roundtrip = parsePlantUmlWorkspace(containerParent);
+  const container = roundtrip.elements.find((element) => element.identifier === 'e2');
+  assert.equal(container?.kind, 'container');
+  assert.equal(container?.description, 'Backend');
+  assert.equal(container?.technology, 'Node.js');
 });
 
 test('renderDrawio representa a hierarquia do PlantUML como boundary C4', () => {

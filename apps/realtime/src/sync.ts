@@ -390,8 +390,10 @@ function clearPendingChanges(entry: ModelState): void {
  * dirty/undo/redo e todos os clientes recebem o estado autoritativo.
  */
 async function reloadAuthoritativeState(modelId: string, entry: ModelState): Promise<boolean> {
-  // Antes mesmo da leitura, o snapshot pendente deixa de ser persistível.
-  clearPendingChanges(entry);
+  // A edição local permanece pendente enquanto o estado autoritativo é lido.
+  // Se o GET falhar, ela não pode ser descartada: o próximo flush periódico
+  // tentará novamente com a mesma revisão-base.
+  entry.dirty = true;
 
   const durable = await getStateFromApi(modelId);
   if (!durable) {

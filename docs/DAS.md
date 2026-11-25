@@ -247,6 +247,12 @@ conexão dedicada quando veio da lista) e a API invalida o `model_state` daquele
 modelo. Essa etapa evita que o realtime reabra com o snapshot Yjs antigo ou que o
 projetor sobrescreva no Postgres o conteúdo aplicado.
 
+A sincronização também ocorre no sentido inverso: ao salvar no editor draw.io
+(`POST /api/models/:id/drawio/import`), a API executa `syncModelFromDrawio`, que
+faz upsert dos elementos e relações no modelo canônico/legado (casados por
+nome/kind e origem/destino), regenera o DAS e invalida o estado colaborativo.
+Assim, componentes inseridos/editados no draw.io se refletem automaticamente no
+código C4-PlantUML gerado.
 ---
 
 ## 7. Visão de componentes (C4 — Nível 3)
@@ -519,6 +525,7 @@ Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
 | 1.3.1 | 16/11/2026 | Time C4Arch | Exportação usa o include C4 local, erros de sintaxe do PlantUML chegam como diagrama no painel, entrada **Editar código (PlantUML)** na lista e CSP libera `blob:` para a pré-visualização |
 | 1.3.2 | 16/11/2026 | Time C4Arch | Aplicar PlantUML passa a sincronizar o documento colaborativo (`replaceModel` via WS) e invalida `model_state`, evitando reabrir com snapshot antigo ou perder o código aplicado no projetor |
 | 1.3.3 | 25/11/2026 | Time C4Arch | Modelos PlantUML passam a usar os ícones/shapes oficiais do C4 nas duas visualizações: pré-visualização (`ensureC4Include` + boundaries oficiais) e draw.io (`mxgraph.c4.person2`, cores do c4model.com, rótulos com placeholders, boundaries pontilhadas, relações C4); DAS regenerado e botão DAS disponível em todos os cards de modelo |
+| 1.3.4 | 25/11/2026 | Time C4Arch | Sincronização draw.io → modelo: ao salvar no draw.io, elementos e relações são sincronizados (upsert por nome/kind), o modelo canônico/legado e o DAS são atualizados e o estado colaborativo é invalidado, de modo que o código C4-PlantUML é regenerado automaticamente; corrigido `ORDER BY` inválido em `elements` |
 ---
 
 ## Anexo A — Como inserir a imagem do draw.io
