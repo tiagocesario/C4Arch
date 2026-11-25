@@ -229,12 +229,17 @@ flowchart TB
 | API → Web (biblioteca) | draw.io | data URL | XML `<mxlibrary>` | token escopado |
 
 A API só aceita o fonte PlantUML e a URL de renderização vem de
-`PLANTUML_RENDER_URL_TEMPLATE`; o cliente nunca escolhe o servidor. Quando o
+`PLANTUML_RENDER_URL_TEMPLATE`; o cliente nunca escolhe o servidor. Antes de
+codificar, a API chama `ensureC4Include` e injeta `!include <C4/...>` quando o
+texto usa macros C4 sem declará-lo, de modo que a pré-visualização sempre mostre
+os ícones oficiais do C4 model. Quando o
 PlantUML devolve `400` com um SVG (erro de sintaxe ou `!include` desconhecido), a
 API repassa esse desenho com `200 image/svg+xml` para que o painel mostre o erro
 do próprio PlantUML. A exportação usa o include empacotado no servidor
 (`!include <C4/C4_Context>`, `<C4/C4_Container>` ou `<C4/C4_Component>`), sem
-depender de acesso à internet.
+depender de acesso à internet. Boundaries oficiais (`System_Boundary`,
+`Container_Boundary`, `Boundary(..., "Component")`) preservam a hierarquia no
+preview.
 
 Aplicar o código atualiza o modelo canônico e também o documento colaborativo: o
 painel envia `replaceModel` pelo WebSocket (conexão principal no editor ou uma
@@ -513,7 +518,7 @@ Ver `.env.example`. Principais: `JWT_SECRET`, `POSTGRES_*`, `CORS_ORIGIN`,
 | 1.3.0 | 14/11/2026 | Time C4Arch | Intercâmbio por C4-PlantUML (importação, exportação e templates), painel de código com pré-visualização renderizada pela API e serviço `plantuml` no Compose (ADR-0025) |
 | 1.3.1 | 16/11/2026 | Time C4Arch | Exportação usa o include C4 local, erros de sintaxe do PlantUML chegam como diagrama no painel, entrada **Editar código (PlantUML)** na lista e CSP libera `blob:` para a pré-visualização |
 | 1.3.2 | 16/11/2026 | Time C4Arch | Aplicar PlantUML passa a sincronizar o documento colaborativo (`replaceModel` via WS) e invalida `model_state`, evitando reabrir com snapshot antigo ou perder o código aplicado no projetor |
-
+| 1.3.3 | 25/11/2026 | Time C4Arch | Modelos PlantUML passam a usar os ícones/shapes oficiais do C4 nas duas visualizações: pré-visualização (`ensureC4Include` + boundaries oficiais) e draw.io (`mxgraph.c4.person2`, cores do c4model.com, rótulos com placeholders, boundaries pontilhadas, relações C4); DAS regenerado e botão DAS disponível em todos os cards de modelo |
 ---
 
 ## Anexo A — Como inserir a imagem do draw.io
