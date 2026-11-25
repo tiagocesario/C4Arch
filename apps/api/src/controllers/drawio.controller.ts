@@ -8,6 +8,7 @@ import { parseDiagrams, resolveDiagramXml, withDiagramXml } from '../c4/diagrams
 import { isC4ModelType } from '../c4/model-types.js';
 import { loadModelGraph } from '../c4/model-graph.js';
 import { isUsableDrawioXml, renderDrawio } from '../c4/exporters.js';
+import { syncModelFromDrawio } from '../c4/drawio-sync.js';
 import {
   ASSET_MARKER_ID,
   ASSET_MARKER_KIND,
@@ -253,6 +254,15 @@ export class DrawioController {
           'UPDATE models SET diagrams = $1::jsonb, updated_at = NOW() WHERE id = $2',
           [JSON.stringify(diagrams), id]
         );
+      }
+
+      // Sincroniza o modelo canônico/legado a partir do XML salvo, de modo que
+      // componentes inseridos/editados no draw.io se reflitam no modelo e,
+      // consequentemente, no código C4-PlantUML gerado automaticamente.
+      try {
+        await syncModelFromDrawio(id, xml);
+      } catch (e) {
+        console.error('[drawio] sync model error', e);
       }
 
       // Regenera o DAS com todos os tipos de diagrama do modelo.

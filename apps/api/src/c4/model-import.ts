@@ -53,6 +53,8 @@ export interface ImportedWorkspace {
    * rejeitar a importação antes de criar ou apagar o grafo existente.
    */
   unrecognizedRelationships?: string[];
+  /** Declarações de elemento que o parser não conseguiu interpretar. */
+  unrecognizedElements?: string[];
 }
 
 const LEGACY_TYPE_BY_KIND: Record<CanonicalElementKind, string> = {
@@ -142,77 +144,80 @@ export async function persistDrawioArtifact(modelId: string): Promise<void> {
 }
 
 /**
- * Invalida o estado colaborativo durável (`model_state`) depois de uma
- * substituição autoritativa do modelo (importação/aplicação de PlantUML).
- *
- * O realtime hidrata o Yjs a partir de `model_state`. Se o snapshot antigo
- * permanecer, o editor reabre com o desenho anterior e o projetor pode
- * sobrescrever o conteúdo recém-aplicado no próximo flush. Sem a linha, o
- * próximo `join` volta a hidratar do modelo canônico.
- */
-export async function invalidateCollaborativeState(modelId: string): Promise<void> {
-  try {
-    await pool.query('DELETE FROM model_state WHERE model_id = $1', [modelId]);
-  } catch (error) {
-    // O canônico já foi confirmado; a invalidação é uma salvaguarda.
-    console.error('[imports] falha ao invalidar model_state:', error);
-  }
-}
-
-/**
  * Sincroniza o snapshot colaborativo durável com o modelo recém-aplicado.
  *
- * A aplicação de PlantUML é uma substituição autoritativa: além do Postgres,
- * o `model_state` precisa representar o mesmo grafo. Sem isso, uma sessão Yjs
- * antiga pode reidratar o desenho anterior e sobrescrever a alteração salva.
- * Se a sincronização falhar, remover o estado antigo ainda evita uma
- * hidratação obsoleta.
+ * A escrita usa a mesma transação da importação. Assim, o grafo canônico e o
+ * `model_state` mudam atomicamente e a revisão do estado avança no mesmo
+ * commit. Uma falha aqui reverte a importação inteira; nunca deixa um modelo
+ * novo divergente do snapshot Yjs antigo.
  */
-export async function syncCollaborativeState(modelId: string): Promise<void> {
-  try {
-    const graph = await loadModelGraph(modelId);
-    if (!graph) throw new Error('Modelo não encontrado');
+async function syncCollaborativeState(client: PoolClient, modelId: string): Promise<void> {
+  const elementResult = await client.query<{
+    id: string;
+    type: string;
+    title: string;
+    description: string | null;
+    metadata: unknown;
+    position_x: number | string | null;
+    position_y: number | string | null;
+    order: number | string | null;
+  }>(
+    `SELECT id, type, title, description, metadata, position_x, position_y, "order"
+       FROM elements
+      WHERE model_id = $1
+      ORDER BY "order", id`,
+    [modelId]
+  );
+  const edgeResult = await client.query<{
+    id: string;
+    from_id: string;
+    to_id: string;
+    label: string;
+    type: string;
+  }>(
+    `SELECT id, from_id, to_id, label, type
+       FROM edges
+      WHERE model_id = $1
+      ORDER BY created_at`,
+    [modelId]
+  );
 
-    const decoded = {
-      elements: graph.elements.map((element) => ({
-        id: element.id,
-        type: element.type,
-        title: element.title,
-        description: element.description,
-        metadata: element.metadata,
-        position_x: element.position_x,
-        position_y: element.position_y,
-        order: element.order,
-      })),
-      edges: graph.edges.map((edge) => ({
-        id: edge.id,
-        from_id: edge.from_id,
-        to_id: edge.to_id,
-        label: edge.label,
-        type: edge.type,
-      })),
-    };
-    const state = encodeModelState(decoded);
-    const stateVector = stateVectorOf(state);
-    const contentHash = computeStateContentHash(decoded);
+  const decoded = {
+    elements: elementResult.rows.map((element) => ({
+      id: element.id,
+      type: element.type,
+      title: element.title,
+      description: element.description,
+      metadata: element.metadata,
+      position_x: Number(element.position_x ?? 0),
+      position_y: Number(element.position_y ?? 0),
+      order: Number(element.order ?? 0),
+    })),
+    edges: edgeResult.rows.map((edge) => ({
+      id: edge.id,
+      from_id: edge.from_id,
+      to_id: edge.to_id,
+      label: edge.label,
+      type: edge.type,
+    })),
+  };
+  const state = encodeModelState(decoded);
+  const stateVector = stateVectorOf(state);
+  const contentHash = computeStateContentHash(decoded);
 
-    await pool.query(
-      `INSERT INTO model_state
-         (model_id, state, state_vector, content_hash, revision, updated_by)
-       VALUES ($1, $2, $3, $4, 1, NULL)
-       ON CONFLICT (model_id) DO UPDATE SET
-         state = EXCLUDED.state,
-         state_vector = EXCLUDED.state_vector,
-         content_hash = EXCLUDED.content_hash,
-         revision = model_state.revision + 1,
-         updated_at = NOW(),
-         updated_by = NULL`,
-      [modelId, Buffer.from(state), Buffer.from(stateVector), contentHash]
-    );
-  } catch (error) {
-    console.error('[imports] falha ao sincronizar model_state:', error);
-    await invalidateCollaborativeState(modelId);
-  }
+  await client.query(
+    `INSERT INTO model_state
+       (model_id, state, state_vector, content_hash, revision, updated_by)
+     VALUES ($1, $2, $3, $4, 1, NULL)
+     ON CONFLICT (model_id) DO UPDATE SET
+       state = EXCLUDED.state,
+       state_vector = EXCLUDED.state_vector,
+       content_hash = EXCLUDED.content_hash,
+       revision = model_state.revision + 1,
+       updated_at = NOW(),
+       updated_by = NULL`,
+    [modelId, Buffer.from(state), Buffer.from(stateVector), contentHash]
+  );
 }
 
 /**
@@ -490,6 +495,11 @@ export async function importWorkspaceIntoModel(
     }
     await client.query('UPDATE models SET updated_at = NOW() WHERE id = $1', [modelId]);
 
+    // O snapshot Yjs e o grafo canônico são confirmados no mesmo commit. A
+    // revisão de `model_state` avança atomicamente, fazendo um flush anterior
+    // receber `409` em vez de sobrescrever a importação.
+    await syncCollaborativeState(client, modelId);
+
     await client.query('COMMIT');
     transactionStarted = false;
 
@@ -497,7 +507,6 @@ export async function importWorkspaceIntoModel(
     // conteúdo persistido para gerar o desenho inicial. O advisory lock
     // continua retido até a sincronização autoritativa de `model_state`.
     await persistDrawioArtifact(modelId);
-    await syncCollaborativeState(modelId);
 
     return {
       modelId,

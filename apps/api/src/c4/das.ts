@@ -230,6 +230,7 @@ function parseShapeLabel(label: string, attributes: Record<string, string>): Sha
   let name = lines[0];
   let c4Kind = cleanText(attributes.c4Type) || 'Elemento';
   let rest = lines.slice(1);
+  let technology = '';
 
   const bracket = lines[0].match(/^\[([^\]]+?):\s*(.+?)\]$/);
   if (bracket) {
@@ -238,11 +239,20 @@ function parseShapeLabel(label: string, attributes: Record<string, string>): Sha
   } else {
     // Templates genéricos colocam nome e tipo na mesma linha
     // ("Site / App [Software System]"); remove o sufixo de tipo do nome.
-    const trailingType = name.match(/^(.*\S)\s*\[[^\]]*\]\s*$/);
-    if (trailingType) name = trailingType[1].trim();
+    const trailingType = name.match(/^(.*\S)\s*\[([^\]:]+)(?::\s*(.+?))?\]\s*$/);
+    if (trailingType) {
+      name = trailingType[1].trim();
+      const kindWord = trailingType[2].trim();
+      if (
+        kindWord.toLowerCase() === c4Kind.trim().toLowerCase() ||
+        C4_KIND_WORDS.has(kindWord.toLowerCase())
+      ) {
+        c4Kind = kindWord;
+      }
+      if (trailingType[3]) technology = trailingType[3].trim();
+    }
   }
 
-  let technology = '';
   let description = '';
   let nature: 'app' | 'service' | undefined;
 
