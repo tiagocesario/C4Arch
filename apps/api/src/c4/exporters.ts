@@ -70,6 +70,77 @@ const NODE_WIDTH = 190;
 const NODE_HEIGHT = 90;
 const MARGIN = 48;
 
+/**
+ * Dimensões e estilos oficiais da biblioteca C4 do draw.io.
+ *
+ * O desenho gerado a partir do PlantUML precisa continuar sendo um diagrama
+ * C4 quando aberto no editor: as shapes (person2, sistema, container e
+ * componente), as cores e o rótulo de três linhas seguem o padrão do draw.io.
+ */
+const DRAWIO_C4_SIZES: Record<Kind, { width: number; height: number }> = {
+  person: { width: 200, height: 180 },
+  software_system: { width: 240, height: 120 },
+  container: { width: 240, height: 120 },
+  component: { width: 240, height: 120 },
+};
+
+/**
+ * Pontos de conexão das shapes C4 oficiais (12 pontos no perímetro). Sem eles
+ * o draw.io não permite conectar relações nas laterais como na biblioteca.
+ */
+const DRAWIO_C4_POINTS =
+  'points=[[0.25,0,0],[0.5,0,0],[0.75,0,0],[1,0.25,0],[1,0.5,0],[1,0.75,0],[0.75,1,0],[0.5,1,0],[0.25,1,0],[0,0.75,0],[0,0.5,0],[0,0.25,0]];';
+
+/** Estilos copiados da paleta C4 oficial do draw.io (`Sidebar-C4.js`). */
+const DRAWIO_C4_STYLES: Record<Kind, string> = {
+  person:
+    'html=1;fontSize=11;dashed=0;whiteSpace=wrap;fillColor=#083F75;strokeColor=#06315C;fontColor=#ffffff;shape=mxgraph.c4.person2;align=center;metaEdit=1;resizable=0;' +
+    'points=[[0.5,0,0],[1,0.5,0],[1,0.75,0],[0.75,1,0],[0.5,1,0],[0.25,1,0],[0,0.75,0],[0,0.5,0]];',
+  software_system:
+    'rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fillColor=#1061B0;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0D5091;metaEdit=1;resizable=0;roundedPerimeter=1;' +
+    DRAWIO_C4_POINTS,
+  container:
+    'rounded=1;whiteSpace=wrap;html=1;fontSize=11;labelBackgroundColor=none;fillColor=#23A2D9;fontColor=#ffffff;align=center;arcSize=10;strokeColor=#0E7DAD;metaEdit=1;resizable=0;roundedPerimeter=1;' +
+    DRAWIO_C4_POINTS,
+  component:
+    'rounded=1;whiteSpace=wrap;html=1;labelBackgroundColor=none;fillColor=#63BEF2;fontColor=#ffffff;align=center;arcSize=6;strokeColor=#2086C9;metaEdit=1;resizable=0;roundedPerimeter=1;' +
+    DRAWIO_C4_POINTS,
+};
+
+/**
+ * Rótulos oficiais da biblioteca C4: o draw.io substitui `%c4Name%`,
+ * `%c4Type%`, `%c4Technology%` e `%c4Description%` pelos atributos do objeto.
+ */
+const DRAWIO_C4_LABEL: Record<Kind, string> = {
+  person:
+    '<font style="font-size: 16px"><b>%c4Name%</b></font><div>[%c4Type%]</div><br><div><font style="font-size: 11px"><font color="#cccccc">%c4Description%</font></div>',
+  software_system:
+    '<font style="font-size: 16px"><b>%c4Name%</b></font><div>[%c4Type%]</div><br><div><font style="font-size: 11px"><font color="#cccccc">%c4Description%</font></div>',
+  container:
+    '<font style="font-size: 16px"><b>%c4Name%</b></font><div>[%c4Type%: %c4Technology%]</div><br><div><font style="font-size: 11px"><font color="#E6E6E6">%c4Description%</font></div>',
+  component:
+    '<font style="font-size: 16px"><b>%c4Name%</b></font><div>[%c4Type%: %c4Technology%]</div><br><div><font style="font-size: 11px">%c4Description%</font></div>',
+};
+
+const DRAWIO_C4_TYPE: Record<Kind, string> = {
+  person: 'Person',
+  software_system: 'Software System',
+  container: 'Container',
+  component: 'Component',
+};
+
+/** Boundary oficial do draw.io (System/Container scope boundary). */
+const DRAWIO_C4_BOUNDARY_STYLE =
+  'rounded=1;fontSize=11;whiteSpace=wrap;html=1;dashed=1;arcSize=20;fillColor=none;strokeColor=#666666;fontColor=#333333;labelBackgroundColor=none;align=left;verticalAlign=bottom;labelBorderColor=none;spacingTop=0;spacing=10;dashPattern=8 4;metaEdit=1;rotatable=0;perimeter=rectanglePerimeter;noLabel=0;labelPadding=0;allowArrows=0;connectable=0;expand=0;recursiveResize=0;editable=1;pointerEvents=0;absoluteArcSize=1;' +
+  DRAWIO_C4_POINTS;
+
+const DRAWIO_C4_BOUNDARY_LABEL =
+  '<font style="font-size: 16px"><b><div style="text-align: left">%c4Name%</div></b></font><div style="text-align: left">[%c4Application%]</div>';
+
+/** Relação C4 oficial do draw.io. */
+const DRAWIO_C4_RELATIONSHIP_STYLE =
+  'endArrow=blockThin;html=1;fontSize=10;fontColor=#404040;strokeWidth=1;endFill=1;strokeColor=#828282;elbow=vertical;metaEdit=1;endSize=14;startSize=14;jumpStyle=arc;jumpSize=16;rounded=0;edgeStyle=orthogonalEdgeStyle;labelBackgroundColor=#ffffff;';
+
 const THEMES = {
   light: {
     background: '#ffffff',
@@ -189,6 +260,11 @@ function escapePlantUml(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, "'").replace(/\r?\n/g, ' ');
 }
 
+/** Texto de diretiva PlantUML entre aspas, com escapes explícitos. */
+function quotePlantUmlText(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\r?\n/g, ' ')}"`;
+}
+
 function escapeMermaid(value: string): string {
   return value.replace(/"/g, '&quot;').replace(/\r?\n/g, ' ');
 }
@@ -212,37 +288,74 @@ function wrapText(value: string, maxChars: number, maxLines = 3): string[] {
   return lines;
 }
 
-function resolveRenderedGraph(graph: ModelGraph): RenderedGraph {
+/** Duas caixas se sobrepõem quando os retângulos se cruzam em ambos os eixos. */
+function hasOverlappingBoxes(boxes: LayoutBox[]): boolean {
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i];
+      const b = boxes[j];
+      const overlapX = a.x < b.x + b.width && b.x < a.x + a.width;
+      const overlapY = a.y < b.y + b.height && b.y < a.y + a.height;
+      if (overlapX && overlapY) return true;
+    }
+  }
+  return false;
+}
+
+function resolveRenderedGraph(
+  graph: ModelGraph,
+  sizeFor: (kind: Kind) => { width: number; height: number } = () => ({
+    width: NODE_WIDTH,
+    height: NODE_HEIGHT,
+  }),
+  options: { reflowOnOverlap?: boolean } = {}
+): RenderedGraph {
   const elements = graph.elements;
   const stored = hasStoredLayout(
     elements.map((element) => ({ position_x: element.position_x, position_y: element.position_y }))
   );
 
-  let positions: Map<string, { x: number; y: number }>;
-  if (stored) {
-    positions = new Map(
-      elements.map((element) => [element.id, { x: element.position_x, y: element.position_y }])
-    );
-  } else {
+  const buildBoxes = (positions: Map<string, { x: number; y: number }>): LayoutBox[] =>
+    elements.map((element) => {
+      const position = positions.get(element.id) ?? { x: 0, y: 0 };
+      const kind = kindOf(element);
+      const size = sizeFor(kind);
+      return {
+        element,
+        kind,
+        x: position.x,
+        y: position.y,
+        width: size.width,
+        height: size.height,
+      };
+    });
+
+  const autoLayout = (nodeWidth: number, nodeHeight: number): Map<string, { x: number; y: number }> => {
     const auto = computeAutoLayout(
       elements.map((element) => ({ id: element.id, type: element.type, title: element.title })),
       graph.edges.map((edge) => ({ from: edge.from_id, to: edge.to_id })),
-      { direction: 'LR', nodeWidth: NODE_WIDTH, nodeHeight: NODE_HEIGHT, gapX: 90, gapY: 32 }
+      { direction: 'LR', nodeWidth, nodeHeight, gapX: 90, gapY: 32 }
     );
-    positions = new Map(auto.map((position) => [position.id, { x: position.x, y: position.y }]));
-  }
+    return new Map(auto.map((position) => [position.id, { x: position.x, y: position.y }]));
+  };
 
-  const boxes: LayoutBox[] = elements.map((element) => {
-    const position = positions.get(element.id) ?? { x: 0, y: 0 };
-    return {
-      element,
-      kind: kindOf(element),
-      x: position.x,
-      y: position.y,
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-    };
-  });
+  let boxes = buildBoxes(
+    stored
+      ? new Map(
+          elements.map((element) => [element.id, { x: element.position_x, y: element.position_y }])
+        )
+      : autoLayout(NODE_WIDTH, NODE_HEIGHT)
+  );
+
+  // As shapes oficiais do C4 são maiores que as caixas genéricas usadas pelo
+  // autolayout original. Um layout salvo pode, então, sobrepor duas pessoas ou
+  // um sistema e um container. Nesse caso o desenho é refeito com as dimensões
+  // reais para o editor abrir legível.
+  if (options.reflowOnOverlap && hasOverlappingBoxes(boxes)) {
+    const maxWidth = Math.max(...elements.map((element) => sizeFor(kindOf(element)).width));
+    const maxHeight = Math.max(...elements.map((element) => sizeFor(kindOf(element)).height));
+    boxes = buildBoxes(autoLayout(maxWidth, maxHeight));
+  }
 
   const boxById = new Map(boxes.map((box) => [box.element.id, box]));
   const edges = graph.edges
@@ -536,8 +649,10 @@ export function renderPlantUml(graph: ModelGraph): string {
   // `<C4/...>` não depende de acesso à internet (o include via raw.github
   // falhava com 400 em ambientes sem saída externa).
   lines.push(`!include <C4/${include}>`);
-  lines.push(`title ${escapePlantUml(modelTitle(graph))}`);
-  if (modelDescription(graph)) lines.push(`caption ${escapePlantUml(modelDescription(graph) ?? '')}`);
+  lines.push(`title ${quotePlantUmlText(modelTitle(graph))}`);
+  if (modelDescription(graph)) {
+    lines.push(`caption ${quotePlantUmlText(modelDescription(graph) ?? '')}`);
+  }
 
   const identifiers = new Map<string, string>();
   const usedAliases = new Set<string>();
@@ -609,33 +724,44 @@ export function renderPlantUml(graph: ModelGraph): string {
     const id = identifiers.get(element.id) ?? element.id;
     const indent = '  '.repeat(depth);
     const children = childrenByParent.get(element.id) ?? [];
-    const block = children.length > 0 ? ' {' : '';
     const name = escapePlantUml(element.title);
     const description = escapePlantUml(element.description ?? '');
     const technology = technologyOf(element);
     const tags = plantUmlTags(tagsOf(element));
+    const elementKind = kind(element);
 
-    switch (kind(element)) {
+    // Um elemento com filhos é desenhado como boundary oficial do C4-PlantUML,
+    // exatamente como no draw.io. Sem isso o preview aninharia um `System(...)`
+    // dentro de outro e o nível apareceria como caixa sólida em vez de fronteira.
+    if (children.length > 0 && elementKind !== 'person') {
+      if (elementKind === 'software_system') {
+        lines.push(`${indent}System_Boundary(${id}, "${name}"${tags}) {`);
+      } else if (elementKind === 'container') {
+        lines.push(`${indent}Container_Boundary(${id}, "${name}"${tags}) {`);
+      } else {
+        lines.push(`${indent}Boundary(${id}, "${name}", "Component"${tags}) {`);
+      }
+      for (const child of children) emit(child, depth + 1);
+      lines.push(`${indent}}`);
+      return;
+    }
+
+    switch (elementKind) {
       case 'person':
-        lines.push(`${indent}Person(${id}, "${name}", "${description}"${tags})${block}`);
+        lines.push(`${indent}Person(${id}, "${name}", "${description}"${tags})`);
         break;
       case 'software_system':
-        lines.push(`${indent}System(${id}, "${name}", "${description}"${tags})${block}`);
+        lines.push(`${indent}System(${id}, "${name}", "${description}"${tags})`);
         break;
       case 'container':
         lines.push(
-          `${indent}Container(${id}, "${name}", "${technology ? escapePlantUml(technology) : ''}", "${description}"${tags})${block}`
+          `${indent}Container(${id}, "${name}", "${technology ? escapePlantUml(technology) : ''}", "${description}"${tags})`
         );
         break;
       default:
         lines.push(
-          `${indent}Component(${id}, "${name}", "${technology ? escapePlantUml(technology) : ''}", "${description}"${tags})${block}`
+          `${indent}Component(${id}, "${name}", "${technology ? escapePlantUml(technology) : ''}", "${description}"${tags})`
         );
-    }
-
-    if (children.length > 0) {
-      for (const child of children) emit(child, depth + 1);
-      lines.push(`${indent}}`);
     }
   };
 
@@ -718,42 +844,185 @@ export function isUsableDrawioXml(xml: string | null | undefined): boolean {
   return /<mxfile[\s>]/i.test(trimmed) || /<mxGraphModel[\s>]/i.test(trimmed);
 }
 
-/** XML draw.io com IDs estáveis e posições do layout resolvido. */
+/*
+ * Rótulos oficiais do draw.io/C4 declarados em `DRAWIO_C4_LABEL` e
+ * `DRAWIO_C4_BOUNDARY_LABEL`. Os textos são resolvidos pelo próprio editor a
+ * partir de `c4Name`, `c4Type`, `c4Technology` e `c4Description`; o parser do
+ * DAS aplica os mesmos placeholders ao ler o XML.
+ */
+
+/** Rótulo oficial de relação: descrição em negrito e tecnologia entre colchetes. */
+function drawioRelationshipLabel(hasDescription: boolean, hasTechnology: boolean): string {
+  const description = hasDescription
+    ? '<div style="text-align: center"><b>%c4Description%</b></div>'
+    : '';
+  const technology = hasTechnology
+    ? '<div style="text-align: center">[%c4Technology%]</div>'
+    : '';
+  if (!description && !technology) return '';
+  return `<div style="text-align: left">${description}${technology}</div>`;
+}
+
+/**
+ * Mapeia filho → pai apenas para hierarquias que o draw.io consegue agrupar.
+ * Pessoas não são containers no C4 e ciclos são ignorados ao subir a árvore.
+ */
+function parentElementMap(elements: GraphElement[]): Map<string, string> {
+  const byId = new Map(elements.map((element) => [element.id, element]));
+  const parents = new Map<string, string>();
+
+  for (const element of elements) {
+    const parentId = element.parent_element_id;
+    if (!parentId || parentId === element.id) continue;
+    const parent = byId.get(parentId);
+    if (!parent || kindOf(parent) === 'person') continue;
+    parents.set(element.id, parentId);
+  }
+
+  return parents;
+}
+
+function isDescendantOf(
+  elementId: string,
+  ancestorId: string,
+  parents: Map<string, string>
+): boolean {
+  const seen = new Set<string>();
+  let cursor = parents.get(elementId);
+  while (cursor && !seen.has(cursor)) {
+    if (cursor === ancestorId) return true;
+    seen.add(cursor);
+    cursor = parents.get(cursor);
+  }
+  return false;
+}
+
+function hierarchyDepth(elementId: string, parents: Map<string, string>): number {
+  const seen = new Set<string>();
+  let depth = 0;
+  let cursor = parents.get(elementId);
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    depth += 1;
+    cursor = parents.get(cursor);
+  }
+  return depth;
+}
+
+/**
+ * XML draw.io no padrão C4.
+ *
+ * Usa as shapes oficiais da biblioteca C4 do draw.io (`person2`, sistema,
+ * container e componente), o rótulo de três linhas do C4 model, boundaries
+ * pontilhadas para a hierarquia preservada pelo PlantUML e o estilo oficial
+ * de relação. Os IDs estáveis (`c4archElementId`) continuam presentes para
+ * que o adapter e as inspeções reconheçam as formas.
+ */
 export function renderDrawio(graph: ModelGraph): string {
-  const rendered = resolveRenderedGraph(graph);
+  const rendered = resolveRenderedGraph(graph, (kind) => DRAWIO_C4_SIZES[kind], {
+    reflowOnOverlap: true,
+  });
   const offsetX = MARGIN;
   const offsetY = MARGIN + 42;
   const pageWidth = Math.ceil(rendered.width + 80);
   const pageHeight = Math.ceil(rendered.height + 120);
 
+  const boxById = new Map(rendered.boxes.map((box) => [box.element.id, box]));
+  const parents = parentElementMap(graph.elements);
+  const parentIds = new Set(parents.values());
+
   const cells: string[] = [];
   cells.push('<mxCell id="0"/>');
   cells.push('<mxCell id="1" parent="0"/>');
 
-  const colors: Record<Kind, string> = {
-    person: '#fef3c7',
-    software_system: '#dbeafe',
-    container: '#dcfce7',
-    component: '#f3e8ff',
-  };
-  const border: Record<Kind, string> = {
-    person: '#d97706',
-    software_system: '#2563eb',
-    container: '#16a34a',
-    component: '#7c3aed',
-  };
+  interface BoundaryLayout {
+    box: LayoutBox;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    depth: number;
+  }
 
-  for (const box of rendered.boxes) {
-    const objectId = `c4arch-${box.element.id}`;
-    const label = `<b>${escapeXml(box.element.title)}</b>${
-      box.element.description ? `<br><span style="font-size:10px">${escapeXml(box.element.description)}</span>` : ''
-    }`;
-    const style = `rounded=1;whiteSpace=wrap;html=1;fillColor=${colors[box.kind]};strokeColor=${border[box.kind]};fontColor=#1e293b;align=left;verticalAlign=top;spacing=8;`;
+  // Boundaries são desenhadas primeiro para ficarem atrás dos elementos.
+  const boundaries: BoundaryLayout[] = [];
+  for (const parentId of parentIds) {
+    const parentBox = boxById.get(parentId);
+    if (!parentBox) continue;
+    const members = rendered.boxes.filter((box) =>
+      isDescendantOf(box.element.id, parentId, parents)
+    );
+    if (members.length === 0) continue;
+
+    const minX = Math.min(...members.map((box) => box.x)) - 24;
+    const minY = Math.min(...members.map((box) => box.y)) - 32;
+    const maxX = Math.max(...members.map((box) => box.x + box.width)) + 24;
+    const maxY = Math.max(...members.map((box) => box.y + box.height)) + 48;
+
+    boundaries.push({
+      box: parentBox,
+      x: offsetX + minX,
+      y: offsetY + minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      depth: hierarchyDepth(parentId, parents),
+    });
+  }
+  boundaries.sort((a, b) => a.depth - b.depth || a.y - b.y || a.x - b.x);
+
+  for (const boundary of boundaries) {
+    const { box } = boundary;
+    const attributes = [
+      `id="c4arch-${escapeXml(box.element.id)}"`,
+      `label="${escapeXml(DRAWIO_C4_BOUNDARY_LABEL)}"`,
+      'placeholders="1"',
+      `c4archElementId="${escapeXml(box.element.id)}"`,
+      'c4archType="boundary"',
+      `c4Name="${escapeXml(box.element.title || '')}"`,
+      `c4Type="${escapeXml(DRAWIO_C4_TYPE[box.kind])}"`,
+      `c4Application="${escapeXml(DRAWIO_C4_TYPE[box.kind])}"`,
+    ];
+    const description = (box.element.description ?? '').trim();
+    if (description) attributes.push(`c4Description="${escapeXml(description)}"`);
+
+    cells.push(`<object ${attributes.join(' ')}>`);
     cells.push(
-      `<object id="${objectId}" label="${escapeXml(label)}" c4archElementId="${escapeXml(box.element.id)}" c4archType="${box.kind}">`
+      `  <mxCell id="boundary-${escapeXml(box.element.id)}" style="${DRAWIO_C4_BOUNDARY_STYLE}" vertex="1" parent="1">`
     );
     cells.push(
-      `  <mxCell id="shape-${box.element.id}" style="${style}" vertex="1" parent="1">`
+      `    <mxGeometry x="${boundary.x}" y="${boundary.y}" width="${boundary.width}" height="${boundary.height}" as="geometry"/>`
+    );
+    cells.push('  </mxCell>');
+    cells.push('</object>');
+  }
+
+  for (const box of rendered.boxes) {
+    // O elemento estrutural que veio de um bloco/boundary do PlantUML é
+    // representado pela boundary; desenhar também a caixa sólida duplicaria
+    // o mesmo elemento no diagrama.
+    const hasChildren = rendered.boxes.some((candidate) =>
+      isDescendantOf(candidate.element.id, box.element.id, parents)
+    );
+    if (parentIds.has(box.element.id) && hasChildren) continue;
+
+    const objectId = `c4arch-${box.element.id}`;
+    const technology = technologyOf(box.element);
+    const description = (box.element.description ?? '').trim();
+    const attributes = [
+      `id="${escapeXml(objectId)}"`,
+      `label="${escapeXml(DRAWIO_C4_LABEL[box.kind])}"`,
+      'placeholders="1"',
+      `c4archElementId="${escapeXml(box.element.id)}"`,
+      `c4archType="${box.kind}"`,
+      `c4Name="${escapeXml(box.element.title || '')}"`,
+      `c4Type="${escapeXml(DRAWIO_C4_TYPE[box.kind])}"`,
+    ];
+    if (technology) attributes.push(`c4Technology="${escapeXml(technology)}"`);
+    if (description) attributes.push(`c4Description="${escapeXml(description)}"`);
+
+    cells.push(`<object ${attributes.join(' ')}>`);
+    cells.push(
+      `  <mxCell id="shape-${escapeXml(box.element.id)}" style="${DRAWIO_C4_STYLES[box.kind]}" vertex="1" parent="1">`
     );
     cells.push(
       `    <mxGeometry x="${offsetX + box.x}" y="${offsetY + box.y}" width="${box.width}" height="${box.height}" as="geometry"/>`
@@ -763,13 +1032,25 @@ export function renderDrawio(graph: ModelGraph): string {
   }
 
   for (const { edge, from, to } of rendered.edges) {
-    const style =
-      'edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#475569;fontColor=#334155;fontSize=10;endArrow=block;endFill=1;';
+    const technology = relationshipTechnology(edge) ?? '';
+    const label = (edge.label ?? '').trim();
+    const showTechnology = Boolean(technology) && !label.includes(`[${technology}]`);
+    const attributes = [
+      `id="edge-${escapeXml(edge.id)}"`,
+      `label="${escapeXml(drawioRelationshipLabel(Boolean(label), showTechnology))}"`,
+      'placeholders="1"',
+      'c4Type="Relationship"',
+    ];
+    if (label) attributes.push(`c4Description="${escapeXml(label)}"`);
+    if (technology) attributes.push(`c4Technology="${escapeXml(technology)}"`);
+
+    cells.push(`<object ${attributes.join(' ')}>`);
     cells.push(
-      `<mxCell id="edge-${edge.id}" value="${escapeXml(edge.label || '')}" style="${style}" edge="1" parent="1" source="c4arch-${from.element.id}" target="c4arch-${to.element.id}">`
+      `  <mxCell id="edge-cell-${escapeXml(edge.id)}" style="${DRAWIO_C4_RELATIONSHIP_STYLE}" edge="1" parent="1" source="c4arch-${escapeXml(from.element.id)}" target="c4arch-${escapeXml(to.element.id)}">`
     );
-    cells.push('  <mxGeometry relative="1" as="geometry"/>');
-    cells.push('</mxCell>');
+    cells.push('    <mxGeometry relative="1" as="geometry"/>');
+    cells.push('  </mxCell>');
+    cells.push('</object>');
   }
 
   return `<mxfile host="c4arch" modified="${new Date().toISOString()}" agent="C4Arch" version="1.0">

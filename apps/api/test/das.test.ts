@@ -49,6 +49,23 @@ test('parseDrawio lê objetos com metadados c4 e decodifica entidades', () => {
   assert.equal(parsed.elements[0].description, 'Processa pagamentos');
 });
 
+test('parseDrawio entende o rótulo C4 oficial do draw.io', () => {
+  const xml = `<mxGraphModel><root>
+    <mxCell id="0" />
+    <mxCell id="1" parent="0" />
+    <object id="api" label="API&lt;br&gt;[Container: Node.js]&lt;br&gt;Backend" c4Type="Container" c4Technology="Node.js" c4Description="Backend">
+      <mxCell vertex="1" parent="1" />
+    </object>
+  </root></mxGraphModel>`;
+
+  const parsed = parseDrawio(xml);
+  assert.equal(parsed.elements.length, 1);
+  assert.equal(parsed.elements[0].name, 'API');
+  assert.equal(parsed.elements[0].c4Kind, 'Container');
+  assert.equal(parsed.elements[0].technology, 'Node.js');
+  assert.equal(parsed.elements[0].description, 'Backend');
+});
+
 test('parseDrawio resolve %c4Name% a partir do atributo c4Name e mantém a natureza', () => {
   const xml = `<mxGraphModel><root>
     <mxCell id="0" />

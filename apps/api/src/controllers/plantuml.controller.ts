@@ -1,6 +1,6 @@
 import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../auth/middleware.js';
-import { encodePlantUml } from '../c4/plantuml-render.js';
+import { encodePlantUml, ensureC4Include } from '../c4/plantuml-render.js';
 
 /** O parser global de JSON limita o corpo a 100 kB; mantemos margem abaixo disso. */
 const MAX_CONTENT_BYTES = 100_000;
@@ -24,7 +24,7 @@ export class PlantumlController {
         .json({ error: 'PLANTUML_RENDER_URL_TEMPLATE deve conter o marcador {encoded}' });
     }
 
-    const url = template.replace('{encoded}', encodePlantUml(content));
+    const url = template.replace('{encoded}', encodePlantUml(ensureC4Include(content)));
     let response: globalThis.Response;
     try {
       response = await fetch(url, { signal: AbortSignal.timeout(RENDER_TIMEOUT_MS) });

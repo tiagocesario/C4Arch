@@ -1,4 +1,5 @@
 import { timingSafeEqual } from 'node:crypto';
+import type { PoolClient } from 'pg';
 import type { NextFunction, Request, Response } from 'express';
 import { config } from '../config.js';
 import { pool } from '../db.js';
@@ -62,13 +63,32 @@ export const InternalController = {
     const { id } = req.params;
     if (!isValidUuid(id)) return res.status(404).json({ error: 'Modelo não encontrado' });
 
-    const { state, stateVector, actorId } = req.body as {
+    const body = (req.body ?? {}) as {
       state?: unknown;
       stateVector?: unknown;
       actorId?: unknown;
+      expectedRevision?: unknown;
     };
+    const { state, stateVector, actorId } = body;
     const bytes = decodeBodyState(state);
     if (!bytes) return res.status(400).json({ error: 'state base64 inválido' });
+
+    // A ausência de `expectedRevision` preserva o comportamento legado (PUT
+    // incondicional). Quando presente, o valor precisa ser um token inteiro
+    // não negativo para permitir o compare-and-swap atômico.
+    const hasExpectedRevision =
+      body.expectedRevision !== undefined && body.expectedRevision !== null;
+    let expectedRevision = 0;
+    if (hasExpectedRevision) {
+      if (
+        typeof body.expectedRevision !== 'number' ||
+        !Number.isSafeInteger(body.expectedRevision) ||
+        body.expectedRevision < 0
+      ) {
+        return res.status(400).json({ error: 'expectedRevision deve ser um inteiro não negativo' });
+      }
+      expectedRevision = body.expectedRevision;
+    }
 
     let decoded;
     try {
@@ -82,23 +102,105 @@ export const InternalController = {
     const vector = decodeBodyState(stateVector) ?? stateVectorOf(bytes);
     const contentHash = computeStateContentHash(decoded);
     const actor = typeof actorId === 'string' && isValidUuid(actorId) ? actorId : null;
+    let client: PoolClient | null = null;
 
     try {
-      const result = await pool.query<{ revision: string; updated_at: string }>(
-        `INSERT INTO model_state
-           (model_id, state, state_vector, content_hash, revision, updated_by)
-         VALUES ($1, $2, $3, $4, 1, $5)
-         ON CONFLICT (model_id) DO UPDATE SET
-           state = EXCLUDED.state,
-           state_vector = EXCLUDED.state_vector,
-           content_hash = EXCLUDED.content_hash,
-           revision = model_state.revision + 1,
-           updated_at = NOW(),
-           updated_by = EXCLUDED.updated_by
-         RETURNING revision, updated_at`,
-        [id, Buffer.from(bytes), Buffer.from(vector), contentHash, actor]
-      );
+      client = await pool.connect();
+      await client.query('BEGIN');
 
+      let result: { rows: Array<{ revision: string; updated_at: string }> };
+      if (hasExpectedRevision) {
+        const currentResult = await client.query<{ revision: string }>(
+          'SELECT revision FROM model_state WHERE model_id = $1 FOR UPDATE',
+          [id]
+        );
+        const current = currentResult.rows[0];
+
+        if (current) {
+          const currentRevision = Number(current.revision);
+          if (currentRevision !== expectedRevision) {
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: 'Conflito de revisão do estado do modelo',
+              modelId: id,
+              expectedRevision,
+              currentRevision,
+            });
+          }
+
+          result = await client.query<{ revision: string; updated_at: string }>(
+            `UPDATE model_state
+                SET state = $2,
+                    state_vector = $3,
+                    content_hash = $4,
+                    revision = model_state.revision + 1,
+                    updated_at = NOW(),
+                    updated_by = $5
+              WHERE model_id = $1
+                AND revision = $6
+              RETURNING revision, updated_at`,
+            [id, Buffer.from(bytes), Buffer.from(vector), contentHash, actor, expectedRevision]
+          );
+        } else if (expectedRevision === 0) {
+          // Revisão zero representa a ausência da linha. O ON CONFLICT
+          // condicional fecha a corrida entre dois criadores: apenas o
+          // escritor que ainda espera a revisão zero consegue inserir a linha.
+          result = await client.query<{ revision: string; updated_at: string }>(
+            `INSERT INTO model_state
+               (model_id, state, state_vector, content_hash, revision, updated_by)
+             VALUES ($1, $2, $3, $4, 1, $5)
+             ON CONFLICT (model_id) DO UPDATE SET
+               state = EXCLUDED.state,
+               state_vector = EXCLUDED.state_vector,
+               content_hash = EXCLUDED.content_hash,
+               revision = model_state.revision + 1,
+               updated_at = NOW(),
+               updated_by = EXCLUDED.updated_by
+             WHERE model_state.revision = $6
+             RETURNING revision, updated_at`,
+            [id, Buffer.from(bytes), Buffer.from(vector), contentHash, actor, expectedRevision]
+          );
+
+          if (result.rows.length === 0) {
+            const raced = await client.query<{ revision: string }>(
+              'SELECT revision FROM model_state WHERE model_id = $1',
+              [id]
+            );
+            await client.query('ROLLBACK');
+            return res.status(409).json({
+              error: 'Conflito de revisão do estado do modelo',
+              modelId: id,
+              expectedRevision,
+              currentRevision: raced.rows[0] ? Number(raced.rows[0].revision) : 0,
+            });
+          }
+        } else {
+          await client.query('ROLLBACK');
+          return res.status(409).json({
+            error: 'Conflito de revisão do estado do modelo',
+            modelId: id,
+            expectedRevision,
+            currentRevision: 0,
+          });
+        }
+      } else {
+        result = await client.query<{ revision: string; updated_at: string }>(
+          `INSERT INTO model_state
+             (model_id, state, state_vector, content_hash, revision, updated_by)
+           VALUES ($1, $2, $3, $4, 1, $5)
+           ON CONFLICT (model_id) DO UPDATE SET
+             state = EXCLUDED.state,
+             state_vector = EXCLUDED.state_vector,
+             content_hash = EXCLUDED.content_hash,
+             revision = model_state.revision + 1,
+             updated_at = NOW(),
+             updated_by = EXCLUDED.updated_by
+           RETURNING revision, updated_at`,
+          [id, Buffer.from(bytes), Buffer.from(vector), contentHash, actor]
+        );
+      }
+
+      await client.query('COMMIT');
       const row = result.rows[0];
       res.json({
         modelId: id,
@@ -121,8 +223,11 @@ export const InternalController = {
       }
       return;
     } catch (err) {
+      if (client) await client.query('ROLLBACK').catch(() => undefined);
       console.error('[internal] putState error', err);
       return res.status(500).json({ error: 'Erro ao gravar estado do modelo' });
+    } finally {
+      client?.release();
     }
   },
 

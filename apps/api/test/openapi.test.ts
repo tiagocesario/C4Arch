@@ -57,6 +57,27 @@ test('exportação aceita todos os formatos implementados', () => {
   );
 });
 
+test('OpenAPI documenta o snapshot retornado pela importação PlantUML', () => {
+  const operation = doc.paths['/api/models/{id}/import/plantuml'].post;
+  const schema = operation.responses['200'].content['application/json'].schema;
+  assert.equal(schema.properties.import.$ref, '#/components/schemas/ImportResult');
+  assert.equal(
+    schema.properties.model.oneOf[0].$ref,
+    '#/components/schemas/ImportModelSnapshot'
+  );
+
+  const snapshot = doc.components.schemas.ImportModelSnapshot;
+  assert.deepEqual(snapshot.required, ['elements', 'edges']);
+  assert.equal(
+    snapshot.properties.elements.items.$ref,
+    '#/components/schemas/Element'
+  );
+  assert.equal(
+    snapshot.properties.edges.items.$ref,
+    '#/components/schemas/Edge'
+  );
+});
+
 test('renderDocsHtml referencia o JSON e o Swagger UI', () => {
   const html = renderDocsHtml();
   assert.match(html, /SwaggerUIBundle/);

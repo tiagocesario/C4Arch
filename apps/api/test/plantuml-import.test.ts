@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { detectPlantUmlFormat, parsePlantUmlWorkspace } from '../src/c4/plantuml-import.js';
+import { validatePlantUmlImport } from '../src/c4/import-guards.js';
 import { PLANTUML_TEMPLATES } from '../src/c4/plantuml-templates.js';
 import { isC4ModelType } from '../src/c4/model-types.js';
 
@@ -104,6 +105,23 @@ Rel(cliente, api, "usa", "HTTPS")
   );
   assert.equal(parentOf.get('api'), 'sistema');
   assert.equal(workspace.relationships[0].technology, 'HTTPS');
+});
+
+test('parsePlantUmlWorkspace usa o tipo de Boundary genérico como nível C4', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+!include <C4/C4_Component>
+Boundary(modulo, "Módulo", "Component") {
+  Component(comp, "Componente", "TS", "Descrição")
+}
+@enduml`);
+
+  assert.deepEqual(
+    workspace.elements.map((element) => [element.identifier, element.kind, element.parentIdentifier]),
+    [
+      ['modulo', 'component', null],
+      ['comp', 'component', 'modulo'],
+    ]
+  );
 });
 
 test('parsePlantUmlWorkspace extrai $tags de elementos', () => {
@@ -226,6 +244,128 @@ user <--> service : Troca
       ['service', 'user'],
     ]
   );
+});
+
+test('parsePlantUmlWorkspace preserva títulos e captions com apóstrofo', () => {
+  const plain = parsePlantUmlWorkspace(`@startuml
+title Don't lose
+caption It's critical
+actor user as "Usuário"
+@enduml`);
+  assert.equal(plain.name, "Don't lose");
+  assert.equal(plain.description, "It's critical");
+
+  const quoted = parsePlantUmlWorkspace(`@startuml
+title "Don't lose"
+caption("It's critical")
+actor user as "Usuário"
+@enduml`);
+  assert.equal(quoted.name, "Don't lose");
+  assert.equal(quoted.description, "It's critical");
+});
+
+test('parsePlantUmlWorkspace preserva alias e label nas duas formas genéricas', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+actor user as "Usuário"
+rectangle "Aplicação Web" as app
+@enduml`);
+
+  assert.deepEqual(
+    workspace.elements.map((element) => [
+      element.identifier,
+      element.name,
+    ]),
+    [
+      ['user', 'Usuário'],
+      ['app', 'Aplicação Web'],
+    ]
+  );
+});
+
+test('parsePlantUmlWorkspace aceita formas genéricas adicionais de seta', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+actor A as a
+rectangle B as b
+rectangle C as c
+rectangle D as d
+rectangle E as e
+rectangle F as f
+rectangle G as g
+a *-- b
+b --* c
+c <|.. d
+d ..|> e
+e -[#red]-> f
+f -right-> g
+@enduml`);
+
+  assert.deepEqual(workspace.unrecognizedRelationships, []);
+  assert.deepEqual(
+    workspace.relationships.map((relationship) => [
+      relationship.sourceIdentifier,
+      relationship.targetIdentifier,
+    ]),
+    [
+      ['a', 'b'],
+      ['c', 'b'],
+      ['d', 'c'],
+      ['d', 'e'],
+      ['e', 'f'],
+      ['f', 'g'],
+    ]
+  );
+});
+
+test('parsePlantUmlWorkspace sinaliza relações que não foram interpretadas', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+actor A as a
+rectangle B as b
+a -->> b
+Rel(missing, a, "Inválida")
+@enduml`);
+
+  assert.equal(workspace.relationships.length, 0);
+  assert.deepEqual(workspace.unrecognizedRelationships, [
+    'a -->> b',
+    'Rel(missing, a, "Inválida")',
+  ]);
+});
+
+test('guard permite criar modelo em branco, mas protege modelo existente', () => {
+  const blank = parsePlantUmlWorkspace(
+    PLANTUML_TEMPLATES.find((template) => template.id === 'blank')!.content
+  );
+
+  assert.equal(
+    validatePlantUmlImport({
+      elements: blank.elements,
+      unrecognizedRelationships: blank.unrecognizedRelationships,
+      mode: 'replace',
+      hasExistingModel: false,
+    }).ok,
+    true
+  );
+
+  const existing = validatePlantUmlImport({
+    elements: blank.elements,
+    unrecognizedRelationships: blank.unrecognizedRelationships,
+    mode: 'replace',
+    hasExistingModel: true,
+  });
+  assert.equal(existing.ok, false);
+  assert.match(existing.error ?? '', /modelo atual não foi alterado/i);
+});
+
+test('guard cancela importação com relações não interpretadas', () => {
+  const result = validatePlantUmlImport({
+    elements: [{ identifier: 'a' }],
+    unrecognizedRelationships: ['a -->> b'],
+    mode: 'replace',
+    hasExistingModel: true,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error ?? '', /diagrama incompleto/i);
 });
 
 test('padrões PlantUML são diagramas válidos e referenciáveis', () => {

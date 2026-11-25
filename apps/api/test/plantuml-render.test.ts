@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inflateRawSync } from 'node:zlib';
-import { encodePlantUml } from '../src/c4/plantuml-render.js';
+import { encodePlantUml, ensureC4Include } from '../src/c4/plantuml-render.js';
 
 // Decodificador de referência do formato de URL do PlantUML. Serve para provar
 // que o encoder da API é reversível (deflate raw + base64 próprio).
@@ -52,4 +52,27 @@ test('encodePlantUml aceita Unicode e é determinístico', () => {
   const first = encodePlantUml(text);
   assert.equal(encodePlantUml(text), first);
   assert.equal(decodePlantUml(first), text);
+});
+
+test('ensureC4Include injeta o include C4 quando o código usa macros sem declarar', () => {
+  const source = '@startuml\ntitle Teste\nPerson(usuario, "Usuário")\nSystem(sistema, "Sistema")\nRel(usuario, sistema, "usa")\n@enduml';
+  const withInclude = ensureC4Include(source);
+  assert.match(withInclude, /^@startuml\n!include <C4\/C4_Context>/);
+  assert.equal(withInclude.includes('Person(usuario'), true);
+});
+
+test('ensureC4Include escolhe o include do nível mais profundo', () => {
+  const containers = '@startuml\nContainer(api, "API", "Node.js")\n@enduml';
+  assert.match(ensureC4Include(containers), /!include <C4\/C4_Container>/);
+
+  const components = '@startuml\nComponent(rotas, "Rotas")\n@enduml';
+  assert.match(ensureC4Include(components), /!include <C4\/C4_Component>/);
+});
+
+test('ensureC4Include preserva código que já declara include ou não é C4', () => {
+  const declared = '@startuml\n!include <C4/C4_Container>\nPerson(usuario, "Usuário")\n@enduml';
+  assert.equal(ensureC4Include(declared), declared);
+
+  const generic = '@startuml\nclass Pedido\n@enduml';
+  assert.equal(ensureC4Include(generic), generic);
 });

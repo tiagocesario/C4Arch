@@ -29,6 +29,8 @@ interface ModelState {
   version: number;
   /** Há alterações ainda não gravadas em `model_state`. */
   dirty: boolean;
+  /** Revisão durável sobre a qual o documento em memória foi construído. */
+  revisionBase: number;
   persistTimer: ReturnType<typeof setTimeout> | null;
   /** Histórico de undo/redo por modelo (snapshots Yjs completos, limitado). */
   undoStack: Uint8Array[];
@@ -256,6 +258,7 @@ function createEntry(doc = new Y.Doc()): ModelState {
     clients: new Set<WebSocket>(),
     version: 0,
     dirty: false,
+    revisionBase: 0,
     persistTimer: null,
     undoStack: [],
     redoStack: [],
@@ -286,38 +289,143 @@ async function apiRequest(
   }
 }
 
-/** Lê o estado Yjs durável; `null` quando a rota está desligada ou vazia. */
-async function getStateFromApi(modelId: string): Promise<Uint8Array | null> {
+interface DurableState {
+  /** Update Yjs durável; `null` quando ainda não existe uma linha. */
+  update: Uint8Array | null;
+  /** Token usado no próximo PUT. Zero representa a ausência da linha. */
+  revision: number;
+}
+
+type PutStateResult =
+  | { status: 'ok'; revision: number }
+  | { status: 'conflict'; currentRevision: number | null }
+  | { status: 'error' };
+
+function parseRevision(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) return null;
+  return value;
+}
+
+/**
+ * Lê o estado Yjs durável e a revisão que o originou. A ausência da linha é
+ * representada pela revisão zero; uma falha HTTP diferente de 404 retorna
+ * `null` para não tratar uma resposta inválida como estado autoritativo.
+ */
+async function getStateFromApi(modelId: string): Promise<DurableState | null> {
   if (!apiToken || !isUuid(modelId)) return null;
   const response = await apiRequest(
     '/api/internal/models/' + encodeURIComponent(modelId) + '/state',
     { method: 'GET' }
   );
-  if (!response?.ok) return null;
+  if (!response) return null;
+  if (response.status === 404) return { update: null, revision: 0 };
+  if (!response.ok) return null;
   try {
-    const body = (await response.json()) as { state?: unknown };
-    if (typeof body.state !== 'string') return null;
+    const body = (await response.json()) as { state?: unknown; revision?: unknown };
+    const revision = parseRevision(body.revision);
+    if (revision === null || typeof body.state !== 'string') return null;
     const bytes = Buffer.from(body.state, 'base64');
-    return bytes.length > 0 ? new Uint8Array(bytes) : null;
+    return {
+      update: bytes.length > 0 ? new Uint8Array(bytes) : null,
+      revision,
+    };
   } catch {
     return null;
   }
 }
 
-async function putStateToApi(modelId: string, update: Uint8Array): Promise<boolean> {
-  if (!apiToken || !isUuid(modelId)) return false;
+async function putStateToApi(
+  modelId: string,
+  update: Uint8Array,
+  expectedRevision: number
+): Promise<PutStateResult> {
+  if (!apiToken || !isUuid(modelId)) return { status: 'error' };
   const response = await apiRequest(
     '/api/internal/models/' + encodeURIComponent(modelId) + '/state',
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ state: Buffer.from(update).toString('base64') }),
+      body: JSON.stringify({
+        state: Buffer.from(update).toString('base64'),
+        expectedRevision,
+      }),
     }
   );
-  return Boolean(response?.ok);
+  if (!response) return { status: 'error' };
+
+  if (response.status === 409) {
+    let currentRevision: number | null = null;
+    try {
+      const body = (await response.json()) as { currentRevision?: unknown };
+      currentRevision = parseRevision(body.currentRevision);
+    } catch {
+      // O status 409 já é suficiente para recuperar o estado autoritativo.
+    }
+    return { status: 'conflict', currentRevision };
+  }
+  if (!response.ok) return { status: 'error' };
+
+  try {
+    const body = (await response.json()) as { revision?: unknown };
+    const revision = parseRevision(body.revision);
+    return revision === null ? { status: 'error' } : { status: 'ok', revision };
+  } catch {
+    return { status: 'error' };
+  }
 }
 
-async function flushState(modelId: string): Promise<void> {
+function clearPendingChanges(entry: ModelState): void {
+  entry.dirty = false;
+  entry.undoStack = [];
+  entry.redoStack = [];
+  if (entry.persistTimer) {
+    clearTimeout(entry.persistTimer);
+    entry.persistTimer = null;
+  }
+}
+
+/**
+ * Recarrega o estado durável após um conflito e troca o documento Yjs em
+ * memória. O snapshot antigo não é persistido: ele é descartado junto com
+ * dirty/undo/redo e todos os clientes recebem o estado autoritativo.
+ */
+async function reloadAuthoritativeState(modelId: string, entry: ModelState): Promise<boolean> {
+  // Antes mesmo da leitura, o snapshot pendente deixa de ser persistível.
+  clearPendingChanges(entry);
+
+  const durable = await getStateFromApi(modelId);
+  if (!durable) {
+    console.warn(`[realtime] falha ao recarregar model_state após conflito ${modelId}`);
+    for (const client of entry.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(
+          JSON.stringify({
+            type: 'error',
+            error: 'Conflito de revisão; o estado colaborativo será recarregado',
+          })
+        );
+      }
+    }
+    return false;
+  }
+
+  const nextDoc = new Y.Doc();
+  if (durable.update) Y.applyUpdate(nextDoc, durable.update);
+  entry.doc = nextDoc;
+  entry.revisionBase = durable.revision;
+  entry.version += 1;
+
+  // Um patch pode ter entrado enquanto o GET estava em voo. Ele também não
+  // pode sobreviver à troca autoritativa do documento.
+  clearPendingChanges(entry);
+  broadcast(modelId, entry);
+  return true;
+}
+
+/** Serializa flushes do mesmo modelo para evitar CAS duplicado no mesmo token. */
+const flushQueues = new Map<string, Promise<void>>();
+
+async function flushStateNow(modelId: string): Promise<void> {
   const entry = models.get(modelId);
   if (!entry || !entry.dirty) return;
   if (flags.realtimePgState === 'off') {
@@ -325,12 +433,35 @@ async function flushState(modelId: string): Promise<void> {
     return;
   }
 
+  const update = Y.encodeStateAsUpdate(entry.doc);
+  const expectedRevision = entry.revisionBase;
   entry.dirty = false;
-  const ok = await putStateToApi(modelId, Y.encodeStateAsUpdate(entry.doc));
-  if (!ok) {
-    entry.dirty = true;
-    console.warn(`[realtime] falha ao persistir model_state ${modelId}`);
+
+  const result = await putStateToApi(modelId, update, expectedRevision);
+  if (result.status === 'ok') {
+    entry.revisionBase = result.revision;
+    return;
   }
+  if (result.status === 'conflict') {
+    await reloadAuthoritativeState(modelId, entry);
+    return;
+  }
+
+  entry.dirty = true;
+  console.warn(`[realtime] falha ao persistir model_state ${modelId}`);
+}
+
+/** Persiste o estado pendente usando a revisão durável como token CAS. */
+export function flushState(modelId: string): Promise<void> {
+  const previous = flushQueues.get(modelId) ?? Promise.resolve();
+  const operation = previous.catch(() => undefined).then(() => flushStateNow(modelId));
+  flushQueues.set(modelId, operation);
+  void operation
+    .finally(() => {
+      if (flushQueues.get(modelId) === operation) flushQueues.delete(modelId);
+    })
+    .catch(() => undefined);
+  return operation;
 }
 
 function schedulePersist(modelId: string): void {
@@ -371,7 +502,6 @@ export function attachWebsocket(httpServer: Server) {
 
   wss.on('connection', (ws, req) => {
     let modelId: string | null = null;
-    let doc: Y.Doc | null = null;
     let sessionToken: string | null = null;
     const clientId = randomUUID();
     let presenceName = 'Anônimo';
@@ -517,7 +647,6 @@ export function attachWebsocket(httpServer: Server) {
             models.set(modelId, entry);
           }
           entry.clients.add(ws);
-          doc = entry.doc;
           viewKey =
             typeof message.viewKey === 'string' && message.viewKey.trim()
               ? message.viewKey.trim().slice(0, 120)
@@ -549,11 +678,15 @@ export function attachWebsocket(httpServer: Server) {
 
 
           const hydrationToken = sessionToken ?? apiToken;
-          if (docIsEmpty(doc) && flags.realtimePgState !== 'off') {
+          if (docIsEmpty(entry.doc) && flags.realtimePgState !== 'off') {
             const durable = await getStateFromApi(modelId);
-            // O estado durável pode ter chegado junto com um hydrate concorrente.
-            if (durable && docIsEmpty(doc)) {
-              Y.applyUpdate(doc, durable);
+            // O estado durável pode ter chegado junto com um hydrate
+            // concorrente. Só associamos a revisão ao documento se este
+            // update foi realmente aplicado; caso contrário, uma resposta
+            // mais nova poderia fazer um documento antigo parecer recente.
+            if (durable && docIsEmpty(entry.doc)) {
+              if (durable.update) Y.applyUpdate(entry.doc, durable.update);
+              entry.revisionBase = durable.revision;
             }
           }
 
@@ -561,9 +694,9 @@ export function attachWebsocket(httpServer: Server) {
           // houver nem elementos nem arestas. O helper revalida o vazio depois
           // do await para não duplicar arestas semeadas por um hydrateModel
           // concorrente.
-          if (docIsEmpty(doc) && hydrationToken) {
+          if (docIsEmpty(entry.doc) && hydrationToken) {
             const cached = await getModelFromApi(modelId, hydrationToken);
-            if (cached && hydrateDocFromApiSnapshot(doc, cached)) {
+            if (cached && hydrateDocFromApiSnapshot(entry.doc, cached)) {
               // Estado novo criado a partir do legado: persiste no primeiro
               // flush para que o projetor tenha uma base durável.
               if (flags.realtimePgState !== 'off') schedulePersist(modelId);
@@ -571,12 +704,14 @@ export function attachWebsocket(httpServer: Server) {
           }
 
           // Cura documentos já corrompidos pela corrida antiga.
-          if (dedupeEdgesById(doc) > 0) {
+          if (dedupeEdgesById(entry.doc) > 0) {
             broadcast(modelId, entry);
             if (flags.realtimePgState !== 'off') schedulePersist(modelId);
           }
 
-          ws.send(JSON.stringify({ type: 'state', modelId, model: serializeModel(doc, modelId) }));
+          ws.send(
+            JSON.stringify({ type: 'state', modelId, model: serializeModel(entry.doc, modelId) })
+          );
           broadcastPresence(modelId, entry);
           break;
         }

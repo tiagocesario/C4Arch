@@ -9,6 +9,7 @@ import {
   type ImportedWorkspace,
 } from '../c4/model-import.js';
 import { detectPlantUmlFormat, parsePlantUmlWorkspace } from '../c4/plantuml-import.js';
+import { validatePlantUmlImport } from '../c4/import-guards.js';
 import { loadModelGraph } from '../c4/model-graph.js';
 import { isC4ModelType, type C4ModelType } from '../c4/model-types.js';
 import { PLANTUML_TEMPLATES } from '../c4/plantuml-templates.js';
@@ -109,19 +110,18 @@ export class ImportController {
 
       const mode = body.mode === 'merge' ? 'merge' : 'replace';
 
-      // Guard: replace apaga o conteúdo atual. Se o parser não reconheceu nenhum
-      // elemento, aplicar o texto destruiria o modelo sem salvar o código
-      // editado (foi a causa de modelos que "sumiam" ao aplicar PlantUML).
-      // `mode` é opcional na API; omitir significa replace e precisa passar
-      // pelo mesmo guard destrutivo.
-      if (workspace.elements.length === 0 && mode === 'replace') {
-        return res.status(400).json({
-          error:
-            'Nenhum elemento C4 foi reconhecido no código PlantUML. ' +
-            'Use as macros C4 (Person, System, Container, Component) ou declarações ' +
-            'PlantUML com alias (actor, rectangle, component, node...). ' +
-            'O modelo atual não foi alterado.',
-        });
+      // Uma relação que o parser não interpretou tornaria o resultado parcial.
+      // A criação pode usar legitimamente o template oficial "Modelo em branco",
+      // que não possui elementos: não há conteúdo existente a preservar nesse
+      // fluxo, e o guard destrutivo completo fica no endpoint de modelo existente.
+      const guard = validatePlantUmlImport({
+        elements: workspace.elements,
+        unrecognizedRelationships: workspace.unrecognizedRelationships,
+        mode,
+        hasExistingModel: false,
+      });
+      if (!guard.ok) {
+        return res.status(400).json({ error: guard.error });
       }
 
       const c4Type = (body.c4Type as C4ModelType | undefined) ?? 'container';
@@ -199,19 +199,17 @@ export class ImportController {
 
       const mode = body.mode === 'merge' ? 'merge' : 'replace';
 
-      // Guard: replace apaga o conteúdo atual. Se o parser não reconheceu nenhum
-      // elemento, aplicar o texto destruiria o modelo sem salvar o código
-      // editado (foi a causa de modelos que "sumiam" ao aplicar PlantUML).
-      // `mode` é opcional na API; omitir significa replace e precisa passar
-      // pelo mesmo guard destrutivo.
-      if (workspace.elements.length === 0 && mode === 'replace') {
-        return res.status(400).json({
-          error:
-            'Nenhum elemento C4 foi reconhecido no código PlantUML. ' +
-            'Use as macros C4 (Person, System, Container, Component) ou declarações ' +
-            'PlantUML com alias (actor, rectangle, component, node...). ' +
-            'O modelo atual não foi alterado.',
-        });
+      // Não aceita um resultado parcial: se alguma relação não foi interpretada,
+      // o modelo existente precisa permanecer intacto. O mesmo guard impede um
+      // `replace` vazio de apagar o modelo atual.
+      const guard = validatePlantUmlImport({
+        elements: workspace.elements,
+        unrecognizedRelationships: workspace.unrecognizedRelationships,
+        mode,
+        hasExistingModel: true,
+      });
+      if (!guard.ok) {
+        return res.status(400).json({ error: guard.error });
       }
 
       const result = await importWorkspaceIntoModel(id, workspace, {

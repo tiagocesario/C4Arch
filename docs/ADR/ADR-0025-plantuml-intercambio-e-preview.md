@@ -36,16 +36,22 @@ pré-visualização é renderizada no servidor, nunca no navegador:
 - **Importação** (`apps/api/src/c4/plantuml-import.ts`): o parser converte o
   diagrama C4-PlantUML em elementos, relações e views do modelo canônico. Além
   das macros C4, aceita declarações genéricas do PlantUML (`actor`, `rectangle`,
-  `database`, `component` etc.), setas como `-->`, `..>` e `<--`, comentários de
-  linha/bloco, macros multilinha e argumentos nomeados. O `title` e o `caption`
-  do diagrama atualizam, respectivamente, o título e a descrição do modelo.
-  Fronteiras (`System_Boundary`, `Container_Boundary`, `Enterprise_Boundary`)
-  viram o elemento estrutural do seu nível (sistema, container ou componente) e
-  os blocos aninhados viram `parent_element_id`; `technology`, `$tags` e a
-  tecnologia das relações (`Rel(a, b, "x", "HTTPS")`) são persistidos no
-  canônico. Antes de uma substituição, a API rejeita fontes sem elementos
-  reconhecidos para não apagar o modelo. Existe também a importação como
-  template (`plantuml-templates.ts`).
+  `database`, `component` etc.), setas como `-->`, `..>`, `<--`, `*--`, `--*`,
+  `<|..`, `..|>`, `-[#red]->` e `-right->`, comentários de linha/bloco, macros
+  multilinha e argumentos nomeados. As duas formas de alias genérico
+  (`actor "Usuário" as user` e `actor user as "Usuário"`) preservam o alias
+  estável e o label. O `title` e o `caption` do diagrama atualizam,
+  respectivamente, o título e a descrição do modelo, inclusive quando contêm
+  apóstrofos. Fronteiras (`System_Boundary`, `Container_Boundary`,
+  `Enterprise_Boundary`) viram o elemento estrutural do seu nível (sistema,
+  container ou componente) e os blocos aninhados viram `parent_element_id`;
+  `technology`, `$tags` e a tecnologia das relações
+  (`Rel(a, b, "x", "HTTPS")`) são persistidos no canônico. Se o parser
+  encontrar uma relação que não conseguiu interpretar, a API responde `400`
+  antes de qualquer escrita, evitando persistir um diagrama parcial. O template
+  oficial `blank` é aceito na criação de um modelo novo; em um modelo existente,
+  um `replace` sem elementos continua bloqueado para não apagar seu conteúdo.
+  Existe também a importação como template (`plantuml-templates.ts`).
 - **Exportação** (`apps/api/src/c4/exporters.ts`): `GET /api/models/{id}/export/plantuml`
   gera o `.puml` a partir do modelo canônico. É uma projeção descartável, não uma
   segunda fonte de verdade. O `!include` usa a biblioteca C4-PlantUML empacotada
@@ -54,7 +60,9 @@ pré-visualização é renderizada no servidor, nunca no navegador:
   remoto falhava com `400` e derrubava a exportação. O fonte reemite hierarquia
   (blocos aninhados), `$tags`, tecnologia das relações e usa o `identifier`
   canônico como alias, para que exportar → editar → aplicar não renomeie
-  elementos nem perca o layout de views que não vieram do import.
+  elementos nem perca o layout de views que não vieram do import. `title` e
+  `caption` são emitidos entre aspas e com escapes, de modo que um round-trip
+  preserve textos com apóstrofos.
 - **Edição** (`apps/web/src/components/PlantUmlSourcePanel.tsx`): o painel exibe
   o fonte exportado, permite editar e aplicar (`replace`) de volta no modelo.
   Ele abre por três caminhos: pelo botão **PlantUML** do rodapé do editor, pelo
@@ -66,23 +74,45 @@ pré-visualização é renderizada no servidor, nunca no navegador:
 - **Pré-visualização** (`POST /api/plantuml/render`): a API codifica o fonte no
   formato de URL do PlantUML (`deflate` raw + base64 próprio, implementado em
   `apps/api/src/c4/plantuml-render.ts`) e busca o SVG em um servidor PlantUML
-  configurado por `PLANTUML_RENDER_URL_TEMPLATE`. O endpoint exige JWT, aceita
+  configurado por `PLANTUML_RENDER_URL_TEMPLATE`. Antes de codificar, a API
+  garante o `!include <C4/...>` quando o texto usa macros C4 sem declará-lo, de
+  modo que a pré-visualização sempre mostre pessoas, sistemas, containers e
+  componentes com os ícones oficiais do C4 model. O endpoint exige JWT, aceita
   até 100 kB e aborta após 15 s, devolvendo `502` apenas em falha de transporte.
   Quando o PlantUML responde `400` com um SVG (erro de sintaxe ou `!include`
   inválido), esse desenho é encaminhado com `200 image/svg+xml` para que o
   usuário veja a mensagem do próprio PlantUML no painel. No navegador o SVG é
   exibido via `blob:`; a CSP da web libera `img-src 'self' data: blob:`.
+- **Exportação C4-PlantUML** (`renderPlantUml`): elementos com filhos viram
+  boundaries oficiais (`System_Boundary`, `Container_Boundary` e
+  `Boundary(..., "Component")`) em vez de caixas aninhadas, preservando a
+  hierarquia e o visual C4 também no preview.
+- **Desenho draw.io** (`renderDrawio`): o XML persistido na importação usa as
+  shapes oficiais da biblioteca C4 do draw.io (`mxgraph.c4.person2` e as caixas
+  de sistema, container e componente com as cores do c4model.com), os rótulos
+  oficiais com placeholders (`%c4Name%`, `%c4Type%`, `%c4Technology%`,
+  `%c4Description%`), boundaries pontilhadas para a hierarquia capturada de
+  `parent_element_id` e relações no formato C4 (`endArrow=blockThin`). Assim um
+  modelo importado do PlantUML abre no draw.io já no padrão C4, em vez de caixas
+  genéricas.
+
 - **Aplicação consistente**: o Postgres é a fonte de verdade, mas o canvas lê o
-  documento Yjs. Ao aplicar, o painel envia `replaceModel` pelo WebSocket: na
-  conexão principal quando o editor está aberto e em uma conexão dedicada
-  quando o painel veio da lista (que também propaga a qualquer editor aberto em
-  outra aba). A API ainda sincroniza `model_state` com o grafo recém-aplicado;
-  sem isso, o realtime reabriria o modelo com o snapshot antigo e o projetor
-  poderia sobrescrever no Postgres o código recém-aplicado. Ao projetar o Yjs,
-  o projetor preserva os detalhes que o estado colaborativo não transporta
-  (`identifier`, `url`, `tags`, hierarquia e tecnologia das relações) e ignora
-  um flush cujo hash não corresponde mais ao de `model_state`. Views existentes
-  também são preservadas; só a view do import é atualizada.
+  documento Yjs. Ao aplicar, a API devolve o snapshot persistido e o painel
+  envia `replaceModel` pelo WebSocket: na conexão principal quando o editor está
+  aberto e em uma conexão dedicada quando o painel veio da lista (que também
+  propaga a qualquer editor aberto em outra aba). Uma falha temporária na
+  releitura dos metadados não impede a propagação do snapshot; se a conexão
+  dedicada não confirmar a atualização, a interface informa a falha em vez de
+  ignorá-la. A API sincroniza `model_state` com o grafo recém-aplicado e usa
+  `model_state.revision` como token de concorrência: o Realtime envia a
+  revisão-base, um `409` força a recarga do estado durável e impede que um
+  snapshot antigo sobrescreva a importação. Importações concorrentes do mesmo modelo são
+  serializadas por um advisory lock PostgreSQL até a sincronização de
+  `model_state`. Ao projetar o Yjs, o projetor preserva os detalhes que o estado
+  colaborativo não transporta (`identifier`, `url`, `tags`, hierarquia e
+  tecnologia das relações) e ignora um flush cujo hash não corresponde mais ao
+  de `model_state`. Views existentes também são preservadas; só a view do
+  import é atualizada.
 - **Infraestrutura**: no Compose, o serviço `plantuml` usa a imagem oficial
   `plantuml/plantuml-server:jetty` e é acessível pela rede interna
   (`http://plantuml:8080/svg/{encoded}`). Em produção ele não publica porta no

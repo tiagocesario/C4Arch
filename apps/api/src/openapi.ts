@@ -216,6 +216,14 @@ export function buildOpenApiDocument() {
             skippedRelationships: { type: 'integer' },
           },
         },
+        ImportModelSnapshot: {
+          type: 'object',
+          required: ['elements', 'edges'],
+          properties: {
+            elements: { type: 'array', items: { $ref: '#/components/schemas/Element' } },
+            edges: { type: 'array', items: { $ref: '#/components/schemas/Edge' } },
+          },
+        },
       },
     },
     security: [{ bearerAuth: [] }],
@@ -546,7 +554,21 @@ export function buildOpenApiDocument() {
             },
           },
           responses: {
-            '200': jsonResponse('Importado', { type: 'object', properties: { import: { $ref: '#/components/schemas/ImportResult' } } }),
+            '200': jsonResponse('Importado', {
+              type: 'object',
+              required: ['ok', 'import'],
+              properties: {
+                ok: { type: 'boolean' },
+                das_content: { type: 'string' },
+                import: { $ref: '#/components/schemas/ImportResult' },
+                model: {
+                  oneOf: [
+                    { $ref: '#/components/schemas/ImportModelSnapshot' },
+                    { type: 'null' },
+                  ],
+                },
+              },
+            }),
             '400': errorResponse('Workspace inválido'),
           },
         },

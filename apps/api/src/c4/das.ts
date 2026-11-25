@@ -130,6 +130,7 @@ function expandPlaceholders(value: string, attributes: Record<string, string>): 
   return value
     .replace(/%c4Description%/gi, attributes.c4Description ?? '')
     .replace(/%c4Technology%/gi, attributes.c4Technology ?? '')
+    .replace(/%c4Application%/gi, attributes.c4Application ?? '')
     .replace(
       /%c4Name%/gi,
       attributes.c4archAssetName ?? attributes.c4Name ?? attributes.name ?? ''
@@ -188,6 +189,29 @@ interface ShapeInfo {
 }
 
 /**
+ * Tipos usados pelos templates C4 do draw.io e pelos rótulos gerados pelo
+ * C4Arch. Restringir a linha de tipo a essas palavras evita remover da
+ * descrição uma anotação qualquer entre colchetes.
+ */
+const C4_KIND_WORDS = new Set([
+  'person',
+  'pessoa',
+  'external person',
+  'software system',
+  'sistema',
+  'external software system',
+  'container',
+  'component',
+  'componente',
+  'database',
+  'deployment node',
+  'infrastructure node',
+  'container instance',
+  'software system instance',
+  'elemento',
+]);
+
+/**
  * Interpreta o rótulo de um shape. Shapes da biblioteca c4arch usam
  * `[Tipo: Nome]`, seguido de natureza (Aplicação/Serviço + endpoint) e de
  * `tecnologia — descrição`.
@@ -221,6 +245,27 @@ function parseShapeLabel(label: string, attributes: Record<string, string>): Sha
   let technology = '';
   let description = '';
   let nature: 'app' | 'service' | undefined;
+
+  // As shapes oficiais do draw.io/C4 colocam o tipo em uma linha própria:
+  // `Nome` / `[Container: tecnologia]` / descrição. Extrair essa linha evita
+  // que o tipo entre colchetes seja interpretado como descrição.
+  const typeLineIndex = rest.findIndex((line) => {
+    const match = line.match(/^\[([^\]:]+)(?::\s*(.+?))?\]$/);
+    if (!match) return false;
+    const kindWord = match[1].trim().toLowerCase();
+    return (
+      kindWord === c4Kind.trim().toLowerCase() ||
+      C4_KIND_WORDS.has(kindWord)
+    );
+  });
+  if (typeLineIndex >= 0) {
+    const match = rest[typeLineIndex].match(/^\[([^\]:]+)(?::\s*(.+?))?\]$/);
+    if (match) {
+      c4Kind = match[1].trim() || c4Kind;
+      technology = match[2]?.trim() || technology;
+      rest = rest.filter((_, index) => index !== typeLineIndex);
+    }
+  }
 
   // A linha de natureza pode vir depois do tipo (ex.: nome, [tipo],
   // "Serviço http:8080"), então procura em todo o restante do rótulo.
@@ -380,11 +425,18 @@ export function parseDrawio(
     }
 
     if (isEdge && attributes.source && attributes.target) {
+      const technology = humanizePlaceholder(cleanText(attributes.c4Technology));
+      let edgeLabel = humanizePlaceholder(
+        cleanText(expandPlaceholders(value, attributes))
+      );
+      if (technology && edgeLabel.includes(`[${technology}]`)) {
+        edgeLabel = edgeLabel.replace(`[${technology}]`, '').replace(/\s+/g, ' ').trim();
+      }
       rawEdges.push({
         sourceId: attributes.source,
         targetId: attributes.target,
-        label: humanizePlaceholder(cleanText(value)),
-        technology: '',
+        label: edgeLabel,
+        technology,
       });
     }
   }

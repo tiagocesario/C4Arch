@@ -114,10 +114,30 @@ const BOUNDARY_MACROS = new Set([
   'component_boundary',
 ]);
 
+/**
+ * Formas de seta genéricas aceitas pelo PlantUML.
+ *
+ * A ordem importa: as variantes mais longas devem aparecer antes do traço
+ * simples para que `..|>` não seja lido como `..` e `--*` não como `--`.
+ */
 const GENERIC_ARROWS = [
   '<-->',
+  '<-up-',
+  '<-down-',
+  '<-left-',
+  '<-right-',
+  '-up->',
+  '-down->',
+  '-left->',
+  '-right->',
   '<--',
   '-->',
+  '<..*',
+  '*..>',
+  '<*--',
+  '--*>',
+  '<|..',
+  '..|>',
   '<..',
   '..>',
   '--|>',
@@ -128,10 +148,14 @@ const GENERIC_ARROWS = [
   '<-',
   '=>',
   '<=',
+  '*--',
+  '--*',
   'o--',
   '--o',
   'x--',
   '--x',
+  '+--',
+  '--+',
   '--',
   '..',
 ];
@@ -293,25 +317,50 @@ function stripBlockBraces(statement: string): { text: string; opensBlock: boolea
   return { text, opensBlock };
 }
 
+/** Lê um texto entre aspas, respeitando escapes de `\"` e `\\`. */
+function parseQuotedText(value: string): string | null {
+  const quote = value[0];
+  if (quote !== '"' && quote !== "'") return null;
+
+  let result = '';
+  for (let index = 1; index < value.length; index += 1) {
+    const char = value[index];
+    if (char === '\\' && index + 1 < value.length) {
+      result += value[index + 1];
+      index += 1;
+      continue;
+    }
+    if (char === quote) return result;
+    result += char;
+  }
+  return null;
+}
+
+/** Valor textual de uma diretiva, com suporte a `title(...)`/`caption(...)`. */
+function parseDirectiveValue(line: string, directive: string): string | null {
+  if (!new RegExp(`^${directive}(?:\\s|\\()`, 'i').test(line)) return null;
+
+  let value = line.slice(directive.length).trim();
+  if (value.startsWith('(')) {
+    value = value.slice(1).trim();
+    if (value.endsWith(')')) value = value.slice(0, -1).trim();
+  }
+  if (!value) return null;
+
+  const quoted = parseQuotedText(value);
+  return (quoted ?? value).trim() || null;
+}
+
 /**
  * Extrai o título do diagrama. PlantUML aceita `title Texto`, `title "Texto"`
  * e `title("Texto")`; a forma com aspas preserva espaços e pontuação.
  */
 function parseTitle(line: string): string | null {
-  const quoted = /^title\s*\(?\s*"([^"]*)"\s*\)?$/i.exec(line);
-  if (quoted) return quoted[1].trim() || null;
-  const plain = /^title\s+(.+)$/i.exec(line);
-  if (plain) {
-    const value = plain[1].trim();
-    if (value.startsWith('"') && value.endsWith('"')) return unquote(value) || null;
-    return value || null;
-  }
-  return null;
+  return parseDirectiveValue(line, 'title');
 }
 
 function parseCaption(line: string): string | null {
-  const match = /^caption\s+(.+)$/i.exec(line);
-  return match ? unquote(match[1]) || null : null;
+  return parseDirectiveValue(line, 'caption');
 }
 
 function detectViewType(content: string): CanonicalViewType {
@@ -337,6 +386,18 @@ function stripComments(content: string): string[] {
   let inBlockComment = false;
 
   for (const rawLine of content.split(/\r?\n/)) {
+    // `title`/`caption` são diretivas cujo texto pode conter apóstrofos.
+    // O apóstrofo inicia comentário nas demais linhas, mas aqui faz parte do
+    // texto (por exemplo, `title Don't lose`).
+    const trimmed = rawLine.trim();
+    if (
+      !inBlockComment &&
+      (/^title(?:\s|\()/i.test(trimmed) || /^caption(?:\s|\()/i.test(trimmed))
+    ) {
+      output.push(rawLine);
+      continue;
+    }
+
     let line = '';
     let quote: '"' | "'" | null = null;
 
@@ -480,9 +541,25 @@ function parseGenericDeclaration(
   let label: string;
 
   if (asIndex >= 0) {
-    label = unquote(text.slice(0, asIndex).trim());
-    const aliasText = text.slice(asIndex + 2).trim().split(/\s+/, 1)[0] ?? '';
-    alias = normalizeAlias(aliasText);
+    const left = text.slice(0, asIndex).trim();
+    const right = text.slice(asIndex + 2).trim();
+    const leftIsQuoted = (left.startsWith('"') && left.endsWith('"')) ||
+      (left.startsWith("'") && left.endsWith("'"));
+    const rightIsQuoted = (right.startsWith('"') && right.endsWith('"')) ||
+      (right.startsWith("'") && right.endsWith("'"));
+
+    if (rightIsQuoted && !leftIsQuoted) {
+      // `actor user as "Usuário"`: o lado entre aspas é o label e o lado
+      // esquerdo é o alias estável.
+      alias = normalizeAlias(left);
+      label = unquote(right);
+    } else {
+      // `actor "Usuário" as user`: o lado esquerdo é o label e o direito é
+      // o alias.
+      label = unquote(left);
+      const aliasText = right.split(/\s+/, 1)[0] ?? '';
+      alias = normalizeAlias(aliasText);
+    }
   } else if (
     (text.startsWith('"') && text.endsWith('"')) ||
     (text.startsWith("'") && text.endsWith("'"))
@@ -526,6 +603,15 @@ function arrowOccurrences(text: string): Array<{ index: number; arrow: string }>
       continue;
     }
 
+    // Estilo/cor: `-[#red]->`, `-[#red,dashed]->` etc. O token completo
+    // precisa ser capturado antes do `->` simples.
+    const styledArrow = /^-\[[^\]]+\]->/.exec(text.slice(index));
+    if (styledArrow) {
+      occurrences.push({ index, arrow: styledArrow[0] });
+      index += styledArrow[0].length - 1;
+      continue;
+    }
+
     for (const arrow of GENERIC_ARROWS) {
       if (text.startsWith(arrow, index)) {
         occurrences.push({ index, arrow });
@@ -558,6 +644,50 @@ function parseArrowStatement(text: string): ArrowStatement | null {
 
   if (!left || !right) return null;
   return { left, right, arrow: occurrence.arrow, description };
+}
+
+interface ArrowDirection {
+  reverse: boolean;
+  bidirectional: boolean;
+}
+
+/** Determina a direção semântica de uma seta genérica do PlantUML. */
+function arrowDirection(arrow: string): ArrowDirection {
+  if (arrow === '<-->') return { reverse: false, bidirectional: true };
+  if (arrow.startsWith('<')) return { reverse: true, bidirectional: false };
+  if (['--*', '--o', '--x', '--+', '|-'].includes(arrow)) {
+    return { reverse: true, bidirectional: false };
+  }
+  return { reverse: false, bidirectional: false };
+}
+
+/**
+ * Indica se uma linha parece conter uma relação que o parser não entendeu.
+ * Uma importação `replace` não pode aceitar essa interpretação parcial e
+ * apagar as relações que existiam no modelo.
+ */
+function looksLikeRelationshipStatement(text: string): boolean {
+  const markers = ['--', '..', '->', '<-', '=>', '<=', '<|', '|>', '-['];
+  let quote: '"' | "'" | null = null;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (quote) {
+      if (char === '\\') {
+        index += 1;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (markers.some((marker) => text.startsWith(marker, index))) return true;
+  }
+
+  return false;
 }
 
 function findUnquotedColon(text: string): number {
@@ -595,11 +725,19 @@ function referenceKey(value: string): string {
  */
 export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
   if (!detectPlantUmlFormat(content)) {
-    return { name: null, description: null, elements: [], relationships: [], views: [] };
+    return {
+      name: null,
+      description: null,
+      elements: [],
+      relationships: [],
+      views: [],
+      unrecognizedRelationships: [],
+    };
   }
 
   const elements: ImportedElement[] = [];
   const relationships: ImportedRelationship[] = [];
+  const unrecognizedRelationships: string[] = [];
   const identifiers = new Set<string>();
   const aliasToIdentifier = new Map<string, string>();
   const labelToIdentifier = new Map<string, string>();
@@ -730,6 +868,10 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         const technology = unquote(
           namedValue(args, ['technology', 'tech'], 3) ?? ''
         ) || null;
+        if (!source || !target) {
+          unrecognizedRelationships.push(line);
+          continue;
+        }
         const reverse = REVERSE_RELATION_MACROS.has(macro);
         const effectiveSource = reverse ? target : source;
         const effectiveTarget = reverse ? source : target;
@@ -745,10 +887,12 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         // C4Arch não tem um tipo "boundary": a fronteira vira o elemento
         // estrutural do seu nível (sistema, container ou componente) para
         // preservar a hierarquia no modelo canônico e na exportação.
+        // `Boundary(alias, label, type)` informa o nível no terceiro argumento.
+        const boundaryType = unquote(namedValue(args, ['type'], 2) ?? '').toLowerCase();
         const boundaryKind: CanonicalElementKind =
-          macro === 'container_boundary'
+          macro === 'container_boundary' || boundaryType.includes('container')
             ? 'container'
-            : macro === 'component_boundary'
+            : macro === 'component_boundary' || boundaryType.includes('component')
               ? 'component'
               : 'software_system';
         const alias = normalizeAlias(
@@ -797,6 +941,12 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
         continue;
       }
 
+      if (/^(?:rel|birel)/.test(macro)) {
+        unrecognizedRelationships.push(line);
+        openScope(null);
+        continue;
+      }
+
       openScope(null);
     }
 
@@ -818,17 +968,22 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
     if (arrow) {
       const source = resolveReference(arrow.left);
       const target = resolveReference(arrow.right);
-      const reverse = ['<--', '<..', '<-', '<=', '<|--', '|-'].includes(arrow.arrow);
-      const bidirectional = arrow.arrow === '<-->';
+      if (!source || !target) {
+        unrecognizedRelationships.push(line);
+        continue;
+      }
 
-      if (reverse) {
+      const direction = arrowDirection(arrow.arrow);
+      if (direction.reverse) {
         addRelationship(target, source, arrow.description);
       } else {
         addRelationship(source, target, arrow.description);
       }
-      if (bidirectional) {
+      if (direction.bidirectional) {
         addRelationship(target, source, arrow.description);
       }
+    } else if (looksLikeRelationshipStatement(line)) {
+      unrecognizedRelationships.push(line);
     }
   }
 
@@ -846,5 +1001,6 @@ export function parsePlantUmlWorkspace(content: string): ImportedWorkspace {
     elements,
     relationships,
     views: [view],
+    unrecognizedRelationships,
   };
 }

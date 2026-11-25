@@ -36,7 +36,11 @@ const plantUmlTemplates = [
  */
 async function mockApi(
   target: Page | import('@playwright/test').BrowserContext,
-  options: { models?: unknown[]; modelDetail?: unknown } = {}
+  options: {
+    models?: unknown[];
+    modelDetail?: unknown;
+    importSnapshot?: unknown;
+  } = {}
 ): Promise<void> {
   const modelList = options.models ?? [];
   const modelDetail = options.modelDetail ?? createdModel;
@@ -94,6 +98,7 @@ async function mockApi(
             views: 1,
             skippedRelationships: 0,
           },
+          model: options.importSnapshot ?? null,
         }),
       });
     }
@@ -292,4 +297,80 @@ test('aplicar PlantUML pela lista atualiza o estado colaborativo', async ({ page
     (patch) => (patch.patch as { op?: string } | undefined)?.op === 'replaceModel'
   );
   expect(JSON.stringify(replace)).toContain('Loja API');
+});
+
+test('snapshot PlantUML é propagado mesmo quando a releitura do modelo falha', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.clear();
+    localStorage.setItem('c4arch_token', 'e2e-token');
+  });
+
+  const appliedElement = {
+    id: 'el-snapshot',
+    model_id: 'model-1',
+    type: 'system',
+    title: 'Snapshot sem GET',
+    description: null,
+    metadata: null,
+    position_x: 12,
+    position_y: 34,
+    order: 0,
+  };
+  await mockApi(page, {
+    models: [{ ...createdModel, elements: [appliedElement] }],
+    modelDetail: { ...createdModel, elements: [appliedElement] },
+    importSnapshot: { elements: [appliedElement], edges: [] },
+  });
+
+  // Esta releitura é apenas um enriquecimento de metadados. Sua falha não
+  // pode impedir o envio do snapshot devolvido pela importação.
+  await page.route('**/api/models/model-1', async (route) => {
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'GET indisponível' }),
+    });
+  });
+
+  const patches: Array<Record<string, unknown>> = [];
+  await page.routeWebSocket(/ws:\/\/localhost:4001/, (ws) => {
+    ws.onMessage((raw) => {
+      const message = JSON.parse(String(raw)) as {
+        type?: string;
+        modelId?: string;
+        patch?: { op?: string; data?: unknown };
+      };
+      if (message.type === 'join') {
+        ws.send(
+          JSON.stringify({ type: 'state', modelId: message.modelId, model: { elements: [], edges: [] } })
+        );
+        return;
+      }
+      if (message.type === 'patch') {
+        patches.push(message as Record<string, unknown>);
+        ws.send(
+          JSON.stringify({
+            type: 'update',
+            modelId: message.modelId,
+            model: message.patch?.data ?? { elements: [], edges: [] },
+          })
+        );
+      }
+    });
+  });
+
+  await page.goto('/#/files');
+  await page.getByRole('button', { name: 'Editar código (PlantUML)' }).click();
+  await page.getByLabel('Código PlantUML do modelo').fill(
+    '@startuml\ntitle Snapshot sem GET\nSystem(api, "Snapshot sem GET")\n@enduml'
+  );
+  await page.getByRole('button', { name: 'Aplicar no modelo' }).click();
+
+  await expect
+    .poll(() => patches.some((patch) => (patch.patch as { op?: string } | undefined)?.op === 'replaceModel'))
+    .toBe(true);
+  const replace = patches.find(
+    (patch) => (patch.patch as { op?: string } | undefined)?.op === 'replaceModel'
+  );
+  expect(JSON.stringify(replace)).toContain('Snapshot sem GET');
 });

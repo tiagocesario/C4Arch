@@ -1437,15 +1437,36 @@ export default function App() {
     const modelId = appliedModelId ?? selectedId;
     if (!modelId) return;
     try {
-      const detail = await getModel(modelId);
       // A importação devolve o snapshot recém-gravado. Preferi-lo evita que
       // uma leitura concorrente (projetor/realtime) traga o desenho anterior
       // e o painel reenvie conteúdo antigo ao canvas.
       const applied = snapshot ? mapModelSnapshot(snapshot) : null;
-      const elements = applied?.elements ?? detail.elements;
-      const edges = applied?.edges ?? detail.edges;
+
+      // A releitura dos metadados é útil para atualizar título/descrição, mas
+      // não pode impedir a propagação do snapshot autoritativo. Uma falha
+      // temporária do GET não deve deixar o realtime com o desenho anterior.
+      let detail: ModelDetail | null = null;
+      let detailError: unknown = null;
+      try {
+        detail = await getModel(modelId);
+      } catch (err) {
+        detailError = err;
+      }
+
+      const elements = applied?.elements ?? detail?.elements;
+      const edges = applied?.edges ?? detail?.edges;
+      if (!elements || !edges) {
+        throw detailError ?? new Error('A importação não devolveu o modelo atualizado');
+      }
+
       if (selectedId === modelId) {
-        setModel({ ...detail, elements, edges });
+        if (detail) {
+          setModel({ ...detail, elements, edges });
+        } else {
+          setModel((previous) =>
+            previous?.id === modelId ? { ...previous, elements, edges } : previous
+          );
+        }
         // O canvas lê o documento colaborativo; substitui o snapshot para que a
         // edição em PlantUML apareça imediatamente para todos os clientes.
         ws.sendOp({
@@ -1461,7 +1482,12 @@ export default function App() {
         // documento colaborativo (e qualquer editor aberto em outra aba)
         // precisa receber o mesmo snapshot, senão o próximo join reabre com o
         // desenho antigo e o projetor sobrescreve o Postgres.
-        await ws.pushModelSnapshot(modelId, elements, edges);
+        const pushed = await ws.pushModelSnapshot(modelId, elements, edges);
+        if (!pushed) {
+          throw new Error(
+            'O modelo foi salvo, mas não foi possível sincronizá-lo com o realtime'
+          );
+        }
         await refreshModels();
       }
       setError(null);
@@ -2099,6 +2125,28 @@ export default function App() {
                                 draw.io
                               </button>
                             )}
+                            <button
+                              onClick={() => {
+                                setDasModel(item);
+                                setDasContent('');
+                                setDasBaselineContent('');
+                                setDasPreviewUrl(null);
+                                setDasViewMode('edit');
+                                setDasActiveSection(0);
+                                setDasLoading(true);
+                                Promise.all([getModelDAS(item.id), getModel(item.id)])
+                                  .then(([content, detail]) => {
+                                    setDasContent(content);
+                                    setDasBaselineContent(content);
+                                    if (firstDiagramXml(detail)) setDasPreviewUrl(getDrawioPreviewUrl(firstDiagramXml(detail)!));
+                                  })
+                                  .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+                                  .finally(() => setDasLoading(false));
+                              }}
+                              style={{ ...buttonStyle, background: '#0d9488', color: '#fff' }}
+                            >
+                              DAS
+                            </button>
                             {isWriter && (
                               <button onClick={() => openEditModel(item)} style={buttonStyle}>
                                 Editar

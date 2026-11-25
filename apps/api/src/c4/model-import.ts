@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { Client, type PoolClient } from 'pg';
 import { pool } from '../db.js';
 import type { CanonicalElementKind, CanonicalViewType } from './canonical.js';
 import { viewTypeFromC4Type } from './canonical.js';
@@ -47,6 +48,11 @@ export interface ImportedWorkspace {
   elements: ImportedElement[];
   relationships: ImportedRelationship[];
   views: ImportedView[];
+  /**
+   * Relações que o parser não conseguiu interpretar. O controller pode
+   * rejeitar a importação antes de criar ou apagar o grafo existente.
+   */
+  unrecognizedRelationships?: string[];
 }
 
 const LEGACY_TYPE_BY_KIND: Record<CanonicalElementKind, string> = {
@@ -74,6 +80,44 @@ export interface ImportResult {
   relationships: number;
   views: number;
   skippedRelationships: number;
+}
+
+const MODEL_IMPORT_LOCK_NAMESPACE = 'model-import';
+
+/**
+ * Chave estável para o advisory lock por modelo. O hash de 64 bits evita
+ * colidir com outros namespaces advisory; uma colisão apenas serializa dois
+ * modelos diferentes, sem comprometer a consistência.
+ */
+function modelImportLockKey(modelId: string): string {
+  return `${MODEL_IMPORT_LOCK_NAMESPACE}:${modelId}`;
+}
+
+/**
+ * Usa uma sessão dedicada para o advisory lock. A transação da importação
+ * continua no pool, evitando que importadores concorrentes consumam todas as
+ * conexões enquanto esperam o lock ou durante a sincronização final.
+ */
+async function acquireModelImportLock(modelId: string): Promise<Client> {
+  const client = new Client(pool.options);
+  await client.connect();
+  try {
+    await client.query('SELECT pg_advisory_lock(hashtextextended($1::text, 0))', [
+      modelImportLockKey(modelId),
+    ]);
+    return client;
+  } catch (error) {
+    await client.end().catch(() => undefined);
+    throw error;
+  }
+}
+
+async function releaseModelImportLock(client: Client, modelId: string): Promise<boolean> {
+  const result = await client.query<{ released: boolean }>(
+    'SELECT pg_advisory_unlock(hashtextextended($1::text, 0)) AS released',
+    [modelImportLockKey(modelId)]
+  );
+  return result.rows[0]?.released === true;
 }
 
 /**
@@ -181,10 +225,18 @@ export async function importWorkspaceIntoModel(
   options: ImportOptions = {}
 ): Promise<ImportResult> {
   const mode = options.mode ?? 'replace';
-  const client = await pool.connect();
+  // A sessão do lock fica dedicada até a sincronização; a transação usa o
+  // pool normalmente e não compete com outros importadores pelo mesmo lock.
+  const lockClient = await acquireModelImportLock(modelId);
+  let client: PoolClient | null = null;
+  let transactionStarted = false;
 
   try {
+    // O lock de sessão atravessa o COMMIT: ele precisa continuar segurado
+    // enquanto o grafo já confirmado é sincronizado em `model_state`.
+    client = await pool.connect();
     await client.query('BEGIN');
+    transactionStarted = true;
 
     const modelResult = await client.query<{
       id: string;
@@ -439,9 +491,11 @@ export async function importWorkspaceIntoModel(
     await client.query('UPDATE models SET updated_at = NOW() WHERE id = $1', [modelId]);
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
     // Depois do COMMIT: `loadModelGraph` usa o pool e precisa enxergar o
-    // conteúdo persistido para gerar o desenho inicial.
+    // conteúdo persistido para gerar o desenho inicial. O advisory lock
+    // continua retido até a sincronização autoritativa de `model_state`.
     await persistDrawioArtifact(modelId);
     await syncCollaborativeState(modelId);
 
@@ -454,9 +508,24 @@ export async function importWorkspaceIntoModel(
       skippedRelationships,
     };
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
+    if (client && transactionStarted) {
+      await client.query('ROLLBACK').catch(() => undefined);
+    }
     throw error;
   } finally {
-    client.release();
+    try {
+      const released = await releaseModelImportLock(lockClient, modelId);
+      if (!released) {
+        console.warn(`[imports] advisory lock de ${modelId} não estava mais retido`);
+      }
+    } catch (error) {
+      console.error('[imports] falha ao liberar advisory lock do modelo:', error);
+    } finally {
+      // Fechar a sessão dedicada também libera o lock se o UNLOCK falhou.
+      await lockClient.end().catch((error) => {
+        console.error('[imports] falha ao encerrar sessão do advisory lock:', error);
+      });
+      client?.release();
+    }
   }
 }

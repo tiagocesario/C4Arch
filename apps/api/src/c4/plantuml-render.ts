@@ -37,3 +37,41 @@ export function encodePlantUml(text: string): string {
   }
   return result;
 }
+
+/**
+ * Macros que só existem na biblioteca C4-PlantUML. Um código escrito com elas
+ * sem `!include` renderiza caixas UML genéricas (e às vezes erro), então a
+ * pré-visualização injeta a diretiva antes de chamar o servidor PlantUML.
+ */
+const C4_MACRO_RE =
+  /^(?:Person|Person_Ext|System|System_Ext|SystemDb|SystemDb_Ext|SystemQueue|SystemQueue_Ext|Container|ContainerDb|ContainerQueue|Component|ComponentDb|ComponentQueue|System_Boundary|Container_Boundary|Enterprise_Boundary|Boundary|Deployment_Node|Rel|Rel_Back|Rel_Neighbor|Rel_Up|Rel_Down|Rel_Left|Rel_Right|BiRel)\s*[(_]/m;
+
+const C4_INCLUDE_RE = /!include\s+(?:<)?C4\//i;
+
+/**
+ * Garante o `!include` do C4-PlantUML na pré-visualização.
+ *
+ * O texto continua sendo do usuário; apenas a diretiva da biblioteca é
+ * acrescentada quando o código usa macros C4 e não a declarou. Assim pessoas,
+ * sistemas, containers e componentes aparecem sempre com os ícones oficiais do
+ * C4 model, e não como retângulos UML sem estilo.
+ */
+export function ensureC4Include(source: string): string {
+  if (!source.trim()) return source;
+  if (C4_INCLUDE_RE.test(source)) return source;
+  if (!C4_MACRO_RE.test(source)) return source;
+
+  const include = /^(?:Component|ComponentDb|ComponentQueue)\s*[(_]/m.test(source)
+    ? 'C4_Component'
+    : /^(?:Container|ContainerDb|ContainerQueue)\s*[(_]/m.test(source)
+      ? 'C4_Container'
+      : 'C4_Context';
+  const directive = `!include <C4/${include}>`;
+
+  const start = source.match(/^\s*@startuml[^\n]*\n?/im);
+  if (start) {
+    const index = (start.index ?? 0) + start[0].length;
+    return `${source.slice(0, index)}${directive}\n${source.slice(index)}`;
+  }
+  return `${directive}\n${source}`;
+}

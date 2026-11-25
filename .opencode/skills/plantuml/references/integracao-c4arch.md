@@ -9,6 +9,7 @@ canônico; o importador faz o caminho inverso.
 | Arquivo | Papel |
 | --- | --- |
 | `apps/api/src/c4/plantuml-import.ts` | Detecção e parser C4-PlantUML → `ImportedWorkspace` |
+| `apps/api/src/c4/import-guards.ts` | Guardas contra importação parcial/destrutiva |
 | `apps/api/src/c4/model-import.ts` | Persistência genérica (legado + canônico, views, autolayout, draw.io) |
 | `apps/api/src/c4/plantuml-templates.ts` | `PLANTUML_TEMPLATES` (5 padrões prontos) |
 | `apps/api/src/controllers/imports.controller.ts` | Validação, autorização, auditoria e endpoints |
@@ -64,6 +65,10 @@ Cria um modelo novo a partir do diagrama.
   grava auditoria (`model.import.plantuml`) e devolve `201` com o modelo e
   `import` (contagens).
 - `folderId` e `parentId` são validados contra a organização.
+- O template oficial `blank` é aceito: uma criação nova pode começar sem
+  elementos.
+- Relações que o parser não interpretou cancelam a importação com `400`
+  antes de criar o modelo; um resultado parcial nunca é persistido.
 
 ### `POST /api/models/{id}/import/plantuml`
 
@@ -87,7 +92,11 @@ Importa/substitui o conteúdo de um modelo existente.
 - `merge` casa elementos por `identifier` e atualiza os existentes; relações
   são recriadas.
 - Exige permissão de escrita no modelo.
-- Resposta: `{ "ok": true, "das_content": "...", "import": { ... } }`.
+- Uma relação não interpretada ou um `replace` sem elementos em um modelo
+  existente responde `400` e não altera o modelo.
+- Resposta: `{ "ok": true, "das_content": "...", "import": { ... }, "model": { "elements": [...], "edges": [...] } }`.
+  O snapshot é o conteúdo recém-persistido e deve ser usado para sincronizar o
+  canvas, sem depender de uma releitura concorrente.
 
 ### Exportação
 
@@ -105,6 +114,12 @@ autenticação e responde `502` quando o servidor PlantUML falha ou demora mais 
 Em Docker, o serviço `plantuml` (porta 8080 interna) é usado; fora do Docker,
 configure `PLANTUML_RENDER_URL_TEMPLATE` (padrão: servidor público do PlantUML).
 O valor precisa conter o marcador `{encoded}`.
+
+Antes de codificar, a API chama `ensureC4Include`: se o texto usa macros C4
+(`Person`, `System`, `Container`, `Component`, `Rel`, boundaries) sem declarar
+`!include`, a diretiva do nível adequado é injetada. Assim a pré-visualização
+sempre desenha os ícones oficiais do C4 model, mesmo quando o código colado veio
+sem o include.
 
 ## Templates prontos
 
@@ -132,9 +147,12 @@ O parser percorre as declarações lógicas do diagrama:
 
 1. Remove comentários de linha (`'`, `//`) e de bloco (`/' ... '/`) sem
    alterar textos entre aspas; junta macros divididas em várias linhas.
-2. Reconhece `title "..."` ou `title("...")` e usa o último como nome.
+2. Reconhece `title`/`caption` com texto simples ou entre aspas (inclusive
+   `title("...")`) e usa o último valor de cada diretiva. O texto direto pode
+   conter apóstrofos sem ser truncado como comentário.
 3. Reconhece macros C4 no formato `Macro(arg1, arg2, ...)` e declarações
-   genéricas como `actor "Usuário" as user` ou `database "Banco" as db`.
+   genéricas como `actor "Usuário" as user`, `actor user as "Usuário"` ou
+   `database "Banco" as db`.
 4. Elementos suportados (nomes case-insensitive):
 
 | Macros | `kind` canônico |
@@ -154,16 +172,21 @@ nível (`software_system`, `container` ou `component`) para preservar a
 hierarquia. Por isso elas aparecem na exportação como `System(...)`,
 `Container(...)` ou `Component(...)` com bloco.
 
-5. Relações: macros `Rel*`/`BiRel` e setas genéricas `-->`, `..>`, `<--`,
-   `<|--` e equivalentes. A direção das setas reversas é preservada;
-   `Rel_Back*` inverte a direção e `BiRel*` cria uma relação em cada sentido.
+5. Relações: macros `Rel*`/`BiRel` e setas genéricas como `-->`, `..>`, `<--`,
+   `<|--`, `*--`, `--*`, `<|..`, `..|>`, `-[#red]->` e `-right->`. A direção
+   das setas reversas é preservada; `Rel_Back*` inverte a direção e `BiRel*`
+   cria uma relação em cada sentido. Uma linha que pareça uma relação, mas não
+   possa ser interpretada, é registrada em `unrecognizedRelationships` e a API
+   recusa a importação para evitar um `replace` parcial.
 
 Argumentos:
 
 - `splitArgs` respeita aspas e parênteses aninhados.
 - Macros aceitam posição (`alias`, `label`, ...) ou nomes (`$alias`, `$label`,
   `$descr`, `$technology`, `$tags`).
-- 1º argumento é o **alias**; aliases repetidos são ignorados.
+- 1º argumento é o **alias**; aliases repetidos são ignorados. Em declarações
+  genéricas, tanto `actor "Label" as alias` quanto `actor alias as "Label"`
+  mantêm o alias estável e o label.
 - `Person`/`System`: 2º = nome, 3º = descrição.
 - `Container`/`Component`: 2º = nome, 3º = **tecnologia**, 4º = descrição.
 - `Rel`: 1º origem, 2º destino, 3º rótulo, 4º tecnologia.
@@ -192,8 +215,14 @@ Uma única view, com chave `default`. O tipo é inferido do texto:
 - `model_view_layout` e posições com autolayout (`LR`, `gapX=90`,
   `gapY=32`). Em `replace`, só as views do import são reposicionadas; views
   preservadas mantêm o layout manual;
-- `model_state` sincronizado com o grafo aplicado (Yjs durável);
-- XML draw.io inicial;
+- `model_state` sincronizado com o grafo aplicado (Yjs durável). A revisão do
+  estado é usada como token CAS: o Realtime envia `expectedRevision`, a API
+  responde `409` em divergência e o Realtime recarrega o estado durável. Um
+  advisory lock PostgreSQL por `model_id` serializa importações concorrentes até
+  a conclusão dessa sincronização;
+- XML draw.io inicial no padrão C4 (shapes oficiais do draw.io, rótulos com
+  placeholders `%c4Name%`/`%c4Type%`/`%c4Technology%`/`%c4Description%` e
+  boundaries pontilhadas para a hierarquia);
 - título, descrição (`caption`) e `c4_type` quando informados. O `title` do
   PlantUML atualiza o título do modelo quando a requisição não envia um título
   explícito; o `caption` atualiza a descrição persistida.
@@ -209,20 +238,23 @@ Relações cujo destino/origem não foi importado (ou self-loop) são contadas e
 ## Limitações do parser
 
 - **Sem tipo próprio para boundaries.** Fronteiras viram o elemento estrutural
-  do nível; o desenho exportado mostra uma caixa a mais em relação ao
-  `*_Boundary` original.
+  do nível; a exportação PlantUML mostra uma caixa a mais em relação ao
+  `*_Boundary` original e o desenho draw.io as representa como boundaries
+  pontilhadas ao redor dos filhos.
 - **Sprites, links e propriedades não são lidos.** `$sprite`, `$link`, `$url`,
   `AddElementTag` e propriedades arbitrárias são ignorados; `$tags` na própria
   declaração é suportado.
 - **`RelIndex` e `BiRel_D` não são suportados.** `RelIndex` e variantes
-  `BiRel_*` diferentes de `BiRel` são ignorados.
+  `BiRel_*` diferentes de `BiRel` podem ser rejeitados como relações não
+  interpretadas; a importação não persiste um resultado parcial.
 - **Índices de relação são ignorados.** `$index` não é confundido com a
   tecnologia da relação.
 - **Tecnologia só em container/componente.** Em `Person`/`System`, o 3º
   argumento é descrição.
 - **Sem atualização incremental de relações no `merge`.** Elementos são
   casados por identificador; relações são recriadas.
-- **Um único `title`.** O último vence.
+- **Um único `title` e um único `caption`.** O último valor de cada diretiva
+  vence; a exportação os coloca entre aspas para preservar apóstrofos.
 - **Sem validação semântica de C4.** O parser não impede, por exemplo,
   componente ligado a pessoa.
 
@@ -233,7 +265,8 @@ Relações cujo destino/origem não foi importado (ou self-loop) são contadas e
       obrigatório em diagramas genéricos.
 - [ ] Aliases sem espaços, hífens ou acentos.
 - [ ] `Container`/`Component` com tecnologia no 3º argumento.
-- [ ] Relações com verbo e, quando fizer sentido, tecnologia no 4º.
+- [ ] Relações com verbo e, quando fizer sentido, tecnologia no 4º; setas
+      genéricas devem estar entre as formas suportadas.
 - [ ] `$tags` opcional, separadas por `+` (`$tags="externo+critico"`).
 - [ ] Sem `$index`, `RelIndex` ou `BiRel_D`.
 - [ ] `title` opcional, mas consistente com o nome do modelo.
@@ -269,10 +302,13 @@ Resultado: 5 elementos (a fronteira `loja` vira um `software_system` pai de
 - Emite `Person`, `System`, `Container` ou `Component` usando o `identifier`
   canônico como alias; sem identificador, cai em `e0`, `e1`, ... Aliases são
   sanitizados (sem espaços/acentos) e desambiguados quando colidem.
-- Reproduz a hierarquia com blocos aninhados a partir de
-  `parent_element_id`.
+- Reproduz a hierarquia com boundaries oficiais: `System_Boundary`,
+  `Container_Boundary` e `Boundary(alias, label, "Component")` para os
+  elementos que têm filhos (`parent_element_id`). O elemento estrutural aparece
+  como fronteira, não como caixa sólida, igual ao desenho draw.io.
 - Reemite `$tags`, tecnologia de elemento e tecnologia da relação.
-- Inclui `title` e `caption`.
+- Inclui `title` e `caption` entre aspas, com escapes para preservar apóstrofos
+  e aspas no round-trip.
 - Usa `!include <C4/C4_...>`; a biblioteca C4 é empacotada no servidor
   PlantUML e funciona sem acesso externo.
 
@@ -287,9 +323,13 @@ Resultado: 5 elementos (a fronteira `loja` vira um `software_system` pai de
   aplicadas.
 - O canvas é sincronizado pela operação realtime `replaceModel` após a
   importação; a API também atualiza o `model_state` durável com o snapshot
-  persistido. O projetor preserva `identifier`, `url`, `tags`, hierarquia e
-  tecnologia das relações, que o Yjs não transporta, e ignora flush com hash
-  desatualizado.
+  persistido e devolve esse snapshot na resposta. Uma falha na releitura dos
+  metadados não cancela a propagação do snapshot, e uma conexão realtime que
+  não confirma a atualização é reportada à interface. O Realtime usa
+  `expectedRevision`; em `409`, recarrega o estado durável em vez de persistir
+  o snapshot local antigo. O projetor preserva `identifier`, `url`, `tags`,
+  hierarquia e tecnologia das relações, que o Yjs não transporta, e ignora
+  flush com hash desatualizado.
 
 ## MCP
 

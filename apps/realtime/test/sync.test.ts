@@ -1,10 +1,19 @@
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { WebSocket } from 'ws';
 import * as Y from 'yjs';
+import { flags } from '../src/flags.js';
 import {
   applyOperation,
   dedupeEdgesById,
+  flushState,
+  getModels,
   hydrateDocFromApiSnapshot,
+  loadStorageModels,
+  setApiBase,
   type Operation,
 } from '../src/sync.js';
 
@@ -231,5 +240,134 @@ test('dedupeEdgesById remove cópias da mesma aresta e preserva paralelas distin
   assert.deepEqual(
     doc.getArray('edges').toArray().map((edge) => (edge as Record<string, unknown>).id),
     [EDGE_A, EDGE_B]
+  );
+});
+
+const ORIGINAL_FETCH = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = ORIGINAL_FETCH;
+  flags.realtimePgState = 'off';
+  setApiBase('http://api:4000', '');
+});
+
+async function loadModelEntry(modelId: string, title: string) {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'c4arch-realtime-cas-'));
+  const oldElementId = `old-${modelId}`;
+  await fs.writeFile(
+    join(dir, `${modelId}.json`),
+    JSON.stringify({
+      modelId,
+      elements: [{ id: oldElementId, type: 'system', title }],
+      edges: [],
+    }),
+    'utf8'
+  );
+
+  const previousFlag = flags.realtimePgState;
+  flags.realtimePgState = 'off';
+  try {
+    await loadStorageModels(dir);
+  } finally {
+    flags.realtimePgState = previousFlag;
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+
+  const entry = getModels().find((candidate) => candidate.doc.getMap('elements').has(oldElementId));
+  assert.ok(entry, 'modelo de teste não foi carregado');
+  return entry;
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+test('flush envia expectedRevision e avança a revisão-base após sucesso', async () => {
+  const modelId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  flags.realtimePgState = 'on';
+  setApiBase('http://api.test', 'internal-token');
+  const entry = await loadModelEntry(modelId, 'Estado local');
+  entry.revisionBase = 7;
+  entry.dirty = true;
+
+  let putBody: Record<string, unknown> | null = null;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(init?.method, 'PUT');
+    putBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return jsonResponse({ revision: 8 });
+  }) as typeof fetch;
+
+  await flushState(modelId);
+
+  assert.equal(putBody?.expectedRevision, 7);
+  assert.equal(entry.revisionBase, 8);
+  assert.equal(entry.dirty, false);
+});
+
+test('conflito recarrega o estado durável e descarta o snapshot local antigo', async () => {
+  const modelId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+  flags.realtimePgState = 'on';
+  setApiBase('http://api.test', 'internal-token');
+  const entry = await loadModelEntry(modelId, 'Estado antigo');
+  entry.revisionBase = 7;
+  entry.dirty = true;
+  entry.undoStack = [Y.encodeStateAsUpdate(entry.doc)];
+  entry.redoStack = [Y.encodeStateAsUpdate(entry.doc)];
+
+  const sent: string[] = [];
+  entry.clients.add({
+    readyState: WebSocket.OPEN,
+    send: (payload: string) => sent.push(payload),
+  } as unknown as WebSocket);
+
+  const authoritative = new Y.Doc();
+  applyOperation(authoritative, {
+    op: 'createElement',
+    modelId,
+    data: { id: 'authoritative-element', type: 'system', title: 'Estado durável' },
+  });
+  const authoritativeState = Buffer.from(Y.encodeStateAsUpdate(authoritative)).toString('base64');
+
+  let putCount = 0;
+  let getCount = 0;
+  let putBody: Record<string, unknown> | null = null;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === 'PUT') {
+      putCount += 1;
+      putBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return jsonResponse({ error: 'conflito', currentRevision: 9 }, 409);
+    }
+    assert.match(String(input), /\/api\/internal\/models\/.+\/state$/);
+    getCount += 1;
+    return jsonResponse({ state: authoritativeState, revision: 9 });
+  }) as typeof fetch;
+
+  await flushState(modelId);
+
+  assert.equal(putCount, 1, 'o snapshot antigo não pode ser persistido novamente');
+  assert.equal(getCount, 1);
+  assert.equal(putBody?.expectedRevision, 7);
+  assert.equal(entry.revisionBase, 9);
+  assert.equal(entry.dirty, false);
+  assert.equal(entry.undoStack.length, 0);
+  assert.equal(entry.redoStack.length, 0);
+  assert.equal(entry.doc.getMap('elements').has(`old-${modelId}`), false);
+  const authoritativeElement = entry.doc.getMap('elements').get('authoritative-element') as {
+    title: string;
+  };
+  assert.equal(authoritativeElement.title, 'Estado durável');
+
+  assert.equal(sent.length, 1);
+  const broadcast = JSON.parse(sent[0]) as {
+    type: string;
+    model: { elements: Array<{ title: string }> };
+  };
+  assert.equal(broadcast.type, 'update');
+  assert.deepEqual(
+    broadcast.model.elements.map((element) => element.title),
+    ['Estado durável']
   );
 });
