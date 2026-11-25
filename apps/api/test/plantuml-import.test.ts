@@ -331,6 +331,20 @@ Rel(missing, a, "Inválida")
   ]);
 });
 
+test('parsePlantUmlWorkspace sinaliza elementos não reconhecidos', () => {
+  const workspace = parsePlantUmlWorkspace(`@startuml
+!include <C4/C4_Context>
+Person(valid, "Valid")
+class Lost
+@enduml`);
+
+  assert.deepEqual(
+    workspace.elements.map((element) => element.identifier),
+    ['valid']
+  );
+  assert.deepEqual(workspace.unrecognizedElements, ['class Lost']);
+});
+
 test('guard permite criar modelo em branco, mas protege modelo existente', () => {
   const blank = parsePlantUmlWorkspace(
     PLANTUML_TEMPLATES.find((template) => template.id === 'blank')!.content
