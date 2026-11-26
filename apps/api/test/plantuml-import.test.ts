@@ -361,6 +361,15 @@ test('guard permite criar modelo em branco, mas protege modelo existente', () =>
     true
   );
 
+  const notOfficialBlank = validatePlantUmlImport({
+    elements: blank.elements,
+    unrecognizedRelationships: blank.unrecognizedRelationships,
+    mode: 'replace',
+    hasExistingModel: false,
+  });
+  assert.equal(notOfficialBlank.ok, false);
+  assert.match(notOfficialBlank.error ?? '', /template oficial em branco/i);
+
   const existing = validatePlantUmlImport({
     elements: blank.elements,
     unrecognizedRelationships: blank.unrecognizedRelationships,
@@ -383,6 +392,18 @@ test('guard cancela importação com relações não interpretadas', () => {
   assert.match(result.error ?? '', /diagrama incompleto/i);
 });
 
+test('guard cancela importação com elementos não interpretados', () => {
+  const result = validatePlantUmlImport({
+    elements: [{ identifier: 'a' }],
+    unrecognizedElements: ['class Lost'],
+    mode: 'replace',
+    hasExistingModel: true,
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.error ?? '', /descartar parte do diagrama/i);
+});
+
 test('padrões PlantUML são diagramas válidos e referenciáveis', () => {
   assert.ok(PLANTUML_TEMPLATES.length >= 4);
   assert.equal(
@@ -397,6 +418,8 @@ test('padrões PlantUML são diagramas válidos e referenciáveis', () => {
 
     const workspace = parsePlantUmlWorkspace(template.content);
     const identifiers = new Set(workspace.elements.map((element) => element.identifier));
+    assert.deepEqual(workspace.unrecognizedElements, []);
+    assert.deepEqual(workspace.unrecognizedRelationships, []);
 
     for (const relationship of workspace.relationships) {
       assert.ok(

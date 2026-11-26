@@ -435,3 +435,147 @@ test(
     }
   }
 );
+
+test(
+  'flush com revisão antiga não deixa o estado divergente da importação',
+  { skip: enabled ? false : 'defina RUN_M3_TESTS=true e um Postgres descartável' },
+  async () => {
+    await runMigrations();
+
+    const orgId = randomUUID();
+    const modelId = randomUUID();
+    const stale = decodedFixture(modelId, 'Estado antigo');
+    const staleState = encodeModelState(stale.decoded);
+
+    try {
+      await pool.query(
+        'INSERT INTO organizations (id, slug, name) VALUES ($1, $2, $3)',
+        [orgId, `m3-import-cas-${orgId}`, 'Organização Import CAS']
+      );
+      await pool.query(
+        `INSERT INTO models (id, org_id, title, status, c4_type)
+         VALUES ($1, $2, 'Modelo Import CAS', 'draft', 'container')`,
+        [modelId, orgId]
+      );
+      await pool.query(
+        `INSERT INTO model_state (model_id, state, state_vector, content_hash, revision)
+         VALUES ($1, $2, NULL, $3, 1)`,
+        [modelId, Buffer.from(staleState), computeStateContentHash(stale.decoded)]
+      );
+
+      const response = controllerResponse();
+      await Promise.all([
+        importWorkspaceIntoModel(modelId, importWorkspaceFixture('importado'), {
+          mode: 'replace',
+        }),
+        InternalController.putState(stateRequest(modelId, staleState, 1), response.response),
+      ]);
+
+      assert.ok(response.result.status === 200 || response.result.status === 409);
+      const graph = await loadModelGraph(modelId);
+      assert.ok(graph);
+      const stateRow = await pool.query<{ state: Buffer; revision: string }>(
+        'SELECT state, revision FROM model_state WHERE model_id = $1',
+        [modelId]
+      );
+      assert.equal(stateRow.rows.length, 1);
+      assert.ok(Number(stateRow.rows[0].revision) >= 2);
+
+      const state = decodeModelState(new Uint8Array(stateRow.rows[0].state));
+      const graphElements = graph.elements
+        .map((element) => ({ id: element.id, title: element.title }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      const stateElements = state.elements
+        .map((element) => ({ id: element.id, title: element.title }))
+        .sort((a, b) => a.id.localeCompare(b.id));
+      assert.deepEqual(stateElements, graphElements);
+    } finally {
+      await pool.query('DELETE FROM organizations WHERE id = $1', [orgId]);
+    }
+  }
+);
+
+test(
+  'falha ao sincronizar model_state reverte a importação inteira',
+  { skip: enabled ? false : 'defina RUN_M3_TESTS=true e um Postgres descartável' },
+  async () => {
+    await runMigrations();
+
+    const orgId = randomUUID();
+    const modelId = randomUUID();
+    const originalId = randomUUID();
+    const suffix = modelId.replace(/-/g, '');
+    const functionName = `m3_fail_state_${suffix}`;
+    const triggerName = `m3_fail_state_${suffix}`;
+    const original = decodedFixture(modelId, 'Original');
+    const originalState = encodeModelState(original.decoded);
+
+    try {
+      await pool.query(
+        'INSERT INTO organizations (id, slug, name) VALUES ($1, $2, $3)',
+        [orgId, `m3-import-rollback-${orgId}`, 'Organização Import Rollback']
+      );
+      await pool.query(
+        `INSERT INTO models (id, org_id, title, status, c4_type)
+         VALUES ($1, $2, 'Modelo Import Rollback', 'draft', 'container')`,
+        [modelId, orgId]
+      );
+      await pool.query(
+        `INSERT INTO elements
+           (id, model_id, type, title, description, metadata, position_x, position_y, "order")
+         VALUES ($1, $2, 'system', 'Original', NULL, NULL, 0, 0, 0)`,
+        [originalId, modelId]
+      );
+      await pool.query(
+        `INSERT INTO model_state (model_id, state, state_vector, content_hash, revision)
+         VALUES ($1, $2, NULL, $3, 1)`,
+        [modelId, Buffer.from(originalState), computeStateContentHash(original.decoded)]
+      );
+      await pool.query(
+        `CREATE FUNCTION ${functionName}() RETURNS trigger
+         LANGUAGE plpgsql AS $$
+         BEGIN
+           IF NEW.model_id = '${modelId}'::uuid THEN
+             RAISE EXCEPTION 'falha simulada ao sincronizar model_state';
+           END IF;
+           RETURN NEW;
+         END
+         $$`
+      );
+      await pool.query(
+        `CREATE TRIGGER ${triggerName}
+         BEFORE INSERT OR UPDATE ON model_state
+         FOR EACH ROW EXECUTE FUNCTION ${functionName}()`
+      );
+
+      await assert.rejects(
+        importWorkspaceIntoModel(modelId, importWorkspaceFixture('não persistido'), {
+          mode: 'replace',
+        }),
+        /falha simulada ao sincronizar model_state/
+      );
+
+      const elements = await pool.query<{ title: string }>(
+        'SELECT title FROM elements WHERE model_id = $1',
+        [modelId]
+      );
+      assert.deepEqual(elements.rows, [{ title: 'Original' }]);
+      const stateRow = await pool.query<{ state: Buffer; revision: string }>(
+        'SELECT state, revision FROM model_state WHERE model_id = $1',
+        [modelId]
+      );
+      assert.equal(stateRow.rows.length, 1);
+      assert.equal(Number(stateRow.rows[0].revision), 1);
+      const state = decodeModelState(new Uint8Array(stateRow.rows[0].state));
+      assert.equal(state.elements.some((element) => element.title === 'Original'), true);
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${triggerName} ON model_state`).catch(
+        () => undefined
+      );
+      await pool.query(`DROP FUNCTION IF EXISTS ${functionName}()`).catch(
+        () => undefined
+      );
+      await pool.query('DELETE FROM organizations WHERE id = $1', [orgId]);
+    }
+  }
+);
