@@ -29,6 +29,11 @@ test('OpenAPI documenta exportação, importação, views e comentários', () =>
     '/api/models/{id}/comments',
     '/api/models/{id}/comments/{commentId}',
     '/api/models/{id}/inspections',
+    '/api/integrations',
+    '/api/integrations/{systemId}',
+    '/api/models/{id}/integrations',
+    '/api/models/{id}/integrations/{bindingId}',
+    '/api/models/{id}/integrations/{bindingId}/sync',
   ];
   for (const path of required) {
     assert.ok(path in doc.paths, `path ausente: ${path}`);

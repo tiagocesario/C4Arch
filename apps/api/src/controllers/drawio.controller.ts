@@ -9,6 +9,7 @@ import { isC4ModelType } from '../c4/model-types.js';
 import { loadModelGraph } from '../c4/model-graph.js';
 import { isUsableDrawioXml, renderDrawio } from '../c4/exporters.js';
 import { syncModelFromDrawio } from '../c4/drawio-sync.js';
+import { queueModelExternalSync } from '../c4/external-sync.js';
 import {
   ASSET_MARKER_ID,
   ASSET_MARKER_KIND,
@@ -271,6 +272,13 @@ export class DrawioController {
       } catch (e) {
         console.error('[drawio] das regen error', e);
       }
+
+      // Envia o draw.io e o DAS atualizados para os sistemas externos
+      // vinculados ao modelo (best-effort, sem bloquear a resposta).
+      queueModelExternalSync(id, 'model.updated', {
+        regenerateDas: false,
+        preferStoredDrawio: true,
+      });
 
       return res.json({ ok: true });
     } catch (err) {

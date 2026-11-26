@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, isValidUuid, isWriterRole } from '../auth/access.js';
 import { flags } from '../flags.js';
 import { recordAudit } from '../c4/audit.js';
+import { queueModelExternalSync } from '../c4/external-sync.js';
 import {
   canonicalModelHasData,
   loadCanonicalEdges,
@@ -109,6 +110,7 @@ export class EdgeController {
         entityId: edge.rows[0].id,
         metadata: { modelId, fromId, toId },
       });
+      queueModelExternalSync(modelId, 'model.updated');
       return res.status(201).json(edge.rows[0]);
     } catch (err) {
       console.error('[edges] create error', err);
@@ -234,6 +236,7 @@ export class EdgeController {
         entityId: edgeId,
         metadata: { modelId, fields: Object.keys(req.body ?? {}) },
       });
+      queueModelExternalSync(modelId, 'model.updated');
       return res.json(result.rows[0]);
     } catch (err) {
       console.error('[edges] update error', err);
@@ -271,6 +274,7 @@ export class EdgeController {
         entityId: edgeId,
         metadata: { modelId },
       });
+      queueModelExternalSync(modelId, 'model.updated');
       return res.json({ ok: true });
     } catch (err) {
       console.error('[edges] remove error', err);

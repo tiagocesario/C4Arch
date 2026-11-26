@@ -9,6 +9,8 @@ const requiredTables = [
   'model_view_layout',
   'model_state',
   'model_das_overrides',
+  'external_systems',
+  'model_external_bindings',
 ];
 
 const requiredColumns: Array<[table: string, column: string]> = [
@@ -36,6 +38,9 @@ const requiredIndexes = [
   'idx_model_das_overrides_model',
   'idx_model_versions_hash',
   'idx_model_versions_model_created',
+  'idx_external_systems_org',
+  'idx_model_external_bindings_model',
+  'idx_model_external_bindings_system',
 ];
 
 const allSql = [...schemaQueries, ...schemaAlters].join('\n');

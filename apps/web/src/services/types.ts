@@ -177,6 +177,86 @@ export interface CreateFolderInput {
   parentId?: string | null;
 }
 
+export type IntegrationAuthType = 'none' | 'bearer' | 'basic';
+export type IntegrationMethod = 'POST' | 'PUT' | 'PATCH';
+export type IntegrationFormat = 'json' | 'raw';
+
+export interface ExternalSystem {
+  id: string;
+  orgId: string;
+  name: string;
+  baseUrl: string | null;
+  authType: IntegrationAuthType;
+  authUser: string | null;
+  hasAuthToken: boolean;
+  headers: Record<string, string>;
+  enabled: boolean;
+  bindingCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateExternalSystemInput {
+  orgId: string;
+  name: string;
+  baseUrl?: string | null;
+  authType?: IntegrationAuthType;
+  authToken?: string | null;
+  authUser?: string | null;
+  headers?: Record<string, string>;
+  enabled?: boolean;
+}
+
+export interface ModelExternalBinding {
+  id: string;
+  modelId: string;
+  externalSystemId: string;
+  externalSystemName: string;
+  drawioUrl: string | null;
+  dasUrl: string | null;
+  method: IntegrationMethod;
+  format: IntegrationFormat;
+  enabled: boolean;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+  lastSyncError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateModelExternalBindingInput {
+  externalSystemId: string;
+  drawioUrl?: string | null;
+  dasUrl?: string | null;
+  method?: IntegrationMethod;
+  format?: IntegrationFormat;
+  enabled?: boolean;
+}
+
+export interface UpdateModelExternalBindingInput {
+  drawioUrl?: string | null;
+  dasUrl?: string | null;
+  method?: IntegrationMethod;
+  format?: IntegrationFormat;
+  enabled?: boolean;
+}
+
+export interface IntegrationDeliveryResult {
+  target: 'drawio' | 'das';
+  url: string;
+  status: number | null;
+  ok: boolean;
+  skipped: boolean;
+  error: string | null;
+}
+
+export interface IntegrationSyncResult {
+  bindingId: string;
+  externalSystemId: string;
+  externalSystemName: string;
+  deliveries: IntegrationDeliveryResult[];
+}
+
 export interface CreateAppInput {
   orgId: string;
   name: string;

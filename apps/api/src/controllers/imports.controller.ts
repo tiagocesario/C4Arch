@@ -4,6 +4,7 @@ import type { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, getOrgRole, isWriterRole } from '../auth/access.js';
 import { recordAudit } from '../c4/audit.js';
 import { regenerateModelDAS } from '../c4/das-service.js';
+import { queueModelExternalSync } from '../c4/external-sync.js';
 import {
   importWorkspaceIntoModel,
   type ImportedWorkspace,
@@ -171,6 +172,10 @@ export class ImportController {
       });
 
       model.das_content = await regenerateModelDAS(model.id);
+      queueModelExternalSync(model.id, 'model.created', {
+        regenerateDas: false,
+        preferStoredDrawio: true,
+      });
       await recordAudit({
         orgId,
         actorId: req.user!.id,
@@ -241,6 +246,10 @@ export class ImportController {
         c4Type: typeof body.c4Type === 'string' ? body.c4Type : null,
       });
       const das = await regenerateModelDAS(id);
+      queueModelExternalSync(id, 'model.updated', {
+        regenerateDas: false,
+        preferStoredDrawio: true,
+      });
       // Devolve o snapshot persistido para que o painel aplique exatamente o
       // conteúdo recém-importado no documento colaborativo, sem uma leitura
       // intermediária que pudesse capturar um estado antigo do projetor.

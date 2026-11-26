@@ -17,6 +17,7 @@ import { parseDiagrams } from '../c4/diagrams.js';
 import { runShadowCheck } from '../c4/shadow.js';
 import { flags } from '../flags.js';
 import { canonicalModelHasData, loadCanonicalElements, loadCanonicalEdges } from '../c4/canonical-access.js';
+import { queueModelExternalSync } from '../c4/external-sync.js';
 import { fetchPublicText, UnsafeUrlError } from '../security/url.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -445,6 +446,10 @@ export class ModelController {
       );
       // O DAS é regenerado e passa a incluir o novo tipo de diagrama.
       const das = await regenerateModelDAS(id);
+      queueModelExternalSync(id, 'model.updated', {
+        regenerateDas: false,
+        preferStoredDrawio: true,
+      });
       return res.status(201).json({
         ...result.rows[0],
         diagrams: parseDiagrams(result.rows[0].diagrams),
@@ -608,6 +613,10 @@ export class ModelController {
         entityId: id,
         metadata: { fields: Object.keys(req.body ?? {}) },
       });
+      queueModelExternalSync(id, 'model.updated', {
+        regenerateDas: false,
+        preferStoredDrawio: true,
+      });
       return res.json(updated);
     } catch (err) {
       console.error('[models] update error', err);
@@ -658,6 +667,10 @@ export class ModelController {
           entityId: id,
           metadata: { changedKeys: saved?.changedKeys ?? [] },
         });
+        queueModelExternalSync(id, 'model.das.updated', {
+          regenerateDas: false,
+          preferStoredDrawio: true,
+        });
         return res.json({ ok: true, ...saved });
       }
       await pool.query('UPDATE models SET das_content = $1, updated_at = NOW() WHERE id = $2', [content, id]);
@@ -668,6 +681,10 @@ export class ModelController {
         action: 'das.update',
         entityType: 'model',
         entityId: id,
+      });
+      queueModelExternalSync(id, 'model.das.updated', {
+        regenerateDas: false,
+        preferStoredDrawio: true,
       });
       return res.json({ ok: true });
     } catch (err) {
@@ -730,6 +747,7 @@ export class ModelController {
         entityId: versionId,
         metadata: { modelId: id, newVersion: restored.version },
       });
+      queueModelExternalSync(id, 'model.updated');
       return res.json({ ok: true, ...restored });
     } catch (err) {
       console.error('[models] restore error', err);

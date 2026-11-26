@@ -12,15 +12,21 @@ import type {
   CreateServiceInput,
   Edge,
   Element,
+  ExternalSystem,
   Folder,
   ImportModelInput,
   MeResponse,
   Model,
   ModelDetail,
+  ModelExternalBinding,
   ModelStatus,
+  CreateExternalSystemInput,
+  CreateModelExternalBindingInput,
+  IntegrationSyncResult,
   ServiceObject,
   UpdateEdgeInput,
   UpdateElementInput,
+  UpdateModelExternalBindingInput,
   UpdateModelInput,
 } from './types';
 import type { AddMemberInput, AddMemberResult, OrgMember, UserRole } from '../types/user';
@@ -729,3 +735,67 @@ export function getDrawioPreviewUrl(xml: string): string {
     encodeURIComponent(xml)
   );
 }
+
+// ---------------------------------------------------------------------------
+// Integrações com APIs de outros sistemas
+// ---------------------------------------------------------------------------
+
+export const listExternalSystems = (orgId: string): Promise<ExternalSystem[]> =>
+  req<ExternalSystem[]>('/api/integrations?orgId=' + encodeURIComponent(orgId));
+
+export const createExternalSystem = (
+  input: CreateExternalSystemInput
+): Promise<ExternalSystem> =>
+  req<ExternalSystem>('/api/integrations', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+export const updateExternalSystem = (
+  systemId: string,
+  input: Partial<CreateExternalSystemInput>
+): Promise<ExternalSystem> =>
+  req<ExternalSystem>('/api/integrations/' + systemId, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+
+export const deleteExternalSystem = (systemId: string) =>
+  req<{ ok: boolean }>('/api/integrations/' + systemId, { method: 'DELETE' });
+
+export const listModelIntegrations = (modelId: string): Promise<ModelExternalBinding[]> =>
+  req<ModelExternalBinding[]>('/api/models/' + modelId + '/integrations');
+
+export const createModelIntegration = (
+  modelId: string,
+  input: CreateModelExternalBindingInput
+): Promise<ModelExternalBinding> =>
+  req<ModelExternalBinding>('/api/models/' + modelId + '/integrations', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
+export const updateModelIntegration = (
+  modelId: string,
+  bindingId: string,
+  input: UpdateModelExternalBindingInput
+): Promise<ModelExternalBinding> =>
+  req<ModelExternalBinding>('/api/models/' + modelId + '/integrations/' + bindingId, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+
+export const deleteModelIntegration = (modelId: string, bindingId: string) =>
+  req<{ ok: boolean }>('/api/models/' + modelId + '/integrations/' + bindingId, {
+    method: 'DELETE',
+  });
+
+export const syncModelIntegration = (
+  modelId: string,
+  bindingId: string
+): Promise<{ ok: boolean; results: IntegrationSyncResult[] }> =>
+  req<{ ok: boolean; results: IntegrationSyncResult[] }>(
+    '/api/models/' + modelId + '/integrations/' + bindingId + '/sync',
+    { method: 'POST' }
+  );
+

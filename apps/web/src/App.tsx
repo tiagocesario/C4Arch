@@ -75,8 +75,9 @@ import { C4_MODEL_TYPES } from './services/types';
 import type { UserRole } from './types/user';
 import UserManagement from './pages/UserManagement';
 import GroupManagement from './pages/GroupManagement';
+import { IntegrationsPage } from './pages/IntegrationsPage';
 
-type Mode = 'files' | 'edit' | 'users' | 'groups' | 'catalog' | 'domains';
+type Mode = 'files' | 'edit' | 'users' | 'groups' | 'catalog' | 'domains' | 'integrations';
 
 const inputStyle: CSSProperties = {
   padding: '8px',
@@ -629,6 +630,14 @@ export default function App() {
   // tela de gestão deixa de ser acessível imediatamente na UI.
   useEffect(() => {
     if (loggedIn && mode === 'users' && currentRole !== 'owner') {
+      setMode('files');
+    }
+    if (
+      loggedIn &&
+      mode === 'integrations' &&
+      currentRole !== 'owner' &&
+      currentRole !== 'editor'
+    ) {
       setMode('files');
     }
   }, [loggedIn, mode, currentRole]);
@@ -1534,6 +1543,9 @@ export default function App() {
             <nav style={{ width: 180, padding: '12px 8px', borderRight: '1px solid #2a2f3a', display: 'flex', flexDirection: 'column', gap: '6px', background: '#111318' }}>
             <button onClick={() => setMode('files')} style={{ ...buttonStyle, background: mode === 'files' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Arquivos</button>
             <button onClick={() => setMode('catalog')} style={{ ...buttonStyle, background: mode === 'catalog' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Catálogo</button>
+            {(currentRole === 'owner' || currentRole === 'editor') && (
+              <button onClick={() => setMode('integrations')} style={{ ...buttonStyle, background: mode === 'integrations' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Integrações</button>
+            )}
             {currentRole === 'owner' && (
               <button onClick={() => setMode('users')} style={{ ...buttonStyle, background: mode === 'users' ? '#2a2f3a' : 'transparent', border: '1px solid #2a2f3a', width: '100%' }}>Usuários</button>
             )}
@@ -1870,6 +1882,10 @@ export default function App() {
                 currentRole={currentRole}
               />
             </div>
+          )}
+
+          {mode === 'integrations' && (currentRole === 'owner' || currentRole === 'editor') && (
+            <IntegrationsPage orgId={orgId} models={models} currentRole={currentRole} />
           )}
 
           {mode === 'files' && (

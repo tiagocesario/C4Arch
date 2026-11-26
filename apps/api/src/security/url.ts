@@ -141,6 +141,39 @@ export function parsePublicHttpUrl(rawUrl: string): URL {
   return url;
 }
 
+/**
+ * Validação sintática de URLs de integração (APIs de outros sistemas).
+ *
+ * Diferente da importação, integrações podem apontar para serviços internos da
+ * própria empresa; por isso não bloqueamos faixas privadas. A configuração é
+ * restrita a owner/editor da organização e os redirecionamentos não são
+ * seguidos pelo cliente de entrega.
+ */
+export function parseIntegrationHttpUrl(rawUrl: string): URL {
+  if (typeof rawUrl !== 'string' || !rawUrl.trim() || rawUrl.length > MAX_URL_LENGTH) {
+    throw new UnsafeUrlError('URL inválida');
+  }
+
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new UnsafeUrlError('URL inválida');
+  }
+
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new UnsafeUrlError('Apenas URLs http(s) são suportadas');
+  }
+  if (url.username || url.password) {
+    throw new UnsafeUrlError('URL com credenciais embutidas não é permitida');
+  }
+  if (url.port === '0' || !url.hostname || url.hostname.includes('\0')) {
+    throw new UnsafeUrlError('URL inválida');
+  }
+
+  return url;
+}
+
 /** Normaliza links do Google Drive para download direto. */
 export function normalizeGoogleDriveUrl(url: URL): URL {
   const host = normalizeHostname(url.hostname).replace(/^www\./, '');

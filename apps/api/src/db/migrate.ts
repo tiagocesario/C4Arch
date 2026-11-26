@@ -389,7 +389,57 @@ const wave2SchemaAlters = [
        ON model_elements(model_id, identifier)`,
 ];
 
-export const schemaQueries = [...baseSchemaQueries, ...wave2SchemaQueries];
+// ── Onda 4: integrações com APIs de outros sistemas ────────────────────────
+const integrationSchemaQueries = [
+    `CREATE TABLE IF NOT EXISTS external_systems (
+      id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      org_id      UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      base_url    TEXT,
+      auth_type   TEXT NOT NULL DEFAULT 'none' CHECK (auth_type IN ('none','bearer','basic')),
+      auth_token  TEXT,
+      auth_user   TEXT,
+      headers     JSONB NOT NULL DEFAULT '{}'::jsonb,
+      enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (org_id, name)
+    )`,
+
+    `CREATE INDEX IF NOT EXISTS idx_external_systems_org
+       ON external_systems(org_id)`,
+
+    `CREATE TABLE IF NOT EXISTS model_external_bindings (
+      id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      model_id           UUID NOT NULL REFERENCES models(id) ON DELETE CASCADE,
+      external_system_id UUID NOT NULL REFERENCES external_systems(id) ON DELETE CASCADE,
+      drawio_url         TEXT,
+      das_url            TEXT,
+      method             TEXT NOT NULL DEFAULT 'PUT' CHECK (method IN ('POST','PUT','PATCH')),
+      format             TEXT NOT NULL DEFAULT 'json' CHECK (format IN ('json','raw')),
+      enabled            BOOLEAN NOT NULL DEFAULT TRUE,
+      last_sync_at       TIMESTAMPTZ,
+      last_sync_status   TEXT,
+      last_sync_error    TEXT,
+      last_drawio_hash   TEXT,
+      last_das_hash      TEXT,
+      created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (model_id, external_system_id)
+    )`,
+
+    `CREATE INDEX IF NOT EXISTS idx_model_external_bindings_model
+       ON model_external_bindings(model_id)`,
+
+    `CREATE INDEX IF NOT EXISTS idx_model_external_bindings_system
+       ON model_external_bindings(external_system_id)`,
+];
+
+export const schemaQueries = [
+  ...baseSchemaQueries,
+  ...wave2SchemaQueries,
+  ...integrationSchemaQueries,
+];
 export const schemaAlters = [...baseAlters, ...wave2SchemaAlters];
 
 export interface Migration {
@@ -422,6 +472,11 @@ export const migrations: Migration[] = [
     id: '003-wave2-collaboration',
     name: 'Colaboração, idempotência e eventos',
     statements: [...wave2SchemaQueries, ...wave2SchemaAlters],
+  },
+  {
+    id: '004-external-integrations',
+    name: 'Integrações com APIs de outros sistemas',
+    statements: integrationSchemaQueries,
   },
 ];
 

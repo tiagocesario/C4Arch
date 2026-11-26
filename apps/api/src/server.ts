@@ -168,10 +168,13 @@ import importsRouter from './routes/imports.routes.js';
 import plantumlRouter from './routes/plantuml.routes.js';
 import viewsRouter from './routes/views.routes.js';
 import commentsRouter from './routes/comments.routes.js';
+import integrationsRouter from './routes/integrations.routes.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/orgs', orgsRouter);
 app.use('/api/plantuml', plantumlRouter);
+// Integrações com APIs de outros sistemas (sistemas externos + vínculos por modelo).
+app.use('/api', integrationsRouter);
 // Importação PlantUML precisa vir antes do CRUD de modelos para que
 // `/api/models/import/plantuml` não caia em `/:id`.
 app.use('/api/models', importsRouter);

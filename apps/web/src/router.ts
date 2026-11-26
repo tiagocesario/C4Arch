@@ -6,7 +6,15 @@
  * adicionar uma dependência de runtime.
  */
 
-export const APP_MODES = ['files', 'edit', 'users', 'groups', 'catalog', 'domains'] as const;
+export const APP_MODES = [
+  'files',
+  'edit',
+  'users',
+  'groups',
+  'catalog',
+  'domains',
+  'integrations',
+] as const;
 
 export type AppMode = (typeof APP_MODES)[number];
 

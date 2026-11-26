@@ -44,6 +44,11 @@ sincronizam o modelo com **Google Drive e/ou GitLab** como arquivo-fonte.
   são descartados por serem projeção do canônico.
 - **Colaboração em tempo real:** presença por view/sala, cursores e atualização
   do canvas via WebSocket + Yjs.
+- **Integrações de saída:** cadastro de APIs de outros sistemas por organização
+  e vínculo, por modelo, das URLs que recebem o draw.io e o DAS. Ao alterar o
+  modelo, o C4Arch envia as projeções automaticamente (best-effort, com
+  deduplicação por hash), registra o status do último envio e permite reenviar
+  pelo botão **Enviar agora**.
 - **Contrato estável:** OpenAPI 3.1 em `/api/openapi.json`, Swagger UI em
   `/api/docs`, erros padronizados (`error`/`code`) e idempotência opcional via
   header `Idempotency-Key`.
@@ -104,7 +109,9 @@ c4arch/
 - `docs/DAS-template.md` — template usado para gerar o DAS dos modelos.
 - `docs/SECURITY.md` — modelo de ameaças, configuração de segurança e riscos
   residuais.
-- `docs/UX-DAS-EDITOR.md` — decisões de UX do editor de DAS.
+- `docs/UX-DAS-EDITOR.md` - decisões de UX do editor de DAS.
+- `docs/INTEGRACOES.md` - contrato HTTP, segurança e operação das integrações
+  de saída (sistemas externos e vínculos por modelo).
 - `docs/ADR/` — Architecture Decision Records (decisões de arquitetura).
   Destaques recentes: `ADR-0018` (multi-diagrama no mesmo modelo via
   `models.diagrams` e persistência de tela no F5), `ADR-0019` (importação de
@@ -114,7 +121,8 @@ c4arch/
   `ADR-0022` (views como projeções do modelo), `ADR-0023` (DAS como projeção
   com overrides) e `ADR-0024` (versionamento restaurável e persistência do
   estado colaborativo). Interoperabilidade: `ADR-0025` (PlantUML como formato de
-  intercâmbio e pré-visualização renderizada na API).
+  intercâmbio e pré-visualização renderizada na API). Integrações: `ADR-0026`
+  (envio de draw.io e DAS por HTTP para APIs de outros sistemas).
 
 ## Login de desenvolvimento
 

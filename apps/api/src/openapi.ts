@@ -106,6 +106,20 @@ const idempotencyHeader = {
   description: 'Repete a mesma resposta para requisições mutantes com a mesma chave.',
 } as const;
 
+const modelIdParameter = {
+  name: 'id',
+  in: 'path',
+  required: true,
+  schema: { type: 'string', format: 'uuid' },
+} as const;
+
+const bindingIdParameter = {
+  name: 'bindingId',
+  in: 'path',
+  required: true,
+  schema: { type: 'string', format: 'uuid' },
+} as const;
+
 function jsonResponse(description: string, schema: unknown) {
   return {
     description,
@@ -139,6 +153,7 @@ export function buildOpenApiDocument() {
       { name: 'exports' },
       { name: 'imports' },
       { name: 'collaboration' },
+      { name: 'integrations' },
     ],
     components: {
       securitySchemes: {
@@ -222,6 +237,42 @@ export function buildOpenApiDocument() {
           properties: {
             elements: { type: 'array', items: { $ref: '#/components/schemas/Element' } },
             edges: { type: 'array', items: { $ref: '#/components/schemas/Edge' } },
+          },
+        },
+        ExternalSystem: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            orgId: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            baseUrl: { type: 'string', nullable: true },
+            authType: { type: 'string', enum: ['none', 'bearer', 'basic'] },
+            authUser: { type: 'string', nullable: true },
+            hasAuthToken: { type: 'boolean' },
+            headers: { type: 'object', additionalProperties: { type: 'string' } },
+            enabled: { type: 'boolean' },
+            bindingCount: { type: 'integer' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        ModelExternalBinding: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            modelId: { type: 'string', format: 'uuid' },
+            externalSystemId: { type: 'string', format: 'uuid' },
+            externalSystemName: { type: 'string' },
+            drawioUrl: { type: 'string', nullable: true },
+            dasUrl: { type: 'string', nullable: true },
+            method: { type: 'string', enum: ['POST', 'PUT', 'PATCH'] },
+            format: { type: 'string', enum: ['json', 'raw'] },
+            enabled: { type: 'boolean' },
+            lastSyncAt: { type: 'string', format: 'date-time', nullable: true },
+            lastSyncStatus: { type: 'string', nullable: true },
+            lastSyncError: { type: 'string', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
           },
         },
       },
@@ -314,6 +365,177 @@ export function buildOpenApiDocument() {
           responses: {
             '201': jsonResponse('Modelo criado', { $ref: '#/components/schemas/Model' }),
             '400': errorResponse('Dados inválidos'),
+          },
+        },
+      },
+      '/api/integrations': {
+        get: {
+          tags: ['integrations'],
+          summary: 'Lista os sistemas externos configurados na organização',
+          parameters: [
+            {
+              name: 'orgId',
+              in: 'query',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': jsonResponse('Sistemas externos', {
+              type: 'array',
+              items: { $ref: '#/components/schemas/ExternalSystem' },
+            }),
+            '400': errorResponse('orgId inválido'),
+          },
+        },
+        post: {
+          tags: ['integrations'],
+          summary: 'Cria um sistema externo (API de outro sistema)',
+          parameters: [idempotencyHeader],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['orgId', 'name'],
+                  properties: {
+                    orgId: { type: 'string', format: 'uuid' },
+                    name: { type: 'string' },
+                    baseUrl: { type: 'string', nullable: true },
+                    authType: { type: 'string', enum: ['none', 'bearer', 'basic'] },
+                    authToken: { type: 'string', nullable: true },
+                    authUser: { type: 'string', nullable: true },
+                    headers: { type: 'object', additionalProperties: { type: 'string' } },
+                    enabled: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': jsonResponse('Sistema externo criado', {
+              $ref: '#/components/schemas/ExternalSystem',
+            }),
+            '400': errorResponse('Dados inválidos'),
+          },
+        },
+      },
+      '/api/integrations/{systemId}': {
+        put: {
+          tags: ['integrations'],
+          summary: 'Atualiza um sistema externo',
+          parameters: [
+            {
+              name: 'systemId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': jsonResponse('Sistema externo atualizado', {
+              $ref: '#/components/schemas/ExternalSystem',
+            }),
+            '404': errorResponse('Sistema externo não encontrado'),
+          },
+        },
+        delete: {
+          tags: ['integrations'],
+          summary: 'Remove um sistema externo e seus vínculos',
+          parameters: [
+            {
+              name: 'systemId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': jsonResponse('Sistema externo removido', { type: 'object' }),
+            '404': errorResponse('Sistema externo não encontrado'),
+          },
+        },
+      },
+      '/api/models/{id}/integrations': {
+        get: {
+          tags: ['integrations'],
+          summary: 'Lista os vínculos de draw.io e DAS do modelo',
+          parameters: [modelIdParameter],
+          responses: {
+            '200': jsonResponse('Vínculos do modelo', {
+              type: 'array',
+              items: { $ref: '#/components/schemas/ModelExternalBinding' },
+            }),
+          },
+        },
+        post: {
+          tags: ['integrations'],
+          summary: 'Vincula o modelo a um sistema externo',
+          parameters: [modelIdParameter, idempotencyHeader],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['externalSystemId'],
+                  properties: {
+                    externalSystemId: { type: 'string', format: 'uuid' },
+                    drawioUrl: { type: 'string', nullable: true },
+                    dasUrl: { type: 'string', nullable: true },
+                    method: { type: 'string', enum: ['POST', 'PUT', 'PATCH'] },
+                    format: { type: 'string', enum: ['json', 'raw'] },
+                    enabled: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': jsonResponse('Vínculo criado', {
+              $ref: '#/components/schemas/ModelExternalBinding',
+            }),
+            '400': errorResponse('Dados inválidos'),
+          },
+        },
+      },
+      '/api/models/{id}/integrations/{bindingId}': {
+        put: {
+          tags: ['integrations'],
+          summary: 'Atualiza as URLs de draw.io/DAS do vínculo',
+          parameters: [modelIdParameter, bindingIdParameter],
+          responses: {
+            '200': jsonResponse('Vínculo atualizado', {
+              $ref: '#/components/schemas/ModelExternalBinding',
+            }),
+            '404': errorResponse('Vínculo não encontrado'),
+          },
+        },
+        delete: {
+          tags: ['integrations'],
+          summary: 'Remove o vínculo do modelo',
+          parameters: [modelIdParameter, bindingIdParameter],
+          responses: {
+            '200': jsonResponse('Vínculo removido', { type: 'object' }),
+            '404': errorResponse('Vínculo não encontrado'),
+          },
+        },
+      },
+      '/api/models/{id}/integrations/{bindingId}/sync': {
+        post: {
+          tags: ['integrations'],
+          summary: 'Envia o draw.io e o DAS atuais para o sistema externo',
+          parameters: [modelIdParameter, bindingIdParameter, idempotencyHeader],
+          responses: {
+            '200': jsonResponse('Resultado do envio', {
+              type: 'object',
+              properties: {
+                ok: { type: 'boolean' },
+                results: { type: 'array', items: { type: 'object' } },
+              },
+            }),
+            '404': errorResponse('Vínculo não encontrado'),
           },
         },
       },

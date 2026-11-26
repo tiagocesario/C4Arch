@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../auth/middleware.js';
 import { getModelAccess, isWriterRole } from '../auth/access.js';
 import { recordAudit } from '../c4/audit.js';
 import { flags } from '../flags.js';
+import { queueModelExternalSync } from '../c4/external-sync.js';
 import {
   canonicalModelHasData,
   loadCanonicalElements,
@@ -162,6 +163,7 @@ export class ElementController {
         entityId: element.rows[0].id,
         metadata: { modelId, type, title: cleanTitle },
       });
+      queueModelExternalSync(modelId, 'model.updated');
       return res.status(201).json(element.rows[0]);
     } catch (err) {
       console.error('[elements] create error', err);
@@ -326,6 +328,7 @@ export class ElementController {
         entityId: elementId,
         metadata: { modelId, fields: Object.keys(req.body ?? {}) },
       });
+      queueModelExternalSync(modelId, 'model.updated');
       return res.json(result.rows[0]);
     } catch (err) {
       console.error('[elements] update error', err);
@@ -363,6 +366,7 @@ export class ElementController {
         entityId: elementId,
         metadata: { modelId },
       });
+      queueModelExternalSync(modelId, 'model.updated');
       return res.json({ ok: true });
     } catch (err) {
       console.error('[elements] remove error', err);
